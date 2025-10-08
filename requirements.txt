@@ -1,0 +1,17 @@
+toolz==0.12.0
+torch==2.0.1+cu118
+torchinfo==1.8.0
+torchvision==0.15.2+cu118
+pydantic==2.11.7
+pydantic_core==2.33.2
+ttkthemes==3.2.2
+ollama==0.3.3
+mss==9.0.1
+matplotlib==3.8.2
+matplotlib-inline==0.1.6
+openai==1.102.0
+opencv-python==4.8.1.78
+opencv-python-headless==4.10.0.84
+Pillow==9.5.0
+numpy==1.24.3
+easyocr==1.7.2
