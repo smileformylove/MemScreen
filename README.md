@@ -28,6 +28,8 @@ ollama pull qwen2.5vl:3b
 ollama pull mxbai-embed-large:latest
 ```
 
+The performance of small models is limited. And you can also download large models to get better performance, especially for qwen3 and qwen2.5vl.
+
 ## Usage
 
 ### Capture your screen
