@@ -1,3 +1,9 @@
+### copyright 2025 jixiangluo    ###
+### email:jixiangluo85@gmail.com ###
+### rights reserved by author    ###
+### time: 2025-11-09             ###
+### license: MIT                 ###
+
 import asyncio
 import concurrent
 import gc
@@ -11,6 +17,7 @@ import sqlite3
 import threading
 import importlib
 import httpx
+import pytz
 
 from copy import deepcopy
 from datetime import datetime
@@ -18,10 +25,7 @@ from typing import Any, Dict, Optional, Union, Literal, List, ClassVar
 from enum import Enum
 from abc import ABC, abstractmethod
 from ollama import Client
-
 from chroma import ChromaDB 
-
-import pytz
 from pydantic import ValidationError, BaseModel, Field, field_validator, model_validator
 
 from prompts import (

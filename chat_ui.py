@@ -1,3 +1,9 @@
+### copyright 2025 jixiangluo    ###
+### email:jixiangluo85@gmail.com ###
+### rights reserved by author    ###
+### time: 2025-11-09             ###
+### license: MIT                 ###
+
 import os
 import tkinter as tk
 from tkinter import scrolledtext, ttk, messagebox
@@ -297,3 +303,4 @@ if __name__ == "__main__":
     
     refresh_models()
     root.mainloop()
+

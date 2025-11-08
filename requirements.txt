@@ -1,3 +1,10 @@
+### copyright 2025 jixiangluo    ###
+### email:jixiangluo85@gmail.com ###
+### rights reserved by author    ###
+### time: 2025-11-09             ###
+### license: MIT                 ###
+
+
 toolz==0.12.0
 torch==2.0.1+cu118
 torchinfo==1.8.0

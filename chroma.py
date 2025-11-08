@@ -1,3 +1,9 @@
+### copyright 2025 jixiangluo    ###
+### email:jixiangluo85@gmail.com ###
+### rights reserved by author    ###
+### time: 2025-11-09             ###
+### license: MIT                 ###
+
 import logging
 from typing import Dict, List, Optional, Literal, ClassVar, Any
 from abc import ABC, abstractmethod
@@ -308,3 +314,4 @@ class ChromaDB(VectorStoreBase):
             if isinstance(v, str):
                 where_filters.append({k: v})
         return {"$and": where_filters}
+
