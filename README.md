@@ -66,4 +66,4 @@ Thanks to the code of [mem0](https://github.com/mem0ai/mem0).
 
 ## License
 
-MemScreen is released under the [Apache 2.0 license](https://github.com/smileformylove/MemScreen/blob/master/LICENSE).
+MemScreen is released under the [MIT](https://github.com/smileformylove/MemScreen/blob/master/LICENSE).
