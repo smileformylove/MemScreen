@@ -10,7 +10,7 @@ MemScreen is a memory system to manage screen you watch everyday. you can also c
 
 - [x] Understand and Memorize your screen with local models(MLLM and OCR)
 
-- [x] MemScreen can also be used as personal assistant to answer your questions about any other history, not only screens
+- [x] MemScreen can also be used as personal assistant to answer your questions about any other history, without any contents of screens.
 
 ## Installation
 
