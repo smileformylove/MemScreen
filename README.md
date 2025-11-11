@@ -2,7 +2,7 @@
 
 ## Ask Screen Anything
 
-MemScreen is a memory system to manage screen you watch everyday. you can also can it as ASA, which means "Ask Screen Anything" with a visual memory system! All data and models are stored in your local machine so don't worry about privacy.
+MemScreen is a memory system to manage screen you watch everyday. you can also call it as ASA, which means "Ask Screen Anything" with a visual memory system! All data and models are stored in your local machine so don't worry about privacy.
 
 ### Key Features
 
