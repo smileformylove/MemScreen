@@ -4,6 +4,7 @@
 ### time: 2025-11-09             ###
 ### license: MIT                 ###
 
+
 import os
 import time
 import datetime
@@ -21,9 +22,6 @@ from argparse import ArgumentParser
 from memory import Memory
 # 新增：用于线程池
 from concurrent.futures import ThreadPoolExecutor
-# ===================== 新增键鼠监听依赖 START =====================
-from pynput import keyboard, mouse
-# ===================== 新增键鼠监听依赖 END =====================
 
 # --- 数据库和配置部分保持不变 ---
 db_path = "./db"
@@ -68,22 +66,11 @@ config = {
     },
 }
 
-# ===================== 新增：键鼠监听全局变量 START =====================
-# 键鼠日志批量插入缓存，提升入库性能
-KM_LOG_BATCH_LIST = []
-# 批量插入阈值，达到阈值自动入库
-KM_BATCH_THRESHOLD = 20
-# 键鼠监听线程对象
-keyboard_listener = None
-mouse_listener = None
-# ===================== 新增：键鼠监听全局变量 END =====================
-
-# --- 辅助函数保持不变 + 新增数据库初始化/键鼠入库方法 ---
+# --- 辅助函数保持不变 ---
 def init_db():
-    """初始化数据库，创建视频信息表+帧表+新增【键鼠操作日志表】"""
+    """初始化数据库，创建视频信息表"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    # 原有视频表
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS videos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,26 +83,14 @@ def init_db():
         caption TEXT
     )
     ''')
-    # 原有帧数据表
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS frames (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         filename TEXT NOT NULL,
-        frame_count INTEGER NOT NULL,
+        frame_count DATETIME NOT NULL,
         caption TEXT, 
         box TEXT, 
         prob float           
-    )
-    ''')
-    # ===================== 新增：创建键盘鼠标操作日志表 =====================
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS keyboard_mouse_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        operate_time DATETIME NOT NULL,
-        operate_type TEXT NOT NULL,  -- keyboard / mouse
-        action TEXT NOT NULL,        -- press/release/move/click/scroll
-        content TEXT NOT NULL,       -- 按键内容/坐标信息
-        details TEXT                 -- 扩展详情
     )
     ''')
     conn.commit()
@@ -133,157 +108,46 @@ def save_video_info(filename, start_time, end_time, duration, frame_count, fps, 
     conn.close()
 
 def save_frame_info_batch(data_list):
-    """批量插入帧数据"""
+    """
+    接收一个数据列表，使用 executemany() 一次性将所有数据插入数据库。
+    """
     if not data_list:
-        return
-    conn = None
+        return # 如果列表为空，则不执行任何操作
+
+    conn = None # 初始化连接变量
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
+        
+        # SQL 插入语句，使用 ? 作为占位符
         sql = '''
         INSERT INTO frames (filename, frame_count, caption, box, prob)
         VALUES (?, ?, ?, ?, ?)
         '''
+        # 使用 executemany() 执行批量插入
         cursor.executemany(sql, data_list)
+        # 一次性提交所有更改
         conn.commit()
+
     except sqlite3.Error as e:
-        print(f"[ERROR] 批量插入帧数据时发生错误: {e}")
+        print(f"[ERROR] 批量插入数据库时发生错误: {e}")
         if conn:
-            conn.rollback()
+            conn.rollback() # 如果发生错误，则回滚事务
+            print("[INFO] 事务已回滚。")
+
     finally:
+        # 确保在任何情况下数据库连接都被关闭
         if conn:
             conn.close()
-
-# ===================== 新增：键鼠日志批量入库核心方法 =====================
-def save_km_log_batch(data_list):
-    """批量插入键盘鼠标操作日志，和帧数据入库逻辑保持一致"""
-    if not data_list:
-        return
-    conn = None
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        sql = '''
-        INSERT INTO keyboard_mouse_logs (operate_time, operate_type, action, content, details)
-        VALUES (?, ?, ?, ?, ?)
-        '''
-        cursor.executemany(sql, data_list)
-        conn.commit()
-    except sqlite3.Error as e:
-        print(f"[ERROR] 批量插入键鼠日志时发生错误: {e}")
-        if conn:
-            conn.rollback()
-    finally:
-        if conn:
-            conn.close()
-
-# ===================== 新增：键鼠日志添加到缓存/自动入库 =====================
-def add_km_log(operate_type, action, content, details=None):
-    """添加键鼠日志到缓存，达到阈值自动批量入库，轻量化无阻塞"""
-    global KM_LOG_BATCH_LIST, KM_BATCH_THRESHOLD
-    curr_time = datetime.datetime.now()
-    KM_LOG_BATCH_LIST.append( (curr_time, operate_type, action, content, details) )
-    # 达到阈值自动入库，清空缓存
-    if len(KM_LOG_BATCH_LIST) >= KM_BATCH_THRESHOLD:
-        save_km_log_batch(KM_LOG_BATCH_LIST)
-        KM_LOG_BATCH_LIST = []
-
-# ===================== 新增：程序退出时，强制入库剩余键鼠日志 =====================
-def flush_km_log_remain():
-    """强制将缓存中剩余的键鼠日志入库，防止数据丢失"""
-    global KM_LOG_BATCH_LIST
-    if KM_LOG_BATCH_LIST:
-        save_km_log_batch(KM_LOG_BATCH_LIST)
-        KM_LOG_BATCH_LIST = []
-        print("[INFO] 剩余键鼠日志已全部入库完成")
-
-# ===================== 新增：完整键盘监听回调函数 =====================
-def on_key_press(key):
-    """监听键盘按键按下事件"""
-    try:
-        # 普通字符按键：字母、数字、符号
-        add_km_log(
-            operate_type="keyboard",
-            action="press",
-            content=f"char:{key.char}",
-            details=f"Normal key: {key.char}"
-        )
-    except AttributeError:
-        # 特殊功能按键：ESC/回车/空格/Shift/Ctrl/Alt/退格等
-        key_name = str(key).replace("Key.", "")
-        add_km_log(
-            operate_type="keyboard",
-            action="press",
-            content=f"func:{key_name}",
-            details=f"Special key: [{key_name}]"
-        )
-
-def on_key_release(key):
-    """监听键盘按键松开事件"""
-    try:
-        key_name = key.char if hasattr(key, 'char') else str(key).replace("Key.", "")
-        add_km_log(
-            operate_type="keyboard",
-            action="release",
-            content=f"char:{key_name}",
-            details=f"Key released: {key_name}"
-        )
-    except:
-        key_name = str(key).replace("Key.", "")
-        add_km_log(
-            operate_type="keyboard",
-            action="release",
-            content=f"func:{key_name}",
-            details=f"Special key released: [{key_name}]"
-        )
-
-# ===================== 新增：完整鼠标监听回调函数 =====================
-def on_mouse_move(x, y):
-    """监听鼠标移动事件"""
-    add_km_log(
-        operate_type="mouse",
-        action="move",
-        content=f"X:{x},Y:{y}",
-        details=f"Mouse move to coordinate ({x},{y})"
-    )
-
-def on_mouse_click(x, y, button, pressed):
-    """监听鼠标点击/松开事件"""
-    click_status = "press" if pressed else "release"
-    btn_name = str(button).replace("Button.", "")
-    add_km_log(
-        operate_type="mouse",
-        action=click_status,
-        content=f"{btn_name}@X:{x},Y:{y}",
-        details=f"Mouse {click_status} {btn_name} button at ({x},{y})"
-    )
-
-def on_mouse_scroll(x, y, dx, dy):
-    """监听鼠标滚轮滑动事件"""
-    scroll_dir = "up" if dy > 0 else "down"
-    add_km_log(
-        operate_type="mouse",
-        action="scroll",
-        content=f"{scroll_dir}@X:{x},Y:{y}",
-        details=f"Mouse wheel {scroll_dir} at ({x},{y}) | dx:{dx}, dy:{dy}"
-    )
-
-# ===================== 新增：启动键鼠监听的核心方法 =====================
-def start_km_listener():
-    """启动键盘+鼠标监听，后台守护线程运行"""
-    global keyboard_listener, mouse_listener
-    # 启动键盘监听
-    keyboard_listener = keyboard.Listener(on_press=on_key_press, on_release=on_key_release)
-    keyboard_listener.daemon = True  # 守护线程，主程序退出自动关闭
-    keyboard_listener.start()
-    # 启动鼠标监听
-    mouse_listener = mouse.Listener(on_move=on_mouse_move, on_click=on_mouse_click, on_scroll=on_mouse_scroll)
-    mouse_listener.daemon = True  # 守护线程，主程序退出自动关闭
-    mouse_listener.start()
-    print("[INFO] 键盘鼠标监听服务已启动，后台运行中...")
 
 def capture_screen():
-    """截取屏幕并返回OpenCV格式的图像 (BGR)。"""
+    """
+    截取屏幕并返回OpenCV格式的图像 (BGR)。
+    - 在Linux上，优先使用`mss`库（无闪烁，高性能）。
+    - 如果`mss`失败，降级使用`gnome-screenshot`命令行工具。
+    - 如果`gnome-screenshot`也失败，最后使用Pillow的ImageGrab。
+    - 在Windows/macOS上，直接使用Pillow的ImageGrab。
+    """
     if os.name == 'posix' and 'linux' in os.uname().sysname.lower():
         try:
             with mss.mss() as sct:
@@ -336,32 +200,68 @@ def create_video(frames, output_file, fps=10.0):
     return len(frames)
 
 def screen_memory(frame_path, m):
-    """处理单帧图像并将其存入记忆。"""
+    """
+    处理单帧图像并将其存入记忆。
+    """
     messages = [
         {"role": "user", "content": {"image_url": {"url": os.path.dirname(__file__)+'/'+frame_path}, "type": "image_url"}},
     ]
     m.add(messages=messages, user_id="screenshot")
 
 def ocr_memory(frame, i, start_time):
-    """处理单帧图像OCR，收集所有结果，并调用函数进行一次性批量插入。"""
+    """
+    处理单帧图像OCR，收集所有结果，并调用函数进行一次性批量插入。
+    """
+    # 1. 生成唯一的文件名（基于视频开始时间）
     frame_path = start_time.strftime("%Y%m%d_%H%M%S")
+
+    # 2. 对当前帧执行OCR
     results = ocr_reader.readtext(frame)
+
+    # 3. 检查是否有识别结果
     if not results:
         print(f"[INFO] 第 {i} 帧没有识别到任何文字。")
         return
+
+    # 4. 创建一个列表来收集所有待插入的数据
     data_to_insert = []
     for (bbox, text, prob) in results:
+        # 将每条记录的参数打包成一个元组，添加到列表中
+        # 注意：bbox是一个列表，SQLite可以直接存储
         data_to_insert.append( (frame_path, i, text, str(bbox), prob) )
+
+    # 5. 调用函数，一次性插入所有数据
     save_frame_info_batch(data_to_insert)
 
 def resize_to_480p(frame):
-    """将图像的垂直分辨率调整为 480 像素，同时保持原始宽高比。"""
+    """
+    将图像的垂直分辨率调整为 480 像素，同时保持原始宽高比。
+
+    参数:
+    frame (numpy.ndarray): 输入的 OpenCV 图像 (BGR 格式)。
+
+    返回:
+    numpy.ndarray: 调整大小后的图像。
+    """
+    # 获取原始图像的高度和宽度
     height, width = frame.shape[:2]
+
+    # 定义目标垂直分辨率 (480p)
     target_height = 480
+
+    # 计算缩放比例
+    # 新高度 / 原始高度 = 缩放比例
     scale = target_height / height
+
+    # 根据缩放比例计算新的宽度，确保它是整数
     target_width = int(width * scale)
+
+    # 使用 cv2.resize 进行缩放
+    # interpolation=cv2.INTER_AREA 非常适合用于缩小图像，可以产生较好的效果
     resized_frame = cv2.resize(frame, (target_width, target_height), interpolation=cv2.INTER_AREA)
+    
     return resized_frame
+
 
 def capture_and_save(duration, interval, output_dir, mem=None):
     """定期截图并保存为视频，同时并行处理记忆存储"""
@@ -374,7 +274,10 @@ def capture_and_save(duration, interval, output_dir, mem=None):
     os.makedirs(temp_dir, exist_ok=True)
     prev_frame = None
 
+    # 创建一个线程池，用于并行处理 screen_memory
+    # max_workers 可以根据你的CPU核心数和任务负载调整
     with ThreadPoolExecutor(max_workers=4) as executor:
+        # 用于存储所有提交的任务，以便后续检查
         future_to_frame = {}
 
         for i in range(total_frames):
@@ -391,20 +294,30 @@ def capture_and_save(duration, interval, output_dir, mem=None):
             frame_filename = os.path.join(temp_dir, f"frame_{i}.png")
             cv2.imwrite(frame_filename, resize_to_480p(frame))
 
+            # 立即将处理任务提交给线程池，而不是等待
+            # executor.submit 会在后台线程中调用 screen_memory
+            # future = executor.submit(screen_memory, frame_filename, mem)
+            # future = executor.submit(ocr_memory, frame_filename, i, start_time)
+            # future_to_frame[future] = frame_filename
+
             ocr_memory(frame_filename, i, start_time)
             screen_memory(frame_filename, mem)
 
             time.sleep(interval)
         
+        # 等待所有后台的 screen_memory 任务全部完成
+        # 这很重要，确保在删除临时文件和退出函数前，所有记忆都已处理完毕
         print("\n录制循环结束，等待所有记忆处理任务完成...")
         for future in future_to_frame:
             try:
-                future.result()
+                future.result()  # 如果任务抛出异常，这里会重新抛出
             except Exception as exc:
                 frame_path = future_to_frame[future]
                 print(f"处理帧 {frame_path} 时发生错误: {exc}")
 
     print("所有记忆处理任务已完成。")
+
+    # 所有帧捕获和记忆处理完成后，再生成视频
     end_time = datetime.datetime.now()
     duration_actual = (end_time - start_time).total_seconds()
     fps_actual = len(frames) / duration_actual if duration_actual > 0 else 0
@@ -428,8 +341,10 @@ def capture_and_save(duration, interval, output_dir, mem=None):
         fps=fps_actual
     )
     
+    # 最后删除临时文件夹
     shutil.rmtree(temp_dir)
 
+# --- 其他函数保持不变 ---
 def scheduled_capture(interval_minutes, video_duration, screenshot_interval, output_dir, mem=None):
     """定时执行屏幕录制任务"""
     while True:
@@ -438,8 +353,8 @@ def scheduled_capture(interval_minutes, video_duration, screenshot_interval, out
         time.sleep(interval_minutes * 60)
 
 def main():
-    """主函数 - 新增启动键鼠监听"""
-    parser = ArgumentParser(description="定期屏幕录制工具 (并行处理优化版+键鼠监听)")
+    """主函数"""
+    parser = ArgumentParser(description="定期屏幕录制工具 (并行处理优化版)")
     parser.add_argument("--interval", type=int, default=10, 
                        help="录制间隔（分钟），默认为10分钟")
     parser.add_argument("--duration", type=int, default=60, 
@@ -455,16 +370,13 @@ def main():
     print("数据库初始化完成")    
     m = Memory.from_config(config)
 
-    # ===================== 新增：启动键盘鼠标监听 =====================
-    start_km_listener()
-
     try:
         scheduled_capture(args.interval, args.duration, args.screenshot_interval, args.output, m)
     except KeyboardInterrupt:
-        # ===================== 新增：程序中断时，强制入库剩余键鼠日志 =====================
-        flush_km_log_remain()
-        print("\n程序已停止，所有数据已安全入库！")
+        print("\n程序已停止")
 
 
 if __name__ == "__main__":
     main()
+
+

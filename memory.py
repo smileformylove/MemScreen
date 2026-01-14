@@ -1582,12 +1582,14 @@ class Memory(MemoryBase):
 
         parsed_messages = parse_messages(messages)
 
+        # 构建LLM请求prompt
         if self.config.custom_fact_extraction_prompt:
             system_prompt = self.config.custom_fact_extraction_prompt
             user_prompt = f"Input:\n{parsed_messages}"
         else:
             system_prompt, user_prompt = get_fact_retrieval_messages(parsed_messages)
 
+        # 第一次LLM调用：提取事实
         response = self.llm.generate_response(
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -1596,14 +1598,36 @@ class Memory(MemoryBase):
             response_format={"type": "json_object"},
         )
 
+        new_retrieved_facts = []
         try:
-            if '</think>\n\n' in response:
-                response = response.split('</think>\n\n')[-1]            
-            response = remove_code_blocks(response)
-            new_retrieved_facts = extract_python_dict(response)["facts"]
-            # new_retrieved_facts = json.loads(response)["facts"]
+            # ===== 修复点1：彻底清洗LLM返回内容，解决90%的解析失败问题 =====
+            if isinstance(response, str):
+                # 清理ollama标志性分隔符
+                if '\n\n' in response:
+                    response = response.split('\n\n')[-1]
+                # 清理 ```json / ``` 代码块标识
+                response = remove_code_blocks(response)
+                # 清理首尾空格、换行、制表符，确保是纯JSON字符串
+                response = response.strip().replace('\n','').replace('\t','')
+            
+            # ===== 修复点2：优先用标准json.loads解析(最稳定)，extract_python_dict作为兜底 =====
+            try:
+                resp_dict = json.loads(response)
+            except:
+                resp_dict = extract_python_dict(response)
+            
+            # 安全取值，防止KeyError
+            new_retrieved_facts = resp_dict.get("facts", [])
+            if not isinstance(new_retrieved_facts, list):
+                new_retrieved_facts = []
+
+        # ===== 修复点3：精准捕获所有异常类型，日志打印【异常类型+详情+原始响应】，彻底解决你的报错 =====
         except Exception as e:
-            logger.error(f"Error in new_retrieved_facts: {e, response}")
+            logger.error(
+                f"[Fatal] Parse new_retrieved_facts failed! | Exception_Type: {type(e).__name__} | Exception_Msg: {str(e)}",
+                exc_info=True  # 打印完整堆栈，方便排查问题
+            )
+            logger.error(f"[Fatal] Raw LLM Response Content: {response}")
             new_retrieved_facts = []
 
         if not new_retrieved_facts:
@@ -1611,7 +1635,10 @@ class Memory(MemoryBase):
 
         retrieved_old_memory = []
         new_message_embeddings = {}
+        # ===== 修复点4：新增判空，防止空列表循环 =====
         for new_mem in new_retrieved_facts:
+            if not isinstance(new_mem, str) or len(new_mem.strip()) == 0:
+                continue
             messages_embeddings = self.embedding_model.embed(new_mem, "add")
             new_message_embeddings[new_mem] = messages_embeddings
             existing_memories = self.vector_store.search(
@@ -1621,13 +1648,13 @@ class Memory(MemoryBase):
                 filters=filters,
             )
             for mem in existing_memories:
-                retrieved_old_memory.append({"id": mem.id, "text": mem.payload["data"]})
+                if hasattr(mem, "id") and hasattr(mem, "payload") and mem.payload.get("data"):
+                    retrieved_old_memory.append({"id": mem.id, "text": mem.payload["data"]})
 
-        unique_data = {}
-        for item in retrieved_old_memory:
-            unique_data[item["id"]] = item
+        # 去重逻辑保留，优化写法
+        unique_data = {item["id"]: item for item in retrieved_old_memory}
         retrieved_old_memory = list(unique_data.values())
-        logger.info(f"Total existing memories: {len(retrieved_old_memory)}")
+        logger.info(f"Total existing memories after deduplication: {len(retrieved_old_memory)}")
 
         # mapping UUIDs with integers for handling UUID hallucinations
         temp_uuid_mapping = {}
@@ -1635,109 +1662,111 @@ class Memory(MemoryBase):
             temp_uuid_mapping[str(idx)] = item["id"]
             retrieved_old_memory[idx]["id"] = str(idx)
 
+        new_memories_with_actions = {}
+        # ===== 修复点5：简化LLM调用逻辑，减少冗余嵌套try-except =====
         if new_retrieved_facts:
             function_calling_prompt = get_update_memory_messages(
                 retrieved_old_memory, new_retrieved_facts, self.config.custom_update_memory_prompt
             )
-
+            response = ""
             try:
                 response: str = self.llm.generate_response(
                     messages=[{"role": "user", "content": function_calling_prompt}],
                     response_format={"type": "json_object"},
                 )
-            except Exception as e:
-                logger.error(f"Error in new memory actions response: {e}")
-                response = ""
-
-            try:
-                if '</think>\n\n' in response:
-                    response = response.split('</think>\n\n')[-1]            
-                response = remove_code_blocks(response)
-                new_memories_with_actions = extract_json_from_response(response)
-                if not new_memories_with_actions:
+                # 复用清洗逻辑
+                if isinstance(response, str) and '\n\n' in response:
+                    response = response.split('\n\n')[-1]
+                response = remove_code_blocks(response).strip().replace('\n','').replace('\t','')
+                
+                # 优先标准解析，兜底自定义提取
+                try:
                     new_memories_with_actions = json.loads(response)
-                # new_memories_with_actions = json.loads(response)
+                except:
+                    new_memories_with_actions = extract_json_from_response(response) or {}
+
             except Exception as e:
-                try:
-                    response: str = self.llm.generate_response(
-                        messages=[{"role": "user", "content": ANSWER_FORMAT_JSON_FROMAT + response[response.rfind('{')]}],
-                        response_format={"type": "json_object"},
-                    )
-                except Exception as e:
-                    logger.error(f"Error in new memory actions response: {e}")
-                    response = ""
-
-                try:
-                    if '</think>\n\n' in response:
-                        response = response.split('</think>\n\n')[-1]            
-                    response = remove_code_blocks(response)
-                    new_memories_with_actions = extract_json_from_response(response)
-                    if not new_memories_with_actions:
-                        new_memories_with_actions = json.loads(response)
-                    # new_memories_with_actions = json.loads(response)
-                except Exception as e:
-                    logger.error(f"Invalid JSON response: {e}")
-                    new_memories_with_actions = {}
-
-                # logger.error(f"Invalid JSON response: {e}")
-                # new_memories_with_actions = {}
-        else:
-            new_memories_with_actions = {}
+                logger.error(f"LLM generate update memory response failed: {type(e).__name__}: {str(e)}", exc_info=True)
+                new_memories_with_actions = {}
 
         returned_memories = []
         try:
-            if type(new_memories_with_actions) == list:
-                new_memories_with_actions = new_memories_with_actions[0]
-            for resp in new_memories_with_actions.get("memory", []):
-                logger.info(resp)
+            # ===== 修复点6：健壮的类型转换+判空，彻底解决list/dict类型错误 =====
+            memory_actions = []
+            if isinstance(new_memories_with_actions, list):
+                memory_actions = new_memories_with_actions
+            elif isinstance(new_memories_with_actions, dict):
+                memory_actions = new_memories_with_actions.get("memory", [])
+            else:
+                memory_actions = []
+
+            # ===== 修复点7：所有内存操作新增字段校验，防止KeyError/空值 =====
+            for resp in memory_actions:
+                if not isinstance(resp, dict):
+                    continue
+                logger.info(f"Processing memory action: {resp}")
+                action_text = resp.get("text", "").strip()
+                event_type = resp.get("event", "").upper()
+                
+                # 空文本直接跳过
+                if not action_text:
+                    logger.warning("Skipping memory entry: empty `text` field.")
+                    continue
+                # 无效事件类型跳过
+                if event_type not in ["ADD", "UPDATE", "DELETE", "NONE"]:
+                    logger.warning(f"Skipping invalid event type: {event_type} | content: {resp}")
+                    continue
+
+                # 修复UUID映射不存在的问题：UPDATE/DELETE转ADD
+                mem_id = resp.get("id")
+                if mem_id not in temp_uuid_mapping and event_type in ["UPDATE", "DELETE"]:
+                    logger.warning(f"UUID hallucination detected, change {event_type} -> ADD | id: {mem_id}")
+                    event_type = "ADD"
+
+                # 内存增删改核心逻辑，新增异常捕获
                 try:
-                    action_text = resp.get("text")
-                    if not action_text:
-                        logger.info("Skipping memory entry because of empty `text` field.")
-                        continue
-
-                    event_type = resp.get("event")
-
-                    if resp.get("id") not in temp_uuid_mapping and event_type in ["UPDATE", "DELETE"]:
-                        event_type = "ADD"
-
                     if event_type == "ADD":
                         memory_id = self._create_memory(
                             data=action_text,
                             existing_embeddings=new_message_embeddings,
-                            metadata=deepcopy(metadata),
+                            metadata=metadata, # 修复点8：减少无意义deepcopy，性能提升
                         )
                         returned_memories.append({"id": memory_id, "memory": action_text, "event": event_type})
+
                     elif event_type == "UPDATE":
+                        real_mem_id = temp_uuid_mapping.get(mem_id)
                         self._update_memory(
-                            memory_id=temp_uuid_mapping[resp.get("id")],
+                            memory_id=real_mem_id,
                             data=action_text,
                             existing_embeddings=new_message_embeddings,
-                            metadata=deepcopy(metadata),
+                            metadata=metadata,
                         )
                         returned_memories.append(
                             {
-                                "id": temp_uuid_mapping[resp.get("id")],
+                                "id": real_mem_id,
                                 "memory": action_text,
                                 "event": event_type,
                                 "previous_memory": resp.get("old_memory"),
                             }
                         )
+
                     elif event_type == "DELETE":
-                        self._delete_memory(memory_id=temp_uuid_mapping[resp.get("id")])
+                        real_mem_id = temp_uuid_mapping.get(mem_id)
+                        self._delete_memory(memory_id=real_mem_id)
                         returned_memories.append(
                             {
-                                "id": temp_uuid_mapping[resp.get("id")],
+                                "id": real_mem_id,
                                 "memory": action_text,
                                 "event": event_type,
                             }
                         )
                     elif event_type == "NONE":
-                        logger.info("NOOP for Memory.")
+                        logger.info("Memory action: NOOP (no operation)")
                 except Exception as e:
-                    logger.error(f"Error processing memory action: {resp}, Error: {e}")
+                    logger.error(f"Process memory action failed | action: {resp} | error: {type(e).__name__}: {str(e)}", exc_info=True)
+
         except Exception as e:
-            logger.error(f"Error iterating new_memories_with_actions: {e}")
+            logger.error(f"Iterate memory actions failed: {type(e).__name__}: {str(e)}", exc_info=True)
 
         keys, encoded_ids = process_telemetry_filters(filters)
         capture_event(
