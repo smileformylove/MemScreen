@@ -1511,7 +1511,24 @@ class Memory(MemoryBase):
             results = self._create_procedural_memory(messages, metadata=processed_metadata, prompt=prompt)
             return results
 
-        if self.config.mllm.config.get("enable_vision"):
+        # 优化：如果infer=False（直接存储模式），跳过vision处理以提升速度
+        # 只有在需要推理时才处理vision消息
+        if not infer and self.config.mllm.config.get("enable_vision"):
+            # infer=False时，直接使用原始消息，不调用vision模型（大幅提升速度）
+            # 对于图像URL，直接存储为文本描述
+            processed_messages = []
+            for msg in messages:
+                if isinstance(msg.get("content"), dict) and msg["content"].get("type") == "image_url":
+                    # 对于图像，直接使用文件路径作为描述，不调用LLM
+                    image_url = msg["content"]["image_url"]["url"]
+                    processed_messages.append({
+                        "role": msg["role"],
+                        "content": f"Screenshot image: {os.path.basename(image_url)}"
+                    })
+                else:
+                    processed_messages.append(msg)
+            messages = processed_messages
+        elif self.config.mllm.config.get("enable_vision"):
             messages = parse_vision_messages(messages, self.mllm, self.config.llm.config.get("vision_details"))
         else:
             messages = parse_vision_messages(messages)
