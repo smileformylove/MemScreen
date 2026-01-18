@@ -39,6 +39,31 @@ The performance of small models is limited. And you can also download large mode
 python -W ignore memscreen.py
 ```
 
+**Recording Features:**
+- **Automatic Video Generation**: Every 1 minute, captured screenshots are automatically flushed to a video file
+- **Memory-Efficient**: Temporary images are deleted immediately after video generation
+- **Continuous Recording**: Automatically cycles through recording sessions without manual intervention
+- **Real-time Analysis**: OCR and memory storage run in parallel with recording
+- **Smart Management**: Reuses a single tmp directory to minimize disk space usage
+
+**Command Line Options:**
+```bash
+# Basic recording (default: 60s duration, 10min interval, 2s screenshot interval)
+python -W ignore memscreen.py
+
+# Custom recording settings
+python -W ignore memscreen.py --duration 120 --interval 5 --screenshot-interval 1.0
+
+# Continuous recording mode (no interval between sessions)
+python -W ignore memscreen.py --interval 0
+```
+
+**Parameters:**
+- `--interval`: Recording interval in minutes (default: 10, use 0 for continuous recording)
+- `--duration`: Recording duration per session in seconds (default: 60)
+- `--screenshot-interval`: Screenshot interval in seconds (default: 2.0)
+- `--output`: Video output directory (default: ./db/videos)
+
 ### Visualize your screen
 
 ```
