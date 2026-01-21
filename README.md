@@ -61,7 +61,7 @@ MemScreen (ASA — **Ask Screen Anything**) is your personal visual memory syste
 | **Screen Search** | ✅ Semantic + OCR | ❌ No | ❌ No | ✅ Limited | ✅ OCR only |
 | **Process Mining** | ✅ Mouse/Keyboard analysis | ❌ No | ❌ No | ❌ No | ❌ No |
 | **Open Source** | ✅ MIT License | ✅ MIT License | ✅ GNU GPL v2 | ❌ Proprietary | ❌ Proprietary |
-| **Cost** | ✅ Free Forever | ✅ Free | ✅ Free | ❌ $15-30+/mo | ❌ Paid |
+| **Cost** | ✅ Free  | ✅ Free | ✅ Free | ❌ $15-30+/mo | ❌ Paid |
 | **Platform** | ✅ Cross-platform | ✅ Cross-platform | ✅ Cross-platform | ✅ Web/App | Mac only |
 
 #### 📋 Detailed Tool Comparison
