@@ -50,31 +50,67 @@ MemScreen (ASA — **Ask Screen Anything**) is your personal visual memory syste
 
 <div align="center">
 
-### 🆚 MemScreen vs Commercial Solutions
+### 🆚 MemScreen vs Screen Recording & Analysis Tools
 
-| Aspect | **MemScreen** | **Waylight.ai** | **Limitless.ai** |
-|--------|--------------|-----------------|------------------|
-| **Privacy** | ✅ 100% Local | ❌ Cloud-based | ❌ Cloud-based |
-| **Data Control** | ✅ You own your data | ❌ Data sent to servers | ❌ Data sent to servers |
-| **Cost** | ✅ Free Forever | ❌ Paid subscription | ❌ Paid subscription |
-| **Customization** | ✅ Fully customizable | ❌ Limited | ❌ Limited |
-| **Models** | ✅ Run any local model | ❌ Fixed cloud models | ❌ Fixed cloud models |
-| **Internet Required** | ❌ Works offline | ✅ Always required | ✅ Always required |
-| **Open Source** | ✅ MIT License | ❌ Proprietary | ❌ Proprietary |
-| **Hardware Req** | ⚠️ Requires GPU/RAM | ✅ Any device | ✅ Any device |
+| Aspect | **MemScreen** | **OpenScreen** | **OBS Studio** | **Loom** | **CleanShot X** |
+|--------|--------------|----------------|-----------------|----------|-----------------|
+| **Privacy** | ✅ 100% Local | ✅ 100% Local | ✅ 100% Local | ❌ Cloud-based | ✅ Local |
+| **Data Control** | ✅ You own your data | ✅ You own your data | ✅ You own your data | ❌ Data sent to servers | ✅ You own your data |
+| **AI Understanding** | ✅ Local MLLM | ❌ No | ❌ No | ✅ Cloud AI | ❌ Only OCR |
+| **Natural Language Query** | ✅ Chat with screen | ❌ No | ❌ No | ❌ Limited search | ❌ No |
+| **Screen Search** | ✅ Semantic + OCR | ❌ No | ❌ No | ✅ Limited | ✅ OCR only |
+| **Process Mining** | ✅ Mouse/Keyboard analysis | ❌ No | ❌ No | ❌ No | ❌ No |
+| **Open Source** | ✅ MIT License | ✅ MIT License | ✅ GNU GPL v2 | ❌ Proprietary | ❌ Proprietary |
+| **Cost** | ✅ Free Forever | ✅ Free | ✅ Free | ❌ $15-30+/mo | ❌ Paid |
+| **Platform** | ✅ Cross-platform | ✅ Cross-platform | ✅ Cross-platform | ✅ Web/App | Mac only |
 
-### 💪 The Advantages
+### 📋 Detailed Tool Comparison
 
-**Waylight.ai**: [https://www.waylight.ai/?ref=producthunt](https://www.waylight.ai/?ref=producthunt)
-**Limitless.ai**: [https://www.limitless.ai/](https://www.limitless.ai/)
+#### 🆚 AI-Powered Solutions
 
-While these commercial solutions offer convenience and lower hardware requirements, **MemScreen** gives you:
+| Tool | Privacy | AI Features | Open Source | Cost | Key Strength |
+|------|---------|-------------|-------------|------|---------------|
+| **MemScreen** | ✅ 100% Local | MLLM, OCR, Process Mining | ✅ MIT | Free | Complete privacy + AI understanding |
+| **Loom** | ❌ Cloud | Transcriptions, Summaries | ❌ No | $15-30+/mo | Team collaboration features |
 
-- 🔒 **True Privacy** - Your data never leaves your machine
-- 💰 **Zero Cost** - Free forever, no subscriptions
-- 🎛️ **Total Control** - Customize models, features, and behavior
-- 🚀 **Offline Capability** - Work anywhere, anytime
-- 📖 **Open & Transparent** - Study, modify, and improve the code
+#### 🆚 Privacy-First Screen Recorders
+
+| Tool | Privacy | AI Features | Open Source | Cost | Key Strength |
+|------|---------|-------------|-------------|------|---------------|
+| **MemScreen** | ✅ 100% Local | ✅ MLLM + Process Mining | ✅ MIT | Free | AI-powered screen understanding |
+| **OpenScreen** | ✅ 100% Local | ❌ No | ✅ MIT | Free | Simple, privacy-focused recording |
+| **OBS Studio** | ✅ 100% Local | ❌ No | ✅ GPL v2 | Free | Professional streaming/recording |
+| **Kap** | ✅ 100% Local | ❌ No | ✅ MIT | Free | Lightweight Mac recordings |
+| **CleanShot X** | ✅ Local | ❌ OCR only | ❌ No | Paid | Professional screenshots + recording |
+| **Snagit** | ✅ Local | ❌ No | ❌ No | Paid | Business documentation |
+| **Shottr** | ✅ Local | ❌ OCR only | ❌ No | Free | Fast screenshots with OCR |
+| **Raycast** | ✅ Local | ❌ No | ❌ No | Freemium | Integrated Mac productivity |
+
+#### 🌐 Popular Tools on Product Hunt
+
+Explore more tools at: [Product Hunt - Screenshots & Screen Recording](https://www.producthunt.com/categories/screenshots-and-screen-recording)
+
+### 💪 The Unique Advantages of MemScreen
+
+**Compared to Traditional Screen Recorders:**
+- **OBS Studio**: [https://github.com/obsproject/obs-studio](https://github.com/obsproject/obs-studio) — Professional recording, but no AI understanding or search
+- **Kap**: [https://getkap.co/](https://getkap.co/) — Simple and local, but just records, doesn't analyze
+- **CleanShot X**: Powerful screenshots with OCR, but can't chat with your screen history
+
+**Compared to AI-Powered Tools:**
+- **Loom**: [https://www.loom.com/](https://www.loom.com/) — Cloud-based with AI, but your data leaves your device and costs money
+- **Waylight.ai**: [https://www.waylight.ai/?ref=producthunt](https://www.waylight.ai/?ref=producthunt) — Cloud subscription, no data ownership
+- **Limitless.ai**: [https://www.limitless.ai/](https://www.limitless.ai/) — Same privacy concerns, recurring cost
+
+**What Makes MemScreen Different:**
+
+- 🧠 **AI-Powered Visual Memory** — Not just recording, but understanding your screen
+- 🔒 **True Privacy** — All AI runs locally, no data ever leaves your machine
+- 💬 **Natural Language Interface** — Ask questions like "What was that API endpoint I used?"
+- 📊 **Process Mining** — Discover your work patterns and optimize productivity
+- 💰 **Zero Cost Forever** — No subscriptions, no hidden fees
+- 🎛️ **Fully Customizable** — Swap models, modify behavior, extend features
+- 📖 **Open Source** — Study, improve, and verify the code yourself
 
 </div>
 
@@ -371,6 +407,7 @@ We welcome contributions from everyone! Here's how you can help:
 ## 🙏 Acknowledgments
 
 - Inspired by [mem0](https://github.com/mem0ai/mem0) - Memory framework for AI
+- **Related Tools**: [OpenScreen](https://github.com/siddharthvaddem/openscreen) - Privacy-focused screen recording
 - Built with ❤️ for the open-source community
 - Thanks to all contributors and users!
 
