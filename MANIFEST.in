@@ -1,0 +1,12 @@
+include README.md
+include LICENSE
+include requirements.txt
+include prompts.py
+
+# Include all Python files
+recursive-include memscreen_package *.py
+
+# Include any configuration files
+include *.json
+include *.yaml
+include *.yml

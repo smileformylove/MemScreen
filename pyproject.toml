@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memscreen"
+version = "0.1.0"
+description = "Ask Screen Anything - Your AI-Powered Visual Memory System"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Jixiang Luo", email = "jixiangluo85@gmail.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Utilities",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = ["ai", "screen-recording", "vision-language", "memory", "local-ai", "ocr", "productivity"]
+
+dependencies = [
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "pydantic>=2.0.0",
+    "ttkthemes>=3.0.0",
+    "ollama>=0.3.0",
+    "mss>=9.0.0",
+    "matplotlib>=3.0.0",
+    "matplotlib-inline>=0.1.0",
+    "openai>=1.0.0",
+    "opencv-python>=4.0.0",
+    "opencv-python-headless>=4.0.0",
+    "Pillow>=9.0.0",
+    "numpy>=1.20.0",
+    "easyocr>=1.0.0",
+    "pynput>=1.6.0",
+    "chromadb>=0.4.0",
+    "toolz>=0.12.0",
+    "pytz>=2021.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/smileformylove/MemScreen"
+Documentation = "https://github.com/smileformylove/MemScreen/wiki"
+Repository = "https://github.com/smileformylove/MemScreen"
+Issues = "https://github.com/smileformylove/MemScreen/issues"
+
+[project.scripts]
+memscreen = "memscreen.memscreen:main"
+memscreen-chat = "memscreen.chat_ui:main"
+memscreen-screenshots = "memscreen.screenshot_ui:main"
+memscreen-process-mining = "memscreen.process_mining:main"
+
+[tool.setuptools]
+packages = ["memscreen"]
+include-package-data = false
+
+[tool.setuptools.package-data]
+memscreen = ["*.txt", "*.md", "*.json", "*.yaml", "*.yml"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+include = '\.pyi?$'
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

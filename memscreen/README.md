@@ -64,16 +64,16 @@ MemScreen (ASA — **Ask Screen Anything**) is your personal visual memory syste
 | **Cost** | ✅ Free Forever | ✅ Free | ✅ Free | ❌ $15-30+/mo | ❌ Paid |
 | **Platform** | ✅ Cross-platform | ✅ Cross-platform | ✅ Cross-platform | ✅ Web/App | Mac only |
 
-#### 📋 Detailed Tool Comparison
+### 📋 Detailed Tool Comparison
 
-**AI-Powered Solutions:**
+#### 🆚 AI-Powered Solutions
 
 | Tool | Privacy | AI Features | Open Source | Cost | Key Strength |
 |------|---------|-------------|-------------|------|---------------|
 | **MemScreen** | ✅ 100% Local | MLLM, OCR, Process Mining | ✅ MIT | Free | Complete privacy + AI understanding |
 | **Loom** | ❌ Cloud | Transcriptions, Summaries | ❌ No | $15-30+/mo | Team collaboration features |
 
-**Privacy-First Screen Recorders:**
+#### 🆚 Privacy-First Screen Recorders
 
 | Tool | Privacy | AI Features | Open Source | Cost | Key Strength |
 |------|---------|-------------|-------------|------|---------------|
@@ -86,7 +86,9 @@ MemScreen (ASA — **Ask Screen Anything**) is your personal visual memory syste
 | **Shottr** | ✅ Local | ❌ OCR only | ❌ No | Free | Fast screenshots with OCR |
 | **Raycast** | ✅ Local | ❌ No | ❌ No | Freemium | Integrated Mac productivity |
 
-> 🌐 Explore more tools: [Product Hunt - Screenshots & Screen Recording](https://www.producthunt.com/categories/screenshots-and-screen-recording)
+#### 🌐 Popular Tools on Product Hunt
+
+Explore more tools at: [Product Hunt - Screenshots & Screen Recording](https://www.producthunt.com/categories/screenshots-and-screen-recording)
 
 ### 💪 The Unique Advantages of MemScreen
 
@@ -119,19 +121,21 @@ MemScreen (ASA — **Ask Screen Anything**) is your personal visual memory syste
 Get up and running in **5 minutes**:
 
 ```bash
-# 1. Install via pip
-pip install git+https://github.com/smileformylove/MemScreen.git
+# 1. Clone and install
+git clone https://github.com/smileformylove/MemScreen
+cd MemScreen
+pip install -r requirements.txt
 
-# 2. Pull AI models (one-time setup)
+# 2. Pull models (one-time setup)
 ollama pull qwen3:1.7b
 ollama pull qwen2.5vl:3b
 ollama pull mxbai-embed-large:latest
 
 # 3. Start capturing your screen
-memscreen
+python -W ignore memscreen.py
 
 # 4. In another terminal, start chatting
-memscreen-chat
+python chat_ui.py
 ```
 
 That's it! Start asking questions about your screen history. 🎉
@@ -140,22 +144,21 @@ That's it! Start asking questions about your screen history. 🎉
 
 ## 📦 Installation
 
-### 🚀 Option 1: Install via pip (Recommended)
-
-```bash
-# Install directly from GitHub
-pip install git+https://github.com/smileformylove/MemScreen.git
-```
-
-### 🔧 Option 2: Install from Source
-
 ```bash
 # Clone the repository
-git clone https://github.com/smileformylove/MemScreen.git
+git clone https://github.com/smileformylove/MemScreen
 cd MemScreen
 
-# Install in development mode
-pip install -e .
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 🤖 Pull Models
+
+```bash
+ollama pull qwen3:1.7b
+ollama pull qwen2.5vl:3b
+ollama pull mxbai-embed-large:latest
 ```
 
 > 💡 **Pro Tip**: Want better performance? Download larger models for improved accuracy!
@@ -164,26 +167,28 @@ pip install -e .
 
 ## 🎬 Usage
 
-After installation, the following commands will be available:
-
-| Command | Description |
-|----------|-------------|
-| `memscreen` | Capture and record your screen |
-| `memscreen-chat` | Chat with your screen history |
-| `memscreen-screenshots` | Browse and search screenshots |
-| `memscreen-process-mining` | Analyze keyboard/mouse patterns |
-
 ### 1️⃣ Capture Your Screen
 
 ```bash
-# Start screen recording with default settings
-memscreen
+python -W ignore memscreen.py
+```
+
+**Recording Features:**
+- 🎥 Automatic video generation every minute
+- 💾 Memory-efficient storage (auto-cleanup)
+- 🔄 Continuous recording without manual intervention
+- ⚡ Real-time OCR and memory analysis
+
+**Command Line Options:**
+```bash
+# Basic recording (60s duration, 10min interval, 2s screenshot interval)
+python -W ignore memscreen.py
 
 # Custom settings
-memscreen --duration 120 --interval 5 --screenshot-interval 1.0
+python -W ignore memscreen.py --duration 120 --interval 5 --screenshot-interval 1.0
 
 # Continuous recording mode
-memscreen --interval 0
+python -W ignore memscreen.py --interval 0
 ```
 
 | Parameter | Default | Description |
@@ -193,12 +198,6 @@ memscreen --interval 0
 | `--screenshot-interval` | 2.0 | Screenshot interval (seconds) |
 | `--output` | ./db/videos | Video output directory |
 
-**Recording Features:**
-- 🎥 Automatic video generation every minute
-- 💾 Memory-efficient storage (auto-cleanup)
-- 🔄 Continuous recording without manual intervention
-- ⚡ Real-time OCR and memory analysis
-
 ---
 
 ### 2️⃣ Visualize Your Screen 📸
@@ -206,7 +205,7 @@ memscreen --interval 0
 Browse through your captured screen history with an intuitive interface.
 
 ```bash
-memscreen-screenshots
+python screenshot_ui.py
 ```
 
 **Features:**
@@ -216,8 +215,35 @@ memscreen-screenshots
 - 💾 **Export Options**: Save screenshots or generate compilations
 - 🎯 **Quick Actions**: Copy text, save image, or add notes with one click
 
+<div align="center">
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  📅 Timeline  🔍 Search  🏷️ Filter  ⚙️ Settings         │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐   │
+│  │ SCREEN  │  │ SCREEN  │  │ SCREEN  │  │ SCREEN  │   │
+│  │  10:30  │  │  10:32  │  │  10:35  │  │  10:38  │   │
+│  │  📝 VS  │  │  🌐 Web │  │  📧 Mail│  │  📝 Doc  │   │
+│  └─────────┘  └─────────┘  └─────────┘  └─────────┘   │
+│                                                         │
+│  [Selected Screen Preview - Click to Enlarge]          │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │                                                 │   │
+│  │              Full Screen Preview                │   │
+│  │                                                 │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  💬 "This is the article about React hooks..."         │
+│  🏷️ Tags: #react #javascript #tutorial                 │
+└─────────────────────────────────────────────────────────┘
+```
+
+</div>
+
 > 📌 **Use Case**: "I need to find that tutorial I was reading yesterday afternoon about React hooks"
-> → Open `memscreen-screenshots` → Search "React hooks" → Found in 3 clicks!
+> → Open screenshot_ui.py → Search "React hooks" → Found in 3 clicks!
 
 ---
 
@@ -226,7 +252,7 @@ memscreen-screenshots
 Ask anything about your screen history in natural language.
 
 ```bash
-memscreen-chat
+python chat_ui.py
 ```
 
 **Features:**
@@ -236,6 +262,41 @@ memscreen-chat
 - 💡 **Proactive Insights**: Suggests related content you might have missed
 - 🎯 **Multi-Modal**: Can reference screenshots, text, and patterns together
 
+<div align="center">
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  💬 MemScreen Chat — Your Visual Memory Assistant       │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  👤 You:                                                │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ What was the API endpoint I used for the user    │   │
+│  │ authentication in last week's project?          │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  🤖 MemScreen:                                          │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ Based on your screen history, I found the API   │   │
+│  │ endpoint you used:                               │   │
+│  │                                                 │   │
+│  │ 🔹 Endpoint: POST /api/v1/auth/login           │   │
+│  │ 🔹 Location: auth_service.py line 47           │   │
+│  │ 🔹 Last modified: 2025-01-15                   │   │
+│  │                                                 │   │
+│  │ [📸 Screenshot attached]                        │   │
+│  │                                                 │   │
+│  │ Would you like me to show the full function     │   │
+│  │ implementation?                                 │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  💡 Try: "Show me the code" | "When did I last        │
+│     work on this?" | "Find similar patterns"          │
+└─────────────────────────────────────────────────────────┘
+```
+
+</div>
+
 > 📌 **Use Case Examples:**
 > - "What was that error message I got last Thursday?"
 > - "Show me all the design inspiration I collected for the dashboard project"
@@ -244,27 +305,36 @@ memscreen-chat
 
 ---
 
-### 4️⃣ Process Mining Analysis 📊
+## 🔬 Process Mining Analysis
 
 Discover your work patterns and optimize productivity!
 
-```bash
-# Analyze all collected data
-memscreen --analyze
+### What It Analyzes
 
-# Analyze specific time range
-memscreen --analyze --start-time "2025-01-01 00:00:00" --end-time "2025-01-02 00:00:00"
-
-# Export to JSON
-memscreen --analyze --export-json process_mining_report.json
-```
-
-**What It Analyzes:**
 - **Activity Frequency**: Most common keyboard and mouse actions
 - **Frequent Sequences**: Common patterns of user interactions
 - **Time Patterns**: Hourly and daily activity distributions
 - **Workflow Discovery**: Directly-follows relationships and transition probabilities
 - **Common Patterns**: Typing sessions, click patterns, keyboard shortcuts
+
+### Quick Start
+
+```bash
+# Analyze all collected data
+python memscreen.py --analyze
+
+# Analyze specific time range
+python memscreen.py --analyze --start-time "2025-01-01 00:00:00" --end-time "2025-01-02 00:00:00"
+
+# Export to JSON
+python memscreen.py --analyze --export-json process_mining_report.json
+```
+
+### Standalone Script
+
+```bash
+python process_mining.py --db ./db/screen_capture.db --start "2025-01-01T00:00:00" --end "2025-01-02T00:00:00" --output report.json
+```
 
 ---
 

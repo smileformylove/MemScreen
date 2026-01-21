@@ -1,3 +1,55 @@
+Metadata-Version: 2.4
+Name: memscreen
+Version: 0.1.0
+Summary: Ask Screen Anything - Your AI-Powered Visual Memory System
+Author-email: Jixiang Luo <jixiangluo85@gmail.com>
+License: MIT
+Project-URL: Homepage, https://github.com/smileformylove/MemScreen
+Project-URL: Documentation, https://github.com/smileformylove/MemScreen/wiki
+Project-URL: Repository, https://github.com/smileformylove/MemScreen
+Project-URL: Issues, https://github.com/smileformylove/MemScreen/issues
+Keywords: ai,screen-recording,vision-language,memory,local-ai,ocr,productivity
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Education
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Utilities
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: torch>=2.0.0
+Requires-Dist: torchvision>=0.15.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: ttkthemes>=3.0.0
+Requires-Dist: ollama>=0.3.0
+Requires-Dist: mss>=9.0.0
+Requires-Dist: matplotlib>=3.0.0
+Requires-Dist: matplotlib-inline>=0.1.0
+Requires-Dist: openai>=1.0.0
+Requires-Dist: opencv-python>=4.0.0
+Requires-Dist: opencv-python-headless>=4.0.0
+Requires-Dist: Pillow>=9.0.0
+Requires-Dist: numpy>=1.20.0
+Requires-Dist: easyocr>=1.0.0
+Requires-Dist: pynput>=1.6.0
+Requires-Dist: chromadb>=0.4.0
+Requires-Dist: toolz>=0.12.0
+Requires-Dist: pytz>=2021.1
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: flake8>=6.0.0; extra == "dev"
+Dynamic: license-file
+
 <div align="center">
 
 # 🖥️ MemScreen

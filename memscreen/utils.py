@@ -7,7 +7,7 @@
 import hashlib
 import re, ast, json, base64
 
-from prompts import FACT_RETRIEVAL_PROMPT
+from .prompts import FACT_RETRIEVAL_PROMPT
 
 
 def get_fact_retrieval_messages(message):

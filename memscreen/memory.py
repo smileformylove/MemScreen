@@ -25,15 +25,15 @@ from typing import Any, Dict, Optional, Union, Literal, List, ClassVar
 from enum import Enum
 from abc import ABC, abstractmethod
 from ollama import Client
-from chroma import ChromaDB 
+from .chroma import ChromaDB
 from pydantic import ValidationError, BaseModel, Field, field_validator, model_validator
 
-from prompts import (
+from .prompts import (
     PROCEDURAL_MEMORY_SYSTEM_PROMPT,
     ANSWER_FORMAT_JSON_FROMAT,
     get_update_memory_messages,
 )
-from utils import (
+from .utils import (
     get_fact_retrieval_messages,
     parse_messages,
     parse_vision_messages,
@@ -43,7 +43,7 @@ from utils import (
     extract_json,
     extract_json_from_response,
 )
-from telemetry import capture_event
+from .telemetry import capture_event
 
 # Set up the directory path
 VECTOR_ID = str(uuid.uuid4())

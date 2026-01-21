@@ -402,15 +402,19 @@ class VideoPlayerApp:
         was_playing = self.is_playing
         if was_playing:
             self.is_playing = False # 暂停播放循环
-            
+
         self.show_frame_at(seek_time)
         self.update_timecode_label(seek_time)
-        
+
         if was_playing:
             self.is_playing = True # 恢复播放状态
             self.root.after(100, self.play_video)
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for screenshot UI"""
     root = tk.Tk()
     app = VideoPlayerApp(root)
     root.mainloop()
+
+if __name__ == "__main__":
+    main()

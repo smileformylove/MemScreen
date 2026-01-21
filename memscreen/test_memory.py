@@ -5,7 +5,7 @@
 ### license: MIT                 ###
 
 
-from memory import Memory
+from .memory import Memory
 import os
 
 config = {

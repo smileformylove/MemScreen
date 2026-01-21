@@ -21,14 +21,14 @@ import traceback
 
 from PIL import ImageGrab
 from argparse import ArgumentParser
-from memory import Memory
+from .memory import Memory
 # 新增：用于线程池
 from concurrent.futures import ThreadPoolExecutor
 # ===================== 新增键鼠监听依赖 START =====================
 from pynput import keyboard, mouse
 # ===================== 新增键鼠监听依赖 END =====================
 # ===================== 新增：流程挖掘分析模块 START =====================
-from process_mining import ProcessMiningAnalyzer
+from .process_mining import ProcessMiningAnalyzer
 # ===================== 新增：流程挖掘分析模块 END =====================
 
 # --- 数据库和配置部分保持不变 ---

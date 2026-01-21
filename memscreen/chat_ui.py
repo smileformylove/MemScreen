@@ -13,8 +13,8 @@ import json
 import threading
 import queue
 
-from memory import Memory
-from prompts import MEMORY_ANSWER_PROMPT
+from .memory import Memory
+from .prompts import MEMORY_ANSWER_PROMPT
 
 config = {
     "llm": {
@@ -58,6 +58,14 @@ mem = Memory.from_config(config)
 
 # --- 全局配置 ---
 APP_TITLE = "Ollama 本地聊天助手"
+
+# 全局变量 (用于 main 函数和 UI 交互)
+conversation_history = []
+model_combobox = None
+chat_history = None
+input_field = None
+thinking_label = None
+send_button = None
 APP_SIZE = "950x700"  # 稍微增大窗口
 APP_MIN_SIZE = "700x500" # 稍微增大最小窗口
 
@@ -216,39 +224,42 @@ def refresh_models():
     except Exception as e:
         messagebox.showerror("错误", f"获取模型列表时出错: {e}")
 
-# --- 主程序 ---
-if __name__ == "__main__":
+def main():
+    """Main entry point for the chat UI"""
     root = ThemedTk(theme="arc")
     root.title(APP_TITLE)
     root.geometry(APP_SIZE)
     root.minsize(*APP_MIN_SIZE.split('x'))
-    
+
+    global conversation_history
     conversation_history = []
 
     # --- 顶部控制区 ---
     control_frame = ttk.Frame(root, padding="10 5")
     control_frame.pack(fill=tk.X, side=tk.TOP)
-    
+
     # 放大标签字体
     ttk.Label(control_frame, text="选择模型:", font=(FONT_FAMILY, BASE_FONT_SIZE)).pack(side=tk.LEFT, padx=(0, 5))
-    
+
     # 放大下拉框字体
+    global model_combobox
     model_combobox = ttk.Combobox(control_frame, state="readonly", width=30, font=(FONT_FAMILY, BASE_FONT_SIZE))
     model_combobox.pack(side=tk.LEFT, padx=(0, 10))
-    
+
     # 放大按钮字体
     refresh_button = ttk.Button(control_frame, text="刷新模型", command=refresh_models)
     refresh_button.pack(side=tk.LEFT)
-    
+
     # --- 主要内容区 ---
     main_pane = ttk.PanedWindow(root, orient=tk.VERTICAL)
     main_pane.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
-    
+
     # --- 聊天历史区域 ---
     chat_frame = ttk.Frame(main_pane)
     main_pane.add(chat_frame, weight=1)
-    
+
     # 放大聊天记录字体
+    global chat_history
     chat_history = scrolledtext.ScrolledText(
         chat_frame,
         wrap=tk.WORD,
@@ -258,10 +269,10 @@ if __name__ == "__main__":
         relief=tk.FLAT
     )
     chat_history.pack(fill=tk.BOTH, expand=True)
-    
+
     # --- 配置文本标签样式 (使用放大后的字体) ---
     chat_history.tag_configure("user_tag", foreground="#0d47a1", font=(FONT_FAMILY, BASE_FONT_SIZE, "bold"))
-    chat_history.tag_configure("user_text", foreground=COLORS["text"], background=COLORS["user_bg"], 
+    chat_history.tag_configure("user_text", foreground=COLORS["text"], background=COLORS["user_bg"],
                                wrap=tk.WORD, lmargin1=10, lmargin2=10, rmargin=10, spacing1=5, spacing3=5)
     chat_history.tag_configure("assistant_tag", foreground="#3e2723", font=(FONT_FAMILY, BASE_FONT_SIZE, "bold"))
     chat_history.tag_configure("assistant_text", foreground=COLORS["text"], background=COLORS["assistant_bg"],
@@ -270,11 +281,12 @@ if __name__ == "__main__":
     # --- 输入区域 ---
     input_frame = ttk.Frame(main_pane, padding="5")
     main_pane.add(input_frame, weight=0)
-    
+
     input_and_button_frame = ttk.Frame(input_frame)
     input_and_button_frame.pack(fill=tk.X, expand=True)
-    
+
     # 放大输入框字体，并增加高度以容纳更大的字体
+    global input_field, thinking_label, send_button
     input_field = scrolledtext.ScrolledText(
         input_and_button_frame,
         wrap=tk.WORD,
@@ -285,22 +297,26 @@ if __name__ == "__main__":
     )
     input_field.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
     input_field.focus_set()
-    
+
     # 放大"正在思考"标签的字体
     thinking_label = ttk.Label(input_and_button_frame, text="模型正在思考...", foreground="#666666", font=(FONT_FAMILY, BASE_FONT_SIZE))
 
     # 放大发送按钮的字体
     send_button = ttk.Button(input_and_button_frame, text="发送", command=send_message)
     send_button.pack(side=tk.LEFT)
-    
+
     def on_return(event):
         if event.state & 4:
             return "break"
         send_message()
         return "break"
-    
+
     input_field.bind("<Return>", on_return)
-    
+
     refresh_models()
     root.mainloop()
+
+# --- 主程序 ---
+if __name__ == "__main__":
+    main()
 
