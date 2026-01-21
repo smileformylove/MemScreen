@@ -424,7 +424,7 @@ This project is released under the **MIT License** — feel free to use, modify,
 - 📖 [Documentation](https://github.com/smileformylove/MemScreen/wiki) - Detailed guides and API docs
 - 🐛 [Issues](https://github.com/smileformylove/MemScreen/issues) - Bug reports and feature requests
 - 💬 [Discussions](https://github.com/smileformylove/MemScreen/discussions) - Community discussions and Q&A
-- 📧 [Email](mailto:support@example.com) - Direct support
+- 📧 [Email](mailto:jixiangluo85@gmail.com) - Direct support
 
 ---
 
