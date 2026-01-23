@@ -62,22 +62,27 @@ config = {
 mem = Memory.from_config(config)
 DB_NAME = "./db/screen_capture.db"
 
-# Modern color scheme
+# Modern, friendly color scheme (warm and inviting)
 COLORS = {
-    "primary": "#667eea",           # Primary purple
-    "primary_dark": "#5a67d8",      # Darker purple
-    "secondary": "#764ba2",         # Secondary purple
-    "accent": "#f093fb",            # Pink accent
-    "bg": "#f7fafc",                # Light gray background
-    "surface": "#ffffff",           # White surface
-    "text": "#2d3748",              # Dark text
-    "text_light": "#718096",        # Light text
-    "border": "#e2e8f0",            # Border color
-    "chat_user_bg": "#ebf8ff",      # User chat bubble
-    "chat_ai_bg": "#f7fafc",        # AI chat bubble
-    "success": "#48bb78",           # Green
-    "warning": "#ed8936",           # Orange
-    "error": "#f56565",             # Red
+    "primary": "#4F46E5",           # Warm indigo/purple blue
+    "primary_dark": "#4338CA",      # Darker indigo
+    "primary_light": "#818CF8",     # Light indigo
+    "secondary": "#0891B2",         # Cyan/teal
+    "accent": "#F59E0B",            # Warm amber
+    "bg": "#FFFBF0",                # Warm cream background
+    "surface": "#FFFFFF",           # White surface
+    "surface_alt": "#F3F4F6",       # Light gray surface
+    "text": "#1F2937",              # Dark gray text (softer than black)
+    "text_light": "#6B7280",        # Medium gray text
+    "text_muted": "#9CA3AF",        # Light gray text
+    "border": "#E5E7EB",            # Subtle border
+    "border_light": "#F3F4F6",      # Very light border
+    "chat_user_bg": "#EEF2FF",      # Soft blue for user
+    "chat_ai_bg": "#F0FDFA",        # Soft teal for AI
+    "success": "#10B981",           # Emerald green
+    "warning": "#F59E0B",           # Amber
+    "error": "#EF4444",             # Soft red
+    "info": "#3B82F6",              # Blue
 }
 
 # Font settings
@@ -276,29 +281,47 @@ class MemScreenApp:
                 nav_container,
                 text=f"{icon} {text}",
                 font=FONTS["body"],
-                bg=COLORS["bg"],
+                bg=COLORS["surface_alt"],
                 fg=COLORS["text_light"],
-                activebackground=COLORS["surface"],
-                activeforeground=COLORS["primary"],
+                activebackground=COLORS["primary"],
+                activeforeground="white",
                 relief=tk.FLAT,
-                padx=20,
-                pady=10,
+                padx=25,
+                pady=12,
                 cursor="hand2",
+                borderwidth=0,
+                highlightthickness=0,
                 command=lambda t=tab_id: self.switch_tab(t)
             )
-            btn.pack(side=tk.LEFT, padx=5)
+            btn.pack(side=tk.LEFT, padx=3)
             self.nav_buttons[tab_id] = btn
 
         # Set initial active state
-        self.set_active_tab("chat")
+        self.set_active_tab("record")
 
     def set_active_tab(self, tab_id):
-        """Update active tab styling"""
+        """Update active tab styling with modern pill design"""
         for tid, btn in self.nav_buttons.items():
             if tid == tab_id:
-                btn.configure(bg=COLORS["surface"], fg=COLORS["primary"], font=(FONTS["body"][0], FONTS["body"][1], "bold"))
+                # Active tab: primary color with white text
+                btn.configure(
+                    bg=COLORS["primary"],
+                    fg="white",
+                    font=(FONTS["body"][0], FONTS["body"][1], "bold"),
+                    relief=tk.FLAT,
+                    padx=25,
+                    pady=12
+                )
             else:
-                btn.configure(bg=COLORS["bg"], fg=COLORS["text_light"], font=FONTS["body"])
+                # Inactive tab: subtle gray
+                btn.configure(
+                    bg=COLORS["surface_alt"],
+                    fg=COLORS["text_light"],
+                    font=FONTS["body"],
+                    relief=tk.FLAT,
+                    padx=25,
+                    pady=12
+                )
 
         self.current_tab = tab_id
 
@@ -460,11 +483,15 @@ class MemScreenApp:
         self.record_btn = tk.Button(
             control_frame,
             text="🔴 Start Recording",
-            font=FONTS["body"],
+            font=(FONTS["body"][0], FONTS["body"][1], "bold"),
             bg=COLORS["error"],
             fg="white",
             relief=tk.FLAT,
             cursor="hand2",
+            padx=30,
+            pady=15,
+            borderwidth=0,
+            highlightthickness=0,
             command=self.toggle_recording
         )
         self.record_btn.pack(side=tk.LEFT, padx=20, pady=20)
