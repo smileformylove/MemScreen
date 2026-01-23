@@ -69,6 +69,7 @@ memscreen = "memscreen.memscreen:main"
 memscreen-chat = "memscreen.chat_ui:main"
 memscreen-screenshots = "memscreen.screenshot_ui:main"
 memscreen-process-mining = "memscreen.process_mining:main"
+memscreen-ui = "memscreen.unified_ui:main"
 
 [tool.setuptools]
 packages = ["memscreen"]

@@ -170,12 +170,26 @@ ollama pull mxbai-embed-large:latest
 # 3. Install MemScreen
 pip install git+https://github.com/smileformylove/MemScreen.git
 
-# 4. Launch apps
+# 4. Launch MemScreen Unified UI (Recommended)
+memscreen-ui
+
+# Or launch individual components
 memscreen
 memscreen-chat
 memscreen-screenshots
 memscreen-process-mining
 ```
+
+### 🎨 Introducing MemScreen Unified UI
+
+The new **MemScreen Unified UI** brings all features together in one beautiful, modern interface:
+
+- **💬 Chat Tab**: Talk to your screen memory with AI
+- **🎬 Videos Tab**: Browse and play your screen recordings
+- **🔍 Search Tab**: Search through your screen content
+- **⚙️ Settings Tab**: Configure your MemScreen experience
+
+Launch it with: `memscreen-ui`
 
 ### 🚀 Option 2: Install via pip (Cross-Platform)
 
@@ -205,10 +219,32 @@ After installation, the following commands will be available:
 
 | Command | Description |
 |----------|-------------|
+| `memscreen-ui` | **NEW**: Unified modern interface with all features |
 | `memscreen` | Capture and record your screen |
 | `memscreen-chat` | Chat with your screen history |
 | `memscreen-screenshots` | Browse and search screenshots |
 | `memscreen-process-mining` | Analyze keyboard/mouse patterns |
+
+### 🌟 MemScreen Unified UI (Recommended)
+
+Launch the beautiful, modern interface that integrates all MemScreen features:
+
+```bash
+memscreen-ui
+```
+
+**Features:**
+- 🎨 **Modern Design**: Clean, intuitive interface with purple gradient theme
+- 💬 **AI Chat**: Ask questions about your screen in natural language
+- 🎬 **Video Browser**: Play and manage your screen recordings
+- 🔍 **Smart Search**: Find content across all your recordings
+- ⚙️ **Settings**: Configure models, storage, and appearance
+
+**Tabs:**
+1. **Chat**: Interact with your screen memory using AI
+2. **Videos**: Browse, play, and delete recordings
+3. **Search**: Search through your screen content
+4. **Settings**: View and configure your MemScreen setup
 
 ### 1️⃣ Capture Your Screen
 
