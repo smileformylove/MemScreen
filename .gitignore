@@ -90,3 +90,11 @@ coverage.xml
 *.pt
 *.ckpt
 *.safetensors
+
+# macOS build artifacts
+build_macos/
+dist_macos/
+*.app/
+*.pkg/
+setup_*.py
+setup_temp.py

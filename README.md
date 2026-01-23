@@ -140,14 +140,51 @@ That's it! Start asking questions about your screen history. 🎉
 
 ## 📦 Installation
 
-### 🚀 Option 1: Install via pip (Recommended)
+### 🍎 macOS Installation (Easiest)
+
+#### Automated Installer
+
+```bash
+# Download and run the macOS installer
+curl -fsSL https://raw.githubusercontent.com/smileformylove/MemScreen/main/macos/install.sh | bash
+```
+
+This script will:
+- ✓ Install Python dependencies
+- ✓ Install MemScreen
+- ✓ Set up command-line shortcuts
+- ✓ Download AI models
+- ✓ Configure Ollama
+
+#### Manual Installation
+
+```bash
+# 1. Install Ollama (required for AI features)
+brew install ollama
+
+# 2. Pull AI models
+ollama pull qwen3:1.7b
+ollama pull qwen2.5vl:3b
+ollama pull mxbai-embed-large:latest
+
+# 3. Install MemScreen
+pip install git+https://github.com/smileformylove/MemScreen.git
+
+# 4. Launch apps
+memscreen
+memscreen-chat
+memscreen-screenshots
+memscreen-process-mining
+```
+
+### 🚀 Option 2: Install via pip (Cross-Platform)
 
 ```bash
 # Install directly from GitHub
 pip install git+https://github.com/smileformylove/MemScreen.git
 ```
 
-### 🔧 Option 2: Install from Source
+### 🔧 Option 3: Install from Source
 
 ```bash
 # Clone the repository
