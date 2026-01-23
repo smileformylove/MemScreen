@@ -228,7 +228,7 @@ class MemScreenApp:
             text="Ask Screen Anything",
             font=FONTS["body"],
             bg=COLORS["primary"],
-            fg="rgba(255,255,255,0.8)"
+            fg="#e2e8f0"
         )
         subtitle_label.pack(side=tk.LEFT, padx=(0, 30), pady=20)
 
@@ -561,11 +561,9 @@ class MemScreenApp:
             search_input_frame,
             font=FONTS["body"],
             bg=COLORS["bg"],
-            relief=tk.FLAT,
-            padx=15,
-            pady=10
+            relief=tk.FLAT
         )
-        self.search_input.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        self.search_input.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10), pady=10)
         self.search_input.bind("<Return>", lambda e: self.perform_search())
 
         tk.Button(
