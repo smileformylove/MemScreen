@@ -66,7 +66,7 @@ class LlmFactory:
 
     # Provider mappings with their config classes
     provider_to_class = {
-        "ollama": ("OllamaLLM", OllamaConfig),
+        "ollama": ("memscreen.llm.ollama.OllamaLLM", OllamaConfig),
         # "openai": ("memscreen.llms.openai.OpenAILLM", OpenAIConfig),
         # "groq": ("memscreen.llms.groq.GroqLLM", BaseLlmConfig),
         # "together": ("memscreen.llms.together.TogetherLLM", BaseLlmConfig),

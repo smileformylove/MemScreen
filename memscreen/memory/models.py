@@ -27,7 +27,7 @@ class EmbedderConfig(BaseModel):
 
     provider: str = Field(
         description="Provider of the embedding model (e.g., 'ollama', 'openai')",
-        default="openai",
+        default="ollama",
     )
     config: Optional[dict] = Field(description="Configuration for the specific embedding model", default={})
 
@@ -47,7 +47,7 @@ class EmbedderConfig(BaseModel):
 class LlmConfig(BaseModel):
     """Configuration for language models."""
 
-    provider: str = Field(description="Provider of the LLM (e.g., 'ollama', 'openai')", default="openai")
+    provider: str = Field(description="Provider of the LLM (e.g., 'ollama', 'openai')", default="ollama")
     config: Optional[dict] = Field(description="Configuration for the specific LLM", default={})
 
     @field_validator("config")
