@@ -28,15 +28,20 @@ def load_class(class_type: str):
     Examples:
         >>> load_class("memscreen.llm.ollama.OllamaLLM")
         <class 'memscreen.llm.ollama.OllamaLLM'>
+        >>> load_class("chromadb.Client")
+        <class 'chromadb.Client'>
     """
     if not class_type:
         raise ValueError("class_type cannot be empty")
 
-    # Security: Only allow importing from memscreen package
-    if not class_type.startswith("memscreen."):
+    # Security: Allow importing from memscreen package or trusted external packages
+    # Trusted packages: chromadb (for ChromaDB)
+    trusted_packages = ["memscreen", "chromadb"]
+
+    if not any(class_type.startswith(pkg + ".") or class_type == pkg for pkg in trusted_packages):
         raise ValueError(
-            f"For security reasons, only classes from the memscreen package can be loaded. "
-            f"Got: {class_type}"
+            f"For security reasons, only classes from trusted packages can be loaded. "
+            f"Trusted packages: {', '.join(trusted_packages)}. Got: {class_type}"
         )
 
     try:
