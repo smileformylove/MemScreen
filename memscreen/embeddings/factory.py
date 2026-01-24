@@ -62,6 +62,11 @@ class EmbedderFactory:
     }
 
     @classmethod
+    def get_supported_providers(cls):
+        """Return list of supported embedding providers."""
+        return list(cls.provider_to_class.keys())
+
+    @classmethod
     def create(cls, provider_name, config, vector_config: Optional[dict]):
         if provider_name == "upstash_vector" and vector_config and vector_config.enable_embeddings:
             return MockEmbeddings()

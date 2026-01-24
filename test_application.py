@@ -17,6 +17,7 @@ Tests all major functionality:
 import sys
 import os
 import time
+import uuid
 from datetime import datetime
 
 print("=" * 70)
@@ -35,7 +36,7 @@ try:
 
     config = get_config()
     assert config.db_path.name == "screen_capture.db", "Database name mismatch"
-    assert config.ollama_base_url == "http://127.0.0.0:11434", "Ollama URL mismatch"
+    assert config.ollama_base_url == "http://127.0.0.1:11434", "Ollama URL mismatch"
     assert config.recording_duration == 60, "Default duration mismatch"
     assert config.recording_interval == 2.0, "Default interval mismatch"
 
@@ -123,10 +124,11 @@ try:
     db = SQLiteManager(test_db)
 
     # Add history
-    db.add_history("test_id", None, None, "test_action")
+    memory_id = str(uuid.uuid4())
+    db.add_history(memory_id, None, None, "test_action")
 
     # Get history
-    history = db.get_history(limit=1)
+    history = db.get_history(memory_id=memory_id)
     assert len(history) >= 0, "History retrieval failed"
 
     # Cleanup
@@ -148,19 +150,17 @@ print("💫 [Test 5] Animation Framework")
 print("-" * 70)
 try:
     from memscreen.ui.components.animations import (
-        Animator, ColorTransition, RippleEffect,
+        TIMING, Animator, ColorTransition, RippleEffect,
         TypingIndicator, CounterAnimation
     )
 
     # Test color transition
-    transition = ColorTransition("#4F46E5", "#10B981")
-    gradient = transition.get_gradient(5)
+    gradient = ColorTransition.get_gradient_colors("#4F46E5", "#10B981", 5)
     assert len(gradient) == 5, "Gradient size wrong"
 
     # Test timing constants
-    from memscreen.ui.components.animations import TIMING_FAST, TIMING_NORMAL
-    assert TIMING_FAST == 150, "Fast timing wrong"
-    assert TIMING_NORMAL == 300, "Normal timing wrong"
+    assert TIMING["fast"] == 150, "Fast timing wrong"
+    assert TIMING["normal"] == 300, "Normal timing wrong"
 
     print("✅ Animation framework working")
     print(f"   Animator: {Animator}")
@@ -180,7 +180,7 @@ print()
 print("🎨 [Test 6] Enhanced Color System")
 print("-" * 70)
 try:
-    from memscreen.ui.components.colors import (
+    from memscreen.ui.components import (
         COLORS, GRADIENTS, STATUS_COLORS,
         SHADOWS, SHADOW_PRESETS
     )
