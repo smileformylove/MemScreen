@@ -194,7 +194,7 @@ class VideoTab(BaseTab):
             from_=0,
             to=100,
             orient=tk.HORIZONTAL,
-            width=80,
+            length=80,
             value=50
         )
         self.volume_slider.pack(side=tk.LEFT)
