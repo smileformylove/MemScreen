@@ -18,7 +18,8 @@ from datetime import datetime
 from PIL import Image, ImageTk, ImageGrab
 
 from .base_tab import BaseTab
-from ..components.colors import COLORS, FONTS
+from ..components.colors import COLORS, FONTS, STATUS_COLORS, ANIMATION_COLORS
+from ..components.animations import ProgressAnimation, CounterAnimation, ScrollAnimator
 
 
 class RecordingTab(BaseTab):
@@ -35,6 +36,15 @@ class RecordingTab(BaseTab):
         self.recording_info_label = None
         self.preview_canvas = None
         self.preview_image = None
+
+        # Animation components
+        self.pulsing_indicator = None
+        self.progress_canvas = None
+        self.progress_bg_id = None
+        self.progress_bar_id = None
+        self.countdown_label = None
+        self.frame_counter_label = None
+        self.countdown_animation = None
 
     def create_ui(self):
         """Create recording tab UI"""
@@ -53,15 +63,24 @@ class RecordingTab(BaseTab):
             fg=COLORS["text"]
         ).pack(side=tk.LEFT, padx=30, pady=20)
 
-        # Recording status
+        # Animated recording status with pulsing indicator canvas
+        status_container = tk.Frame(header_frame, bg=COLORS["surface"])
+        status_container.pack(side=tk.RIGHT, padx=30, pady=20)
+
+        # Create canvas for pulsing indicator
+        self.pulsing_indicator = tk.Canvas(status_container, width=30, height=30,
+                                           bg=COLORS["surface"], highlightthickness=0)
+        self.pulsing_indicator.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Recording status label
         self.recording_status_label = tk.Label(
-            header_frame,
-            text="● Ready to record",
+            status_container,
+            text="Ready to record",
             font=FONTS["body"],
             bg=COLORS["surface"],
             fg=COLORS["text_light"]
         )
-        self.recording_status_label.pack(side=tk.RIGHT, padx=30, pady=20)
+        self.recording_status_label.pack(side=tk.LEFT)
 
         # Settings section
         self._create_settings_section()
@@ -72,10 +91,75 @@ class RecordingTab(BaseTab):
         # Preview area
         self._create_preview_area()
 
-        # Recording info
+        # Recording info with progress bar and counters
         info_frame = tk.Frame(self.frame, bg=COLORS["surface"])
         info_frame.pack(fill=tk.X)
 
+        # Progress bar canvas
+        progress_container = tk.Frame(info_frame, bg=COLORS["surface"])
+        progress_container.pack(fill=tk.X, padx=20, pady=(10, 5))
+
+        self.progress_canvas = tk.Canvas(progress_container, height=8, bg=COLORS["bg"],
+                                         highlightthickness=0)
+        self.progress_canvas.pack(fill=tk.X)
+
+        # Create progress bar elements
+        self.progress_bg_id = self.progress_canvas.create_rectangle(
+            0, 0, 1000, 8, fill=COLORS["border"], outline=""
+        )
+        self.progress_bar_id = self.progress_canvas.create_rectangle(
+            0, 0, 0, 8, fill=COLORS["success"], outline=""
+        )
+
+        # Counters display
+        counters_frame = tk.Frame(info_frame, bg=COLORS["surface"])
+        counters_frame.pack(fill=tk.X, padx=20, pady=(5, 10))
+
+        # Countdown timer
+        countdown_container = tk.Frame(counters_frame, bg=COLORS["surface"])
+        countdown_container.pack(side=tk.LEFT, padx=(0, 30))
+
+        tk.Label(
+            countdown_container,
+            text="⏱️ Time Remaining:",
+            font=FONTS["small"],
+            bg=COLORS["surface"],
+            fg=COLORS["text_light"]
+        ).pack(side=tk.LEFT)
+
+        self.countdown_label = tk.Label(
+            countdown_container,
+            text="00:00",
+            font=FONTS["code"],
+            bg=COLORS["surface"],
+            fg=COLORS["text"],
+            width=8
+        )
+        self.countdown_label.pack(side=tk.LEFT, padx=(5, 0))
+
+        # Frame counter
+        frame_container = tk.Frame(counters_frame, bg=COLORS["surface"])
+        frame_container.pack(side=tk.LEFT)
+
+        tk.Label(
+            frame_container,
+            text="🎞️ Frames:",
+            font=FONTS["small"],
+            bg=COLORS["surface"],
+            fg=COLORS["text_light"]
+        ).pack(side=tk.LEFT)
+
+        self.frame_counter_label = tk.Label(
+            frame_container,
+            text="0",
+            font=FONTS["code"],
+            bg=COLORS["surface"],
+            fg=COLORS["text"],
+            width=6
+        )
+        self.frame_counter_label.pack(side=tk.LEFT, padx=(5, 0))
+
+        # Original recording info label (hidden by default)
         self.recording_info_label = tk.Label(
             info_frame,
             text="",
@@ -83,7 +167,6 @@ class RecordingTab(BaseTab):
             bg=COLORS["surface"],
             fg=COLORS["text_light"]
         )
-        self.recording_info_label.pack(pady=10)
 
         # Start preview update
         self.update_preview()
@@ -290,7 +373,13 @@ class RecordingTab(BaseTab):
 
             # Update UI
             self.record_btn.config(text="⏹️ Stop Recording", bg=COLORS["warning"])
-            self.recording_status_label.config(text="● Recording...", fg=COLORS["error"])
+            self.recording_status_label.config(
+                text="Recording...",
+                fg=STATUS_COLORS["recording"]["text"]
+            )
+
+            # Start pulsing indicator animation
+            self._start_pulsing_indicator()
 
             # Start recording thread
             self.app.recording_thread = threading.Thread(target=self.record_screen, daemon=True)
@@ -311,7 +400,13 @@ class RecordingTab(BaseTab):
 
         # Update UI
         self.record_btn.config(text="🔴 Start Recording", bg=COLORS["error"])
-        self.recording_status_label.config(text="● Saving video...", fg=COLORS["warning"])
+        self.recording_status_label.config(
+            text="Saving video...",
+            fg=STATUS_COLORS["processing"]["text"]
+        )
+
+        # Stop pulsing indicator
+        self._stop_pulsing_indicator()
 
         # Save video in background thread
         threading.Thread(target=self.save_recording, daemon=True).start()
@@ -431,18 +526,147 @@ class RecordingTab(BaseTab):
             print(f"Database error: {e}")
 
     def update_recording_status(self):
-        """Update recording status in real-time"""
+        """Update recording status in real-time with animations"""
         if self.app.is_recording and self.app.recording_start_time:
             elapsed = time.time() - self.app.recording_start_time
             remaining = max(0, self.app.recording_duration - elapsed)
             frame_count = len(self.app.recording_frames)
 
-            status_text = f"Recording: {int(elapsed)}s | Remaining: {int(remaining)}s | Frames: {frame_count}"
-            self.recording_info_label.config(text=status_text)
+            # Update progress bar
+            progress = elapsed / self.app.recording_duration
+            self._update_progress_bar(progress)
+
+            # Update countdown timer
+            self._update_countdown(int(remaining))
+
+            # Update frame counter with animation
+            self._update_frame_counter(frame_count)
 
             # Schedule next update
             if self.frame.winfo_exists():
                 self.root.after(100, self.update_recording_status)
+
+    def _start_pulsing_indicator(self):
+        """Start pulsing red dot animation"""
+        if not self.pulsing_indicator:
+            return
+
+        self.pulsing_indicator.delete("all")
+
+        # Create pulsing animation
+        def animate_pulse():
+            if not self.app.is_recording:
+                return
+
+            import math
+            current_time = time.time()
+            pulse_phase = (current_time * 3) % (2 * math.pi)  # 3 pulses per second
+
+            # Base red circle
+            center_x, center_y = 15, 15
+            base_radius = 6
+
+            self.pulsing_indicator.delete("all")
+
+            # Draw pulsing rings
+            for i in range(3):
+                phase_offset = i * 0.5
+                pulse_value = (math.sin(pulse_phase + phase_offset) + 1) / 2
+                ring_radius = base_radius + 8 * pulse_value
+
+                # Calculate alpha by varying color intensity
+                intensity = int(255 * (1 - pulse_value * 0.5))
+                color = f"#{intensity:02x}0000"
+
+                self.pulsing_indicator.create_oval(
+                    center_x - ring_radius, center_y - ring_radius,
+                    center_x + ring_radius, center_y + ring_radius,
+                    outline=color,
+                    width=2
+                )
+
+            # Draw solid center circle
+            self.pulsing_indicator.create_oval(
+                center_x - base_radius, center_y - base_radius,
+                center_x + base_radius, center_y + base_radius,
+                fill=COLORS["error"],
+                outline=COLORS["error"]
+            )
+
+            # Schedule next frame
+            if self.app.is_recording and self.pulsing_indicator.winfo_exists():
+                self.pulsing_indicator.after(30, animate_pulse)
+
+        animate_pulse()
+
+    def _stop_pulsing_indicator(self):
+        """Stop pulsing animation and show static indicator"""
+        if not self.pulsing_indicator:
+            return
+
+        self.pulsing_indicator.delete("all")
+
+        # Draw static indicator
+        center_x, center_y = 15, 15
+        radius = 6
+
+        self.pulsing_indicator.create_oval(
+            center_x - radius, center_y - radius,
+            center_x + radius, center_y + radius,
+            fill=COLORS["success"],
+            outline=COLORS["success"]
+        )
+
+    def _update_progress_bar(self, progress: float):
+        """Update progress bar with smooth animation"""
+        if not self.progress_canvas:
+            return
+
+        self.progress_canvas.update()
+
+        canvas_width = self.progress_canvas.winfo_width()
+        if canvas_width > 1:
+            bar_width = int(canvas_width * progress)
+            self.progress_canvas.coords(
+                self.progress_bar_id,
+                0, 0, bar_width, 8
+            )
+
+            # Change color based on progress
+            if progress < 0.3:
+                color = COLORS["success"]
+            elif progress < 0.7:
+                color = COLORS["warning"]
+            else:
+                color = COLORS["error"]
+
+            self.progress_canvas.itemconfig(self.progress_bar_id, fill=color)
+
+    def _update_countdown(self, remaining_seconds: int):
+        """Update countdown timer display"""
+        if not self.countdown_label:
+            return
+
+        minutes = remaining_seconds // 60
+        seconds = remaining_seconds % 60
+        time_str = f"{minutes:02d}:{seconds:02d}"
+
+        self.countdown_label.config(text=time_str)
+
+        # Change color when time is running out
+        if remaining_seconds <= 10:
+            self.countdown_label.config(fg=COLORS["error"])
+        elif remaining_seconds <= 30:
+            self.countdown_label.config(fg=COLORS["warning"])
+        else:
+            self.countdown_label.config(fg=COLORS["text"])
+
+    def _update_frame_counter(self, frame_count: int):
+        """Update frame counter with animation"""
+        if not self.frame_counter_label:
+            return
+
+        self.frame_counter_label.config(text=str(frame_count))
 
 
 __all__ = ["RecordingTab"]

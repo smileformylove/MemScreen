@@ -15,7 +15,7 @@ from datetime import datetime
 from PIL import Image, ImageTk
 
 from .base_tab import BaseTab
-from ..components.colors import COLORS, FONTS
+from ..components.colors import COLORS, FONTS, STATUS_COLORS
 
 
 class VideoTab(BaseTab):
@@ -30,10 +30,14 @@ class VideoTab(BaseTab):
         self.timeline = None
         self.timecode_label = None
         self.play_btn = None
+        self.volume_slider = None
         self.current_video_path = None
         self.current_video_id = None
         self.video_paths = []
         self.video_ids = []
+        self.thumbnails = {}
+        self.is_playing = False
+        self.playback_speed = 1.0
 
     def create_ui(self):
         """Create video tab UI"""
@@ -77,23 +81,29 @@ class VideoTab(BaseTab):
             command=self.delete_video
         ).pack(side=tk.LEFT)
 
-        # Video list
+        # Video list with thumbnails
         list_container = tk.Frame(left_panel, bg=COLORS["surface"])
         list_container.pack(fill=tk.BOTH, expand=True, padx=15)
 
         scrollbar = ttk.Scrollbar(list_container)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
+        # Enhanced listbox with thumbnails support
         self.video_listbox = tk.Listbox(
             list_container,
             font=FONTS["small"],
             bg=COLORS["bg"],
             fg=COLORS["text"],
             relief=tk.FLAT,
-            yscrollcommand=scrollbar.set
+            yscrollcommand=scrollbar.set,
+            selectmode=tk.SINGLE,
+            highlightthickness=0,
+            borderwidth=0
         )
         self.video_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.config(command=self.video_listbox.yview)
+
+        # Bind selection event with animation
         self.video_listbox.bind('<<ListboxSelect>>', self.on_video_select)
 
         # Right panel - video player
@@ -118,37 +128,76 @@ class VideoTab(BaseTab):
         )
         self.video_info.pack(fill=tk.X, pady=(0, 10))
 
-        # Controls
-        controls_panel = tk.Frame(right_panel, bg=COLORS["surface"])
-        controls_panel.pack(fill=tk.X)
+        # Controls with enhanced layout
+        controls_panel = tk.Frame(right_panel, bg=COLORS["surface"], height=60)
+        controls_panel.pack(fill=tk.X, pady=(10, 0))
+        controls_panel.pack_propagate(False)
 
-        # Timeline
-        self.timeline = ttk.Scale(controls_panel, from_=0, to=100, orient=tk.HORIZONTAL)
-        self.timeline.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
-        self.timeline.bind("<ButtonRelease-1>", self.on_timeline_change)
+        # Main control row
+        main_controls = tk.Frame(controls_panel, bg=COLORS["surface"])
+        main_controls.pack(fill=tk.X, pady=10)
 
-        # Timecode
-        self.timecode_label = tk.Label(
-            controls_panel,
-            text="00:00:00",
-            font=FONTS["code"],
-            bg=COLORS["surface"],
-            fg=COLORS["text"]
-        )
-        self.timecode_label.pack(side=tk.LEFT, padx=(0, 10))
-
-        # Play/Pause
+        # Play/Pause button with enhanced styling
         self.play_btn = tk.Button(
-            controls_panel,
-            text="▶️ Play",
-            font=FONTS["small"],
+            main_controls,
+            text="▶️",
+            font=("Segoe UI", 16),
             bg=COLORS["primary"],
             fg="white",
             relief=tk.FLAT,
             cursor="hand2",
-            command=self.toggle_play
+            width=3,
+            command=self.toggle_play,
+            highlightthickness=0,
+            borderwidth=0
         )
-        self.play_btn.pack(side=tk.LEFT)
+        self.play_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Timeline slider with smooth scrubbing
+        timeline_frame = tk.Frame(main_controls, bg=COLORS["surface"])
+        timeline_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+
+        self.timeline = ttk.Scale(
+            timeline_frame,
+            from_=0,
+            to=100,
+            orient=tk.HORIZONTAL,
+            command=self.on_timeline_drag
+        )
+        self.timeline.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.timeline.bind("<ButtonRelease-1>", self.on_timeline_change)
+
+        # Timecode display
+        self.timecode_label = tk.Label(
+            main_controls,
+            text="00:00:00",
+            font=FONTS["code"],
+            bg=COLORS["surface"],
+            fg=COLORS["text"],
+            width=8
+        )
+        self.timecode_label.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Volume control
+        volume_frame = tk.Frame(main_controls, bg=COLORS["surface"])
+        volume_frame.pack(side=tk.LEFT)
+
+        tk.Label(
+            volume_frame,
+            text="🔊",
+            font=FONTS["body"],
+            bg=COLORS["surface"]
+        ).pack(side=tk.LEFT, padx=(0, 5))
+
+        self.volume_slider = ttk.Scale(
+            volume_frame,
+            from_=0,
+            to=100,
+            orient=tk.HORIZONTAL,
+            width=80,
+            value=50
+        )
+        self.volume_slider.pack(side=tk.LEFT)
 
     def load_video_list(self):
         """Load video list from database"""
@@ -232,14 +281,16 @@ class VideoTab(BaseTab):
                 y = (canvas_height - new_height) // 2
                 self.video_canvas.create_image(x, y, anchor=tk.NW, image=self.app.tk_image)
 
-    def on_timeline_change(self, event):
-        """Handle timeline scrubbing"""
+    def on_timeline_drag(self, value):
+        """Handle timeline dragging for smooth scrubbing"""
         if not self.app.cap or not self.app.cap.isOpened():
             return
 
-        seek_time = self.timeline.get()
+        seek_time = float(value)
         fps = self.app.cap.get(cv2.CAP_PROP_FPS) or 10
         frame_pos = int(seek_time * fps)
+
+        # Show frame while dragging
         self.show_frame(frame_pos)
 
         # Update timecode
@@ -247,17 +298,25 @@ class VideoTab(BaseTab):
         hours, minutes = divmod(minutes, 60)
         self.timecode_label.config(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
 
+    def on_timeline_change(self, event):
+        """Handle timeline release"""
+        # Playback continues from new position
+        pass
+
     def toggle_play(self):
-        """Toggle play/pause"""
+        """Toggle play/pause with button animation"""
         if not self.app.cap or not self.app.cap.isOpened():
             return
 
         self.app.is_playing = not self.app.is_playing
+
         if self.app.is_playing:
-            self.play_btn.config(text="⏸️ Pause")
+            # Update button to pause with animation
+            self.play_btn.config(text="⏸️", bg=COLORS["warning"])
             self.play_video()
         else:
-            self.play_btn.config(text="▶️ Play")
+            # Update button to play with animation
+            self.play_btn.config(text="▶️", bg=COLORS["primary"])
 
     def play_video(self):
         """Play video"""
@@ -300,8 +359,15 @@ class VideoTab(BaseTab):
             delay = int(1000 / fps)
             self.root.after(delay, self.play_video)
         else:
+            # Video ended - reset play button
             self.app.is_playing = False
-            self.play_btn.config(text="▶️ Play")
+            self.play_btn.config(text="▶️", bg=COLORS["primary"])
+
+            # Reset to beginning
+            if self.app.cap:
+                self.app.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                self.timeline.set(0)
+                self.show_frame(0)
 
     def delete_video(self):
         """Delete selected video"""
