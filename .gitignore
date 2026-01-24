@@ -3,6 +3,7 @@ __pycache__/
 **/__pycache__/
 *.py[cod]
 *$py.class
+*.pyc
 *.so
 
 # Distribution / packaging
@@ -39,6 +40,12 @@ db/
 
 # Logs
 *.log
+logs/
+
+# Test databases and artifacts
+test_*.db
+test_*.sqlite
+test_*.sqlite3
 
 # IDE / Editor files
 .vscode/
@@ -46,7 +53,10 @@ db/
 *.swp
 *.swo
 *~
-.DS_Store
+*.bak
+*.backup
+*.tmp
+*.temp
 
 # OS files
 .DS_Store
