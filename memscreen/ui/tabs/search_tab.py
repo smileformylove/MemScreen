@@ -26,8 +26,8 @@ class SearchTab(BaseTab):
         """Create search tab UI"""
         self.frame = tk.Frame(self.parent, bg=COLORS["bg"])
 
-        # Search bar
-        search_bar = tk.Frame(self.frame, bg=COLORS["surface"], height=80)
+        # Search bar - increased height for better visibility
+        search_bar = tk.Frame(self.frame, bg=COLORS["surface"], height=180)
         search_bar.pack(fill=tk.X, pady=(0, 20))
         search_bar.pack_propagate(False)
 
@@ -37,39 +37,40 @@ class SearchTab(BaseTab):
             font=FONTS["heading"],
             bg=COLORS["surface"],
             fg=COLORS["text"]
-        ).pack(pady=15)
+        ).pack(pady=(15, 10))
 
         search_input_frame = tk.Frame(search_bar, bg=COLORS["surface"])
-        search_input_frame.pack(fill=tk.X, padx=20)
+        search_input_frame.pack(fill=tk.X, padx=20, pady=10)
 
         self.search_input = tk.Entry(
             search_input_frame,
-            font=("Helvetica", 14, "normal"),  # Larger font
-            bg=COLORS["input_bg"],
-            fg=COLORS["text"],
-            insertbackground=COLORS["text"],
+            font=("Helvetica", 18, "bold"),  # Larger font
+            bg="#000000",  # Pure black (explicit)
+            fg="#FFFFFF",  # Pure white (explicit)
+            insertbackground="#FFFFFF",  # Pure white cursor (explicit)
             relief=tk.SOLID,
-            bd=3,
-            highlightthickness=3,
-            highlightbackground=COLORS["primary"],
-            highlightcolor=COLORS["primary"]
+            bd=4,  # Very thick border
+            highlightthickness=0  # Disable highlight to avoid macOS issues
         )
-        self.search_input.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10), pady=10, ipady=15)
+        self.search_input.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10), pady=10, ipady=25)
         self.search_input.bind("<Return>", lambda e: self.perform_search())
         self.search_input.focus_set()  # Auto-focus for easy input
 
         tk.Button(
             search_input_frame,
             text="Search",
-            font=FONTS["body"],
-            bg=COLORS["primary"],
-            fg="white",
-            relief=tk.FLAT,
+            font=("Helvetica", 14, "bold"),
+            bg="#C7D2FE",
+            fg="#000000",
+            relief=tk.RAISED,
+            bd=4,
+            padx=20,
+            pady=10,
             cursor="hand2",
             command=self.perform_search
         ).pack(side=tk.LEFT)
 
-        # Results area
+        # Results area - with limited initial size
         results_frame = tk.Frame(self.frame, bg=COLORS["surface"])
         results_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -79,10 +80,14 @@ class SearchTab(BaseTab):
             font=FONTS["heading"],
             bg=COLORS["surface"],
             fg=COLORS["text"]
-        ).pack(fill=tk.X, padx=20, pady=(20, 10))
+        ).pack(fill=tk.X, padx=20, pady=(10, 10))
+
+        # Create a container with limited height for results
+        results_container = tk.Frame(results_frame, bg=COLORS["surface"])
+        results_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
 
         self.search_results = scrolledtext.ScrolledText(
-            results_frame,
+            results_container,
             wrap=tk.WORD,
             font=FONTS["body"],
             bg=COLORS["bg"],
@@ -90,9 +95,10 @@ class SearchTab(BaseTab):
             insertbackground=COLORS["text"],
             relief=tk.FLAT,
             padx=20,
-            pady=20
+            pady=20,
+            height=15  # Limit initial height to 15 lines
         )
-        self.search_results.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
+        self.search_results.pack(fill=tk.BOTH, expand=True)
         self.search_results.insert(tk.END, "Enter a search query above to find content in your screen recordings...")
         self.search_results.config(state=tk.DISABLED)
 

@@ -264,9 +264,15 @@ class RecordingTab(BaseTab):
         tk.Button(
             output_frame,
             text="Browse...",
-            font=FONTS["small"],
-            bg=COLORS["bg"],
-            relief=tk.FLAT,
+            font=("Helvetica", 12, "bold"),
+            bg="#C7D2FE",
+            fg="#000000",
+            relief=tk.RAISED,
+            bd=4,
+            cursor="hand2",
+            padx=10,
+            pady=5,
+            highlightthickness=0,
             command=self.browse_output_dir
         ).pack(side=tk.LEFT)
 
@@ -278,14 +284,14 @@ class RecordingTab(BaseTab):
         self.record_btn = tk.Button(
             control_frame,
             text="🔴 Start Recording",
-            font=(FONTS["body"][0], FONTS["body"][1], "bold"),
-            bg=COLORS["error"],
-            fg="white",
-            relief=tk.FLAT,
+            font=("Helvetica", 16, "bold"),
+            bg="#FCA5A5",
+            fg="#000000",
+            relief=tk.RAISED,
+            bd=4,
             cursor="hand2",
             padx=30,
             pady=15,
-            borderwidth=0,
             highlightthickness=0,
             command=self.toggle_recording
         )
@@ -408,7 +414,7 @@ class RecordingTab(BaseTab):
         self.app.is_recording = False
 
         # Update UI
-        self.record_btn.config(text="🔴 Start Recording", bg=COLORS["error"])
+        self.record_btn.config(text="🔴 Start Recording", bg="#FCA5A5")
         self.recording_status_label.config(
             text="Saving video...",
             fg=STATUS_COLORS["processing"]["text"]

@@ -68,9 +68,11 @@ class ChatTab(BaseTab):
         refresh_btn = tk.Button(
             model_bar,
             text="🔄 Refresh",
-            font=FONTS["small"],
-            bg=COLORS["bg"],
-            relief=tk.FLAT,
+            font=("Helvetica", 12, "bold"),
+            bg="#C7D2FE",
+            fg="#000000",
+            relief=tk.RAISED,
+            bd=2,
             cursor="hand2",
             command=self.load_models
         )
@@ -138,11 +140,14 @@ class ChatTab(BaseTab):
         send_btn = tk.Button(
             input_frame,
             text="Send ➤",
-            font=FONTS["body"],
-            bg=COLORS["primary"],
-            fg="white",
-            relief=tk.FLAT,
+            font=("Helvetica", 12, "bold"),
+            bg="#C7D2FE",
+            fg="#000000",
+            relief=tk.RAISED,
+            bd=3,
             cursor="hand2",
+            padx=20,
+            pady=10,
             command=self.send_chat_message
         )
         send_btn.place(relx=0.95, rely=0.5, anchor=tk.E)

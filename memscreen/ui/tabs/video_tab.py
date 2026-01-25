@@ -64,9 +64,11 @@ class VideoTab(BaseTab):
         tk.Button(
             controls_frame,
             text="🔄 Refresh",
-            font=FONTS["small"],
-            bg=COLORS["bg"],
-            relief=tk.FLAT,
+            font=("Helvetica", 12, "bold"),
+            bg="#C7D2FE",
+            fg="#000000",
+            relief=tk.RAISED,
+            bd=2,
             cursor="hand2",
             command=self.load_video_list
         ).pack(side=tk.LEFT, padx=(0, 5))
@@ -74,9 +76,11 @@ class VideoTab(BaseTab):
         tk.Button(
             controls_frame,
             text="🗑️ Delete",
-            font=FONTS["small"],
-            bg=COLORS["bg"],
-            relief=tk.FLAT,
+            font=("Helvetica", 12, "bold"),
+            bg="#FCA5A5",
+            fg="#000000",
+            relief=tk.RAISED,
+            bd=2,
             cursor="hand2",
             command=self.delete_video
         ).pack(side=tk.LEFT)
@@ -142,7 +146,7 @@ class VideoTab(BaseTab):
             main_controls,
             text="▶️",
             font=("Segoe UI", 16),
-            bg=COLORS["primary"],
+            bg="#C7D2FE",
             fg="white",
             relief=tk.FLAT,
             cursor="hand2",
@@ -319,7 +323,7 @@ class VideoTab(BaseTab):
             self.play_video()
         else:
             # Update button to play with animation
-            self.play_btn.config(text="▶️", bg=COLORS["primary"])
+            self.play_btn.config(text="▶️", bg="#C7D2FE")
 
     def play_video(self):
         """Play video"""
@@ -364,7 +368,7 @@ class VideoTab(BaseTab):
         else:
             # Video ended - reset play button
             self.app.is_playing = False
-            self.play_btn.config(text="▶️", bg=COLORS["primary"])
+            self.play_btn.config(text="▶️", bg="#C7D2FE")
 
             # Reset to beginning
             if self.app.cap:

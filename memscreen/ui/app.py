@@ -27,6 +27,17 @@ class MemScreenApp:
         self.root.geometry("1200x800")
         self.root.minsize(1000, 700)
 
+        # CRITICAL: Force global color palette for all buttons
+        # Use light background + dark text for maximum contrast
+        self.root.tk_setPalette(
+            background="#1F2937",
+            foreground="#FFFFFF",
+            activeBackground="#E5E7EB",
+            activeForeground="#000000",
+            highlightBackground="#4B5563",
+            highlightColor="#E5E7EB"
+        )
+
         # Video variables
         self.cap = None
         self.is_playing = False
@@ -126,20 +137,18 @@ class MemScreenApp:
             btn = tk.Button(
                 nav_container,
                 text=f"{icon} {text}",
-                font=FONTS["body"],
-                bg=COLORS["surface"],
-                fg=COLORS["text"],
-                activebackground=COLORS["primary"],
-                activeforeground="white",
+                font=("Helvetica", 14, "bold"),
+                bg="#E5E7EB",  # Light gray background
+                fg="#000000",  # Black text
+                activebackground="#D1D5DB",  # Slightly darker when active
+                activeforeground="#000000",
                 relief=tk.RAISED,
-                bd=1,
+                bd=3,
                 padx=25,
                 pady=12,
                 cursor="hand2",
-                borderwidth=1,
-                highlightthickness=1,
-                highlightbackground=COLORS["border"],
-                highlightcolor=COLORS["primary"],
+                borderwidth=3,
+                highlightthickness=0,
                 command=lambda t=tab_id: self.switch_tab(t)
             )
             btn.pack(side=tk.LEFT, padx=3)
@@ -149,33 +158,29 @@ class MemScreenApp:
         self.set_active_tab("record")
 
     def set_active_tab(self, tab_id):
-        """Update active tab styling with modern pill design"""
+        """Update active tab styling with high contrast"""
         for tid, btn in self.nav_buttons.items():
             if tid == tab_id:
-                # Active tab: primary color with white text
+                # Active tab: darker gray with black text
                 btn.configure(
-                    bg=COLORS["primary"],
-                    fg="white",
-                    font=(FONTS["body"][0], FONTS["body"][1], "bold"),
+                    bg="#D1D5DB",  # Darker light gray
+                    fg="#000000",  # Black text
+                    font=("Helvetica", 14, "bold"),
                     relief=tk.SUNKEN,
-                    bd=2,
-                    highlightthickness=2,
-                    highlightbackground=COLORS["primary"],
-                    highlightcolor=COLORS["primary"],
+                    bd=4,
+                    highlightthickness=0,
                     padx=25,
                     pady=12
                 )
             else:
-                # Inactive tab: visible with good contrast
+                # Inactive tab: light gray with black text
                 btn.configure(
-                    bg=COLORS["surface"],
-                    fg=COLORS["text"],
-                    font=FONTS["body"],
+                    bg="#E5E7EB",  # Light gray
+                    fg="#000000",  # Black text
+                    font=("Helvetica", 14, "bold"),
                     relief=tk.RAISED,
-                    bd=1,
-                    highlightthickness=1,
-                    highlightbackground=COLORS["border"],
-                    highlightcolor=COLORS["border"],
+                    bd=3,
+                    highlightthickness=0,
                     padx=25,
                     pady=12
                 )
