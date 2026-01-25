@@ -548,6 +548,9 @@ class RecordingTab(BaseTab):
             # Save to database
             self.save_to_database(DB_NAME, filename, len(frames), fps)
 
+            # Add to memory system for AI search
+            self._add_video_to_memory(filename, len(frames), fps)
+
             # Update UI to show segment saved
             self.root.after(0, lambda: self.recording_status_label.config(
                 text=f"● Segment saved! ({len(frames)} frames)", fg=COLORS["success"]))
@@ -598,7 +601,10 @@ class RecordingTab(BaseTab):
             print(f"[DEBUG] Video saved in {save_time:.2f}s: {filename}")
 
             # Save to database
-            self.save_to_database(DB_NAME, filename, frame_count, fps)
+            self.save_to_database("./db/screen_capture.db", filename, frame_count, fps)
+
+            # Add to memory system for AI search
+            self._add_video_to_memory(filename, frame_count, fps)
 
             # Update UI on success
             self.root.after(0, lambda: self.recording_status_label.config(
@@ -617,6 +623,188 @@ class RecordingTab(BaseTab):
             self.root.after(0, lambda: self.recording_status_label.config(
                 text="● Save failed", fg=COLORS["error"]))
             self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to save: {e}"))
+
+    def _add_video_to_memory(self, filename, frame_count, fps):
+        """Add video recording to memory system for AI search"""
+        try:
+            print(f"\n[INFO] ========== Adding video to memory ==========")
+            print(f"[INFO] File: {filename}")
+            print(f"[INFO] Frames: {frame_count}, FPS: {fps}")
+
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            duration = frame_count / fps if fps > 0 else 0
+            print(f"[INFO] Timestamp: {timestamp}, Duration: {duration:.1f}s")
+
+            # Sample frames from video to understand content
+            print(f"[INFO] Starting content analysis...")
+            content_description = self._analyze_video_content(filename, frame_count)
+            print(f"[INFO] Content description: {content_description[:200]}...")
+
+            # Create detailed memory entry
+            memory_text = f"""Screen Recording captured at {timestamp}:
+- Duration: {duration:.1f} seconds
+- Frames: {frame_count}
+- File: {filename}
+
+Content Summary:
+{content_description}
+
+This video screen recording shows what was displayed on screen during the recording period.
+When users ask about what was on their screen or what they were doing, reference this recording."""
+
+            print(f"[INFO] Memory text created: {len(memory_text)} characters")
+
+            # Add to memory if available
+            if hasattr(self.app, 'mem') and self.app.mem:
+                try:
+                    print(f"[INFO] Attempting to add to memory system...")
+                    print(f"[INFO] Memory object: {type(self.app.mem)}")
+                    print(f"[INFO] Memory has search method: {hasattr(self.app.mem, 'search')}")
+                    print(f"[INFO] Memory has add method: {hasattr(self.app.mem, 'add')}")
+
+                    result = self.app.mem.add(
+                        [{"role": "user", "content": memory_text}],
+                        user_id="screenshot",
+                        metadata={
+                            "type": "screen_recording",
+                            "filename": filename,
+                            "frame_count": frame_count,
+                            "fps": fps,
+                            "duration": duration,
+                            "timestamp": timestamp,
+                            "content_description": content_description
+                        },
+                        infer=False  # Don't use LLM inference, just store directly
+                    )
+                    print(f"[SUCCESS] Added recording to memory: {filename}")
+                    print(f"[INFO] Memory add result: {result}")
+                except Exception as mem_error:
+                    print(f"[ERROR] Failed to add to memory: {mem_error}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                print(f"[WARNING] Memory system not available!")
+                print(f"[WARNING] app.mem exists: {hasattr(self.app, 'mem')}")
+                if hasattr(self.app, 'mem'):
+                    print(f"[WARNING] app.mem is None: {self.app.mem is None}")
+
+            print(f"[INFO] ========== Memory add complete ==========\n")
+
+        except Exception as e:
+            print(f"[ERROR] Failed to add video to memory: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _analyze_video_content(self, filename, total_frames):
+        """Analyze video content by sampling frames and using OCR to extract text"""
+        print(f"[INFO] Starting video content analysis: {filename}, {total_frames} frames")
+        try:
+            # Sample 3-5 frames evenly distributed throughout the video
+            num_samples = min(5, total_frames)
+            sample_indices = [int(i * total_frames / num_samples) for i in range(num_samples)]
+            print(f"[INFO] Sampling {num_samples} frames at indices: {sample_indices}")
+
+            all_text_found = []
+            cap = cv2.VideoCapture(filename)
+
+            for idx, frame_idx in enumerate(sample_indices):
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                ret, frame = cap.read()
+                if ret:
+                    print(f"[DEBUG] Analyzing frame {idx+1}/{num_samples} at index {frame_idx}")
+
+                    # Try to extract text using multiple methods
+                    frame_text = self._extract_text_from_frame(frame)
+                    if frame_text:
+                        all_text_found.append(frame_text)
+                        print(f"[INFO] Frame {idx+1}: Found {len(frame_text)} characters of text")
+                    else:
+                        print(f"[INFO] Frame {idx+1}: No text detected")
+
+            cap.release()
+
+            # Combine all found text
+            combined_text = " | ".join(all_text_found) if all_text_found else "Screen recording captured (no clear text detected)"
+
+            print(f"[INFO] Video analysis complete. Total text extracted: {len(combined_text)} characters")
+            return combined_text
+
+        except Exception as e:
+            print(f"[ERROR] Failed to analyze video content: {e}")
+            import traceback
+            traceback.print_exc()
+            return "Screen recording (content analysis unavailable)"
+
+    def _extract_text_from_frame(self, frame):
+        """Extract text from a single frame using multiple OCR methods"""
+        import numpy as np
+
+        # Method 1: Try pytesseract if available
+        try:
+            import pytesseract
+            from PIL import Image
+
+            # Convert BGR to RGB
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_image = Image.fromarray(rgb_frame)
+
+            # Extract text
+            text = pytesseract.image_to_string(pil_image)
+            cleaned_text = text.strip()
+            if cleaned_text:
+                print(f"[DEBUG] Tesseract OCR found text: {cleaned_text[:100]}...")
+                return cleaned_text
+        except ImportError:
+            print("[DEBUG] pytesseract not available, trying alternative methods")
+        except Exception as e:
+            print(f"[DEBUG] Tesseract OCR failed: {e}")
+
+        # Method 2: Use Ollama vision model to describe the frame
+        try:
+            import requests
+            import base64
+
+            # Encode frame to base64
+            _, buffer = cv2.imencode('.jpg', frame)
+            img_str = base64.b64encode(buffer).decode('utf-8')
+
+            # Send to Ollama vision API
+            response = requests.post(
+                "http://127.0.0.1:11434/api/generate",
+                json={
+                    "model": "qwen2.5vl:3b",
+                    "prompt": "Extract and list all visible text from this image. Return only the text, nothing else.",
+                    "images": [img_str],
+                    "stream": False
+                },
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                text = result.get("response", "").strip()
+                if text and text.lower() not in ["no text", "none", "no text found"]:
+                    print(f"[DEBUG] Ollama vision found text: {text[:100]}...")
+                    return f"Detected text on screen: {text}"
+        except Exception as e:
+            print(f"[DEBUG] Ollama vision API failed: {e}")
+
+        # Method 3: Basic image analysis (color distribution, edges)
+        try:
+            # Get basic statistics
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            text_density = np.sum(gray > 200) / gray.size  # Light pixels (possible text)
+
+            if text_density > 0.3:
+                print(f"[DEBUG] Frame appears to have light content (possible text). Density: {text_density:.2f}")
+                return "Screen contains light colored content (possibly text or UI elements)"
+            else:
+                print(f"[DEBUG] Frame appears dark. Density: {text_density:.2f}")
+                return "Screen captured (dark or graphical content)"
+        except Exception as e:
+            print(f"[DEBUG] Basic image analysis failed: {e}")
+
+        return "Screen content captured (text extraction failed)"
 
     def save_to_database(self, db_name, filename, frame_count, fps):
         """Save recording info to database"""

@@ -33,7 +33,7 @@ class ChatTab(BaseTab):
         self.thinking_label = None
         self.typing_indicator_canvas = None
         self.typing_dots = None
-        self.current_model = "gemma3:270m"  # Fast and lightweight model
+        self.current_model = "qwen2.5vl:3b"  # Better quality model with vision support
         self.conversation_history = []
         self.message_count = 0
 
@@ -182,7 +182,7 @@ class ChatTab(BaseTab):
             self.model_combo['values'] = models
 
             if models:
-                # Try to find and set gemma3:270m as default
+                # Try to find and set qwen2.5vl:3b as default
                 if self.current_model in models:
                     idx = models.index(self.current_model)
                     self.model_combo.current(idx)
@@ -211,11 +211,65 @@ class ChatTab(BaseTab):
         if not user_input:
             return
 
-        # Add screen memory context
-        enhanced_input = MEMORY_ANSWER_PROMPT + "\n\n" + user_input
-        related_memories = self.mem.search(query=enhanced_input, user_id="screenshot")
+        print(f"\n[CHAT] ========== Processing user message ==========")
+        print(f"[CHAT] User input: {user_input}")
+        print(f"[CHAT] Memory object: {type(self.mem)}")
+        print(f"[CHAT] Memory has search: {hasattr(self.mem, 'search')}")
+
+        # Search memories for relevant context
+        related_memories = self.mem.search(query=user_input, user_id="screenshot")
+        print(f"[CHAT] Search completed. Results type: {type(related_memories)}")
+
+        # Build context from memories
+        context = ""
         if related_memories and 'results' in related_memories and len(related_memories['results']) > 0:
-            enhanced_input = related_memories['results'][0]['memory'] + '\n\n' + enhanced_input
+            print(f"[CHAT] Found {len(related_memories['results'])} related memories")
+
+            # Prioritize screen recording memories
+            recording_memories = [
+                r for r in related_memories['results']
+                if 'metadata' in r and r['metadata'].get('type') == 'screen_recording'
+            ]
+
+            print(f"[CHAT] Recording memories found: {len(recording_memories)}")
+
+            if recording_memories:
+                # Use the most relevant recording
+                top_memory = recording_memories[0]['memory']
+                metadata = recording_memories[0].get('metadata', {})
+
+                print(f"[CHAT] Using recording memory:")
+                print(f"[CHAT] - Filename: {metadata.get('filename', 'N/A')}")
+                print(f"[CHAT] - Duration: {metadata.get('duration', 0):.1f}s")
+                print(f"[CHAT] - Content preview: {str(metadata.get('content_description', 'N/A'))[:100]}...")
+
+                # Build informative context about recordings
+                if 'filename' in metadata:
+                    context = f"Relevant Screen Recording Found:\n"
+                    context += f"- Video File: {metadata['filename']}\n"
+                    context += f"- Duration: {metadata.get('duration', 0):.1f} seconds\n"
+                    context += f"- Recorded at: {metadata.get('timestamp', 'unknown')}\n"
+                    if 'content_description' in metadata:
+                        context += f"- Content: {metadata['content_description']}\n"
+                    context += f"\nThis is a video file that captured screen activity. "
+                    context += f"The user can view this video in the Video tab to see the actual screen content.\n\n"
+            else:
+                # Use general memories if no recordings found
+                top_memory = related_memories['results'][0]['memory']
+                if len(top_memory) > 500:
+                    top_memory = top_memory[:500] + "..."
+                context = f"Context from previous activities:\n{top_memory}\n\n"
+                print(f"[CHAT] Using general memory: {top_memory[:100]}...")
+        else:
+            print(f"[CHAT] No related memories found")
+
+        # Build enhanced prompt
+        if context:
+            enhanced_input = context + f"User question: {user_input}\n\nBased on the context above, provide a helpful answer. If referring to a screen recording, mention that the user can view it in the Video tab."
+            print(f"[CHAT] Using enhanced prompt with context ({len(enhanced_input)} chars)")
+        else:
+            enhanced_input = f"User question: {user_input}\n\nPlease provide a helpful and concise answer."
+            print(f"[CHAT] Using basic prompt (no context)")
 
         self.chat_input.delete("1.0", tk.END)
 
@@ -323,21 +377,30 @@ class ChatTab(BaseTab):
         """Send request to Ollama (non-streaming for stability)"""
         url = "http://127.0.0.1:11434/api/chat"
 
-        # Limit conversation history to last 4 messages to avoid token limit
+        # Limit conversation history to last 2 exchanges (4 messages) to avoid token limit
+        # This is especially important for small models like gemma3:270m
         limited_history = self.conversation_history[-4:] if len(self.conversation_history) > 4 else self.conversation_history
 
-        messages = [{"role": "system", "content": "You are a helpful assistant."}]
+        # Build messages - keep system prompt simple for small models
+        messages = [{"role": "system", "content": "You are a helpful assistant. Provide concise answers."}]
         messages.extend(limited_history)
         messages.append({"role": "user", "content": prompt})
 
         payload = {
             "model": model_name,
             "messages": messages,
-            "stream": False  # Use non-streaming for stability
+            "stream": False,  # Use non-streaming for stability
+            "options": {
+                "num_predict": 500,  # Limit response length to avoid hanging
+                "temperature": 0.7
+            }
         }
 
         try:
-            print(f"[DEBUG] Sending to Ollama: model={model_name}, messages={len(messages)}")
+            # Log the request size
+            total_chars = sum(len(m.get("content", "")) for m in messages)
+            print(f"[DEBUG] Sending to Ollama: model={model_name}, messages={len(messages)}, total_chars={total_chars}")
+
             response = requests.post(url, json=payload, stream=False, timeout=120)
             response.raise_for_status()
 

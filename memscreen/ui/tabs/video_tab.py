@@ -389,6 +389,22 @@ class VideoTab(BaseTab):
 
         if messagebox.askyesno("Confirm Delete", f"Delete this video?\n\n{os.path.basename(video_path)}"):
             try:
+                # Stop playback if this video is currently playing
+                if self.app.cap and self.current_video_path == video_path:
+                    self.app.is_playing = False
+                    if self.app.cap.isOpened():
+                        self.app.cap.release()
+                    self.app.cap = None
+                    self.current_video_path = None
+                    self.current_video_id = None
+                    # Clear video canvas
+                    self.video_canvas.delete("all")
+                    # Reset UI
+                    self.play_btn.config(text="▶️")
+                    self.video_info.config(text="Select a video to play")
+                    self.timeline.set(0)
+                    self.timecode_label.config(text="00:00:00")
+
                 if os.path.exists(video_path):
                     os.remove(video_path)
 
