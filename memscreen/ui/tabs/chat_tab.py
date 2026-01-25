@@ -116,24 +116,35 @@ class ChatTab(BaseTab):
             highlightthickness=0
         )
 
-        # Input area
-        input_frame = tk.Frame(self.frame, bg=COLORS["surface"], height=100)
-        input_frame.pack(fill=tk.X)
+        # Input area - increased height
+        input_frame = tk.Frame(self.frame, bg=COLORS["surface"], height=150)
+        input_frame.pack(fill=tk.X, pady=(0, 10))
         input_frame.pack_propagate(False)
+
+        # Add helper text
+        helper_label = tk.Label(
+            input_frame,
+            text="💡 Ask anything about your screen recordings! AI will search and answer intelligently.",
+            font=("Helvetica", 11, "normal"),
+            bg=COLORS["surface"],
+            fg=COLORS["text_light"]
+        )
+        helper_label.pack(pady=(5, 5))
 
         self.chat_input = scrolledtext.ScrolledText(
             input_frame,
             wrap=tk.WORD,
-            font=FONTS["body"],
-            bg=COLORS["bg"],
+            font=("Helvetica", 12, "normal"),
+            bg=COLORS["input_bg"],
             fg=COLORS["text"],
             insertbackground=COLORS["text"],
-            relief=tk.FLAT,
+            relief=tk.SOLID,
+            bd=3,
             padx=15,
             pady=10,
-            height=3
+            height=4
         )
-        self.chat_input.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.chat_input.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         self.chat_input.bind("<Return>", self.on_chat_enter)
 
         # Send button

@@ -14,7 +14,7 @@ from .components.colors import COLORS, FONTS
 from .tabs.recording_tab import RecordingTab
 from .tabs.chat_tab import ChatTab
 from .tabs.video_tab import VideoTab
-from .tabs.search_tab import SearchTab
+# SearchTab removed - functionality merged into ChatTab
 from .tabs.settings_tab import SettingsTab
 
 
@@ -127,9 +127,8 @@ class MemScreenApp:
         self.nav_buttons = {}
         tabs = [
             ("🔴", "Record", "record"),
-            ("💬", "Chat", "chat"),
+            ("💬", "AI Chat", "chat"),  # Renamed to emphasize AI
             ("🎬", "Videos", "videos"),
-            ("🔍", "Search", "search"),
             ("⚙️", "Settings", "settings")
         ]
 
@@ -192,7 +191,7 @@ class MemScreenApp:
         self.set_active_tab(tab_id)
 
         # Hide all content frames
-        for tab in [self.record_tab, self.chat_tab, self.video_tab, self.search_tab, self.settings_tab]:
+        for tab in [self.record_tab, self.chat_tab, self.video_tab, self.settings_tab]:
             tab.get_frame().pack_forget()
 
         # Show selected frame
@@ -202,8 +201,6 @@ class MemScreenApp:
             self.chat_tab.get_frame().pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         elif tab_id == "videos":
             self.video_tab.get_frame().pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        elif tab_id == "search":
-            self.search_tab.get_frame().pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         elif tab_id == "settings":
             self.settings_tab.get_frame().pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
@@ -222,8 +219,6 @@ class MemScreenApp:
         self.video_tab = VideoTab(self.content_frame, self, self.db_name)
         self.video_tab.create_ui()
 
-        self.search_tab = SearchTab(self.content_frame, self, self.mem)
-        self.search_tab.create_ui()
 
         self.settings_tab = SettingsTab(self.content_frame, self, self.db_name)
         self.settings_tab.create_ui()
