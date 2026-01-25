@@ -16,9 +16,9 @@ COLORS = {
     "bg": "#1F2937",               # Dark gray background (main)
     "surface": "#374151",           # Medium gray surface (panels)
     "surface_alt": "#4B5563",       # Lighter gray surface (hover)
-    "text": "#F9FAFB",              # Off-white text (high contrast)
-    "text_light": "#D1D5DB",        # Light gray text
-    "text_muted": "#9CA3AF",        # Muted gray text
+    "text": "#FFFFFF",              # PURE WHITE text (MAXIMUM contrast)
+    "text_light": "#E5E7EB",        # Light gray text
+    "text_muted": "#D1D5DB",        # Muted gray text
     "border": "#4B5563",            # Border
     "border_light": "#6B7280",      # Light border
     "chat_user_bg": "#1E3A8A",      # Dark blue for user
@@ -27,7 +27,7 @@ COLORS = {
     "warning": "#F59E0B",           # Amber
     "error": "#EF4444",             # Red
     "info": "#3B82F6",              # Blue
-    "input_bg": "#111827",          # Very dark for input fields
+    "input_bg": "#000000",          # PURE BLACK for input fields (MAXIMUM contrast)
     "input_focus": "#374151",       # Input focus state
 }
 
