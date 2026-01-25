@@ -201,8 +201,11 @@ class RecordingTab(BaseTab):
             duration_frame,
             textvariable=self.duration_var,
             font=FONTS["body"],
-            bg=COLORS["bg"],
-            relief=tk.FLAT,
+            bg=COLORS["input_bg"],
+            fg=COLORS["text"],
+            insertbackground=COLORS["text"],
+            relief=tk.SOLID,
+            bd=1,
             width=10
         )
         duration_entry.pack(side=tk.LEFT, padx=(0, 20))
@@ -224,8 +227,11 @@ class RecordingTab(BaseTab):
             interval_frame,
             textvariable=self.interval_var,
             font=FONTS["body"],
-            bg=COLORS["bg"],
-            relief=tk.FLAT,
+            bg=COLORS["input_bg"],
+            fg=COLORS["text"],
+            insertbackground=COLORS["text"],
+            relief=tk.SOLID,
+            bd=1,
             width=10
         )
         interval_entry.pack(side=tk.LEFT)
@@ -247,8 +253,11 @@ class RecordingTab(BaseTab):
             output_frame,
             textvariable=self.output_var,
             font=FONTS["body"],
-            bg=COLORS["bg"],
-            relief=tk.FLAT
+            bg=COLORS["input_bg"],
+            fg=COLORS["text"],
+            insertbackground=COLORS["text"],
+            relief=tk.SOLID,
+            bd=1
         )
         output_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
 

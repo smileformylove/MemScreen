@@ -33,11 +33,13 @@ COLORS = {
 
 # Font definitions
 FONTS = {
+    "title": ("Helvetica", 20, "bold"),
     "heading": ("Helvetica", 16, "bold"),
     "subheading": ("Helvetica", 14, "bold"),
     "body": ("Helvetica", 11, "normal"),
     "small": ("Helvetica", 10, "normal"),
     "mono": ("Consolas", 10, "normal"),
+    "code": ("Consolas", 10, "normal"),
 }
 
 # Gradient definitions for modern UI
@@ -92,3 +94,15 @@ ANIMATION_COLORS = {
     "progress": ["#10B981", "#34D399", "#6EE7B7"],            # For progress bars
     "shimmer": ["#374151", "#4B5563", "#6B7280"],              # For skeleton loading
 }
+
+# Export all for easy importing
+__all__ = [
+    "COLORS",
+    "FONTS",
+    "GRADIENTS",
+    "STATUS_COLORS",
+    "SHADOWS",
+    "SHADOW_PRESETS",
+    "HOVER_COLORS",
+    "ANIMATION_COLORS",
+]

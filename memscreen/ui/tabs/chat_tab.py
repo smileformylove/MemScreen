@@ -124,6 +124,8 @@ class ChatTab(BaseTab):
             wrap=tk.WORD,
             font=FONTS["body"],
             bg=COLORS["bg"],
+            fg=COLORS["text"],
+            insertbackground=COLORS["text"],
             relief=tk.FLAT,
             padx=15,
             pady=10,
