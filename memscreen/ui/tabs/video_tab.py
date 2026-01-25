@@ -199,6 +199,9 @@ class VideoTab(BaseTab):
         )
         self.volume_slider.pack(side=tk.LEFT)
 
+        # Auto-load video list on initialization
+        self.root.after(100, self.load_video_list)
+
     def load_video_list(self):
         """Load video list from database"""
         self.video_listbox.delete(0, tk.END)
