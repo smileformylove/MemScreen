@@ -8,10 +8,11 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-green.svg)](https://www.python.org/downloads/)
 [![Ollama](https://img.shields.io/badge/ollama-supported-orange.svg)](https://ollama.com)
+[![Version](https://img.shields.io/badge/version-v0.3-brightgreen.svg)](https://github.com/smileformylove/MemScreen)
 
 *Transform your screen into an intelligent memory that you can query anytime*
 
-[⚡ Quick Start](#-quick-start) • [🎨 Demo](#-memscreen-unified-ui) • [📖 Docs](#-documentation) • [🆚 Comparison](#-why-memscreen)
+[⚡ Quick Start](#-quick-start) • [🎨 Demo](#-features) • [📖 Docs](#-documentation) • [🆚 Comparison](#-why-memscreen)
 
 </div>
 
@@ -23,6 +24,8 @@ MemScreen is your **personal AI-powered visual memory system**. It captures, und
 
 > **Imagine having a photographic memory for your digital life.** Need to find that article you skimmed yesterday? That code snippet from last week? That design inspiration from months ago? Just ask MemScreen.
 
+**🎉 v0.3 Released — Now with Process Mining!** Track your keyboard/mouse patterns and discover workflow insights.
+
 ---
 
 ## ⚡ Quick Start
@@ -30,52 +33,50 @@ MemScreen is your **personal AI-powered visual memory system**. It captures, und
 Get up and running in **3 minutes**:
 
 ```bash
-# 1️⃣ Install (macOS - one command)
-curl -fsSL https://raw.githubusercontent.com/smileformylove/MemScreen/main/macos/install.sh | bash
+# 1️⃣ Clone the repository
+git clone https://github.com/smileformylove/MemScreen.git
+cd MemScreen
 
-# 2️⃣ Or install via pip (cross-platform)
-pip install git+https://github.com/smileformylove/MemScreen.git
+# 2️⃣ Install dependencies
+pip install -r requirements.txt
 
-# 3️⃣ Launch the Unified UI
-memscreen-ui
+# 3️⃣ Install Ollama & pull models
+brew install ollama  # macOS
+ollama pull qwen2.5vl:3b
+ollama pull nomic-embed-text
+
+# 4️⃣ Launch MemScreen
+python start.py
 ```
 
-That's it! Start recording, viewing, searching, and chatting with your screen. 🎉
+That's it! Start recording, viewing, searching, and analyzing your screen. 🎉
 
 ---
 
-## 🎨 MemScreen Unified UI
+## 🎨 Features
 
-**NEW**: One beautiful interface for everything — [memscreen/unified_ui.py](memscreen/unified_ui.py) (1400+ lines)
+### 📱 Unified Interface
 
-<div align="center">
-
-**🔴 Record**  •  **💬 Chat**  •  **🎬 Videos**  •  **🔍 Search**  •  **⚙️ Settings**
+**🔴 Record**  •  **💬 AI Chat**  •  **🎬 Videos**  •  **📊 Process**  •  **⚙️ Settings**
 
 | Feature | What It Does |
 |---------|--------------|
-| 🔴 **Record** | Real-time screen preview, one-click recording with auto-save |
-| 💬 **Chat** | Ask questions about your screen history in natural language |
+| 🔴 **Record** | Real-time screen preview, continuous recording with auto-segmentation |
+| 💬 **AI Chat** | Ask questions about your screen history in natural language |
 | 🎬 **Videos** | Browse and play recordings with built-in video player |
-| 🔍 **Search** | Semantic search + OCR to find anything on your screen |
+| 📊 **Process Mining** | Track keyboard/mouse patterns, analyze workflows, get training recommendations |
 | ⚙️ **Settings** | Configure AI models, storage, and view usage stats |
 
-</div>
-
-**Launch**: `memscreen-ui`
-
-[→ Full Feature Documentation](FEATURE_COMPLETE.md) • [→ Testing Guide](TESTING_GUIDE.md)
-
----
-
-## 🚀 Key Features
+### 🚀 Key Capabilities
 
 | Feature | Description |
 |---------|-------------|
 | 📸 **Screen Capture** | Automatically capture and record your screen locally |
 | 🧠 **AI Understanding** | Understands screen content with local MLLM & OCR models |
 | 💬 **Visual Chat** | Ask questions about any screen content in natural language |
-| 🔍 **Process Mining** | Analyze keyboard/mouse patterns to discover workflows |
+| 🔍 **Semantic Search** | Find anything on your screen with AI-powered search |
+| 📊 **Process Mining** | Analyze keyboard/mouse patterns to discover workflows |
+| ⚡ **Live Event Display** | Real-time view of your keyboard/mouse events |
 | 🔒 **Privacy First** | All data and models stored locally on your machine |
 
 ### What Can It Do?
@@ -84,88 +85,119 @@ That's it! Start recording, viewing, searching, and chatting with your screen. �
 - **"What was that function I wrote last Tuesday?"**
 - **"Find the UI mockup with the dark blue button"**
 - **"When did I last work on the payment feature?"**
+- **"Analyze my workflow patterns and suggest improvements"**
 
 ---
 
 ## 📦 Installation
 
-### 🍎 macOS (Recommended - One Command)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/smileformylove/MemScreen/main/macos/install.sh | bash
-```
-
-This automated installer will:
-- ✓ Install Python dependencies
-- ✓ Install MemScreen package
-- ✓ Set up command-line shortcuts
-- ✓ Download AI models (Ollama)
-- ✓ Configure everything for you
-
-### 🐧 Cross-Platform (pip)
+### 🍎 macOS (Recommended)
 
 ```bash
 # 1. Install Ollama (required for AI)
-brew install ollama  # macOS
-# or visit: https://ollama.com
+brew install ollama
 
 # 2. Pull AI models (one-time)
-ollama pull qwen3:1.7b
 ollama pull qwen2.5vl:3b
-ollama pull mxbai-embed-large:latest
+ollama pull nomic-embed-text
 
-# 3. Install MemScreen
-pip install git+https://github.com/smileformylove/MemScreen.git
-
-# 4. Launch the Unified UI
-memscreen-ui
-```
-
-### 🔧 From Source
-
-```bash
+# 3. Clone and install
 git clone https://github.com/smileformylove/MemScreen.git
 cd MemScreen
-pip install -e .
+pip install -r requirements.txt
+
+# 4. Launch MemScreen
+python start.py
 ```
 
-> 💡 **Pro Tip**: The unified UI (`memscreen-ui`) is the easiest way to use all features!
+### 🐧 Linux / Windows
+
+```bash
+# 1. Install Ollama
+# Visit: https://ollama.com
+
+# 2. Pull AI models
+ollama pull qwen2.5vl:3b
+ollama pull nomic-embed-text
+
+# 3. Clone and install
+git clone https://github.com/smileformylove/MemScreen.git
+cd MemScreen
+pip install -r requirements.txt
+
+# 4. Launch MemScreen
+python start.py
+```
+
+### 🔧 Requirements
+
+- Python 3.8+
+- Ollama (for local AI models)
+- macOS/Linux/Windows
 
 ---
 
 ## 🎬 Usage
 
-### 🌟 Unified UI (Recommended)
+### 🌟 Launch the Application
 
 ```bash
-memscreen-ui
+python start.py
 ```
 
-Everything in one modern interface:
-- 🔴 **Record Tab**: Real-time preview, one-click recording
-- 💬 **Chat Tab**: Ask questions about your screen history
-- 🎬 **Videos Tab**: Browse and play recordings
-- 🔍 **Search Tab**: Find anything with semantic search
-- ⚙️ **Settings Tab**: Configure models and storage
+### 🔴 Recording
 
-### Command Line Tools
+1. Navigate to the **Record** tab
+2. Click **▶️ Start Recording**
+3. Perform your work
+4. Click **⏹️ Stop Recording** when done
+5. Videos are automatically added to memory and can be searched
 
-| Command | Description |
-|----------|-------------|
-| `memscreen-ui` | **Unified UI** - All features in one interface |
-| `memscreen` | Screen recording with customizable settings |
-| `memscreen-chat` | Chat with your screen history |
-| `memscreen-screenshots` | Browse and search screenshots |
-| `memscreen-process-mining` | Analyze keyboard/mouse patterns |
+**Features:**
+- Real-time screen preview
+- Continuous recording with automatic segmentation
+- Configurable segment duration (default: 60 seconds)
+- OCR text extraction from video frames
 
-**Example:**
-```bash
-# Record screen for 60 seconds
-memscreen --duration 60 --interval 2.0
+### 💬 AI Chat
 
-# Analyze work patterns
-memscreen --analyze --export-json report.json
-```
+1. Navigate to the **AI Chat** tab
+2. Select a model (default: qwen2.5vl:3b)
+3. Ask questions in natural language:
+   - "What text was on my screen earlier?"
+   - "Show me the code I was working on"
+   - "When did I last open the dashboard?"
+
+**Features:**
+- Semantic search through your screen history
+- Context-aware responses
+- Video content integration
+
+### 📊 Process Mining (NEW!)
+
+1. Navigate to the **Process** tab
+2. Click **▶️ Start Tracking** to capture keyboard/mouse events
+3. Watch the **live event feed** showing your actions in real-time:
+   - ⌨️ Keyboard events (blue)
+   - 🖱️ Mouse events (green)
+4. Perform your usual work activities
+5. Click **⏹️ Stop Tracking** when done
+6. Select a time range and click **🔍 Analyze Workflow**
+7. View patterns and training recommendations
+
+**Analysis includes:**
+- Activity frequency (most common actions)
+- Frequent sequences (repeated patterns)
+- Time patterns (typing sessions, shortcuts)
+- Workflow patterns (action transitions)
+- Training recommendations
+
+### 🎬 Videos
+
+1. Navigate to the **Videos** tab
+2. Browse your recordings
+3. Click **▶️ Play** to watch
+4. Videos can be deleted from disk
 
 ---
 
@@ -193,6 +225,7 @@ memscreen --analyze --export-json report.json
               ▼
 ┌─────────────────────┐
 │   Vector Database   │
+│   (ChromaDB)        │
 └─────────┬───────────┘
           │
           ▼
@@ -207,43 +240,62 @@ memscreen --analyze --export-json report.json
 
 ### Compared to Screen Recorders
 
-| Tool | Privacy | AI Features | Open Source | Cost |
-|------|---------|-------------|-------------|------|
-| **MemScreen** | ✅ 100% Local | ✅ MLLM + OCR + Process Mining | ✅ MIT | **Free** |
-| **OBS Studio** | ✅ Local | ❌ No | ✅ GPL v2 | Free |
-| **Loom** | ❌ Cloud | ✅ Cloud AI | ❌ No | $15-30/mo |
-| **CleanShot X** | ✅ Local | ❌ OCR only | ❌ No | Paid |
+| Tool | Privacy | AI Features | Process Mining | Open Source | Cost |
+|------|---------|-------------|----------------|-------------|------|
+| **MemScreen** | ✅ 100% Local | ✅ MLLM + OCR | ✅ Yes | ✅ MIT | **Free** |
+| **OBS Studio** | ✅ Local | ❌ No | ❌ No | ✅ GPL v2 | Free |
+| **Loom** | ❌ Cloud | ✅ Cloud AI | ❌ No | ❌ No | $15-30/mo |
+| **CleanShot X** | ✅ Local | ❌ OCR only | ❌ No | ❌ No | Paid |
 
 ### Unique Advantages
 
 - 🧠 **AI-Powered Memory** — Not just recording, but **understanding** your screen
 - 🔒 **True Privacy** — All AI runs locally, no data ever leaves your machine
 - 💬 **Natural Language** — Ask questions like *"What was that API endpoint I used?"*
-- 📊 **Process Mining** — Discover work patterns and optimize productivity
+- 📊 **Process Mining** — Discover work patterns and optimize productivity (unique!)
+- ⚡ **Live Event Tracking** — Real-time keyboard/mouse event display
 - 💰 **Zero Cost Forever** — No subscriptions, no hidden fees
 - 📖 **Open Source** — Study, improve, and verify the code yourself
-
-> 🌐 **Compare more tools**: [Product Hunt - Screenshots & Screen Recording](https://www.producthunt.com/categories/screenshots-and-screen-recording)
-
----
-
-## 📚 Documentation
-
-- **[FEATURE_COMPLETE.md](FEATURE_COMPLETE.md)** — Complete feature verification and usage guide
-- **[TESTING_GUIDE.md](TESTING_GUIDE.md)** — Step-by-step testing workflow
-- **[UI_OPTIMIZATION.md](UI_OPTIMIZATION.md)** — UI design and color scheme
-- **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)** — Project completion overview
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **GUI**: tkinter + ttkthemes (modern Arc theme)
+- **GUI**: tkinter (modern, high-contrast design)
 - **Screen Capture**: PIL ImageGrab
 - **Video Processing**: OpenCV
 - **Databases**: SQLite + ChromaDB (vector search)
-- **AI Models**: Ollama (local MLLM)
+- **AI Models**: Ollama (local MLLM & Embeddings)
+- **OCR**: Ollama Vision API (qwen2.5vl:3b)
+- **Input Tracking**: pynput
 - **Language**: Python 3.8+
+
+---
+
+## 📝 What's New in v0.3
+
+### ✨ New Features
+
+- **📊 Process Mining Tab**
+  - Real-time keyboard/mouse event tracking
+  - Live event feed with color-coded display
+  - Workflow pattern analysis
+  - Training recommendations
+  - Export to JSON
+
+### 🐛 Bug Fixes
+
+- Fixed AI chat hanging on second message
+- Improved error handling
+- Better memory integration
+- Enhanced video processing
+
+### 🔧 Improvements
+
+- Merged search functionality into AI Chat tab
+- Improved button visibility and layout
+- Better text contrast for accessibility
+- Continuous recording with user-specified intervals
 
 ---
 
@@ -273,7 +325,6 @@ This project is released under the **MIT License** — feel free to use, modify,
 
 ## 📞 Support & Community
 
-- 📖 [Documentation](FEATURE_COMPLETE.md) — Detailed guides and features
 - 🐛 [Issues](https://github.com/smileformylove/MemScreen/issues) — Bug reports and feature requests
 - 💬 [Discussions](https://github.com/smileformylove/MemScreen/discussions) — Community discussions
 - 📧 [Email](mailto:jixiangluo85@gmail.com) — Direct support
@@ -285,5 +336,7 @@ This project is released under the **MIT License** — feel free to use, modify,
 **⭐ Star us on GitHub — it helps the project grow!**
 
 Made with ❤️ by [MemScreen Team](https://github.com/smileformylove/MemScreen)
+
+**v0.3** — Process Mining & Live Event Tracking
 
 </div>

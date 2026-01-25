@@ -16,6 +16,8 @@ from .tabs.chat_tab import ChatTab
 from .tabs.video_tab import VideoTab
 # SearchTab removed - functionality merged into ChatTab
 from .tabs.settings_tab import SettingsTab
+from .tabs.process_mining_tab import ProcessMiningTab
+from memscreen.input_tracker import InputTracker
 
 
 class MemScreenApp:
@@ -54,6 +56,9 @@ class MemScreenApp:
         # Store mem and db_name
         self.mem = mem
         self.db_name = db_name
+
+        # Initialize InputTracker for process mining
+        self.input_tracker = InputTracker(db_path="./db/input_events.db")
 
         # Setup UI
         self.setup_styles()
@@ -129,6 +134,7 @@ class MemScreenApp:
             ("🔴", "Record", "record"),
             ("💬", "AI Chat", "chat"),  # Renamed to emphasize AI
             ("🎬", "Videos", "videos"),
+            ("📊", "Process", "process"),  # NEW: Process Mining tab
             ("⚙️", "Settings", "settings")
         ]
 
@@ -191,7 +197,7 @@ class MemScreenApp:
         self.set_active_tab(tab_id)
 
         # Hide all content frames
-        for tab in [self.record_tab, self.chat_tab, self.video_tab, self.settings_tab]:
+        for tab in [self.record_tab, self.chat_tab, self.video_tab, self.process_tab, self.settings_tab]:
             tab.get_frame().pack_forget()
 
         # Show selected frame
@@ -201,6 +207,8 @@ class MemScreenApp:
             self.chat_tab.get_frame().pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         elif tab_id == "videos":
             self.video_tab.get_frame().pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        elif tab_id == "process":
+            self.process_tab.get_frame().pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         elif tab_id == "settings":
             self.settings_tab.get_frame().pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
@@ -219,6 +227,8 @@ class MemScreenApp:
         self.video_tab = VideoTab(self.content_frame, self, self.db_name)
         self.video_tab.create_ui()
 
+        self.process_tab = ProcessMiningTab(self.content_frame, self, db_name="./db/input_events.db")
+        self.process_tab.create_ui()
 
         self.settings_tab = SettingsTab(self.content_frame, self, self.db_name)
         self.settings_tab.create_ui()
