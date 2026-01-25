@@ -44,17 +44,17 @@ class SearchTab(BaseTab):
 
         self.search_input = tk.Entry(
             search_input_frame,
-            font=FONTS["body"],
+            font=("Helvetica", 14, "normal"),  # Larger font
             bg=COLORS["input_bg"],
             fg=COLORS["text"],
             insertbackground=COLORS["text"],
             relief=tk.SOLID,
-            bd=2,
-            highlightthickness=2,
+            bd=3,
+            highlightthickness=3,
             highlightbackground=COLORS["primary"],
             highlightcolor=COLORS["primary"]
         )
-        self.search_input.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10), pady=10, ipady=8)
+        self.search_input.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10), pady=10, ipady=15)
         self.search_input.bind("<Return>", lambda e: self.perform_search())
         self.search_input.focus_set()  # Auto-focus for easy input
 

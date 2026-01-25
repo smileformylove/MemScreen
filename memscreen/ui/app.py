@@ -127,16 +127,19 @@ class MemScreenApp:
                 nav_container,
                 text=f"{icon} {text}",
                 font=FONTS["body"],
-                bg=COLORS["surface_alt"],
-                fg=COLORS["text_light"],
+                bg=COLORS["surface"],
+                fg=COLORS["text"],
                 activebackground=COLORS["primary"],
                 activeforeground="white",
-                relief=tk.FLAT,
+                relief=tk.RAISED,
+                bd=1,
                 padx=25,
                 pady=12,
                 cursor="hand2",
-                borderwidth=0,
-                highlightthickness=0,
+                borderwidth=1,
+                highlightthickness=1,
+                highlightbackground=COLORS["border"],
+                highlightcolor=COLORS["primary"],
                 command=lambda t=tab_id: self.switch_tab(t)
             )
             btn.pack(side=tk.LEFT, padx=3)
@@ -154,17 +157,25 @@ class MemScreenApp:
                     bg=COLORS["primary"],
                     fg="white",
                     font=(FONTS["body"][0], FONTS["body"][1], "bold"),
-                    relief=tk.FLAT,
+                    relief=tk.SUNKEN,
+                    bd=2,
+                    highlightthickness=2,
+                    highlightbackground=COLORS["primary"],
+                    highlightcolor=COLORS["primary"],
                     padx=25,
                     pady=12
                 )
             else:
-                # Inactive tab: subtle gray
+                # Inactive tab: visible with good contrast
                 btn.configure(
-                    bg=COLORS["surface_alt"],
-                    fg=COLORS["text_light"],
+                    bg=COLORS["surface"],
+                    fg=COLORS["text"],
                     font=FONTS["body"],
-                    relief=tk.FLAT,
+                    relief=tk.RAISED,
+                    bd=1,
+                    highlightthickness=1,
+                    highlightbackground=COLORS["border"],
+                    highlightcolor=COLORS["border"],
                     padx=25,
                     pady=12
                 )
