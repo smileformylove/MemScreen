@@ -33,7 +33,7 @@ class ChatTab(BaseTab):
         self.thinking_label = None
         self.typing_indicator_canvas = None
         self.typing_dots = None
-        self.current_model = "qwen3:1.7b"
+        self.current_model = "qwen3:1.7b"  # Use available model
         self.conversation_history = []
         self.message_count = 0
 
@@ -310,8 +310,12 @@ class ChatTab(BaseTab):
     def send_to_ollama(self, prompt, model_name, message_queue):
         """Send request to Ollama"""
         url = "http://127.0.0.1:11434/api/chat"
+
+        # Limit conversation history to last 4 messages to avoid token limit
+        limited_history = self.conversation_history[-4:] if len(self.conversation_history) > 4 else self.conversation_history
+
         messages = [{"role": "system", "content": "You are a helpful assistant."}]
-        messages.extend(self.conversation_history)
+        messages.extend(limited_history)
         messages.append({"role": "user", "content": prompt})
 
         payload = {
@@ -321,13 +325,17 @@ class ChatTab(BaseTab):
         }
 
         try:
-            response = requests.post(url, json=payload, stream=True, timeout=60)
+            print(f"[DEBUG] Sending to Ollama: model={model_name}, messages={len(messages)}")
+            response = requests.post(url, json=payload, stream=True, timeout=120)  # Increased timeout
             response.raise_for_status()
 
             full_response = ""
+            line_count = 0
+
             for line in response.iter_lines():
                 if line:
                     try:
+                        line_count += 1
                         data_str = line.decode('utf-8').replace("data: ", "", 1)
                         if data_str == "[DONE]":
                             break
@@ -337,16 +345,22 @@ class ChatTab(BaseTab):
                             chunk = data["message"]["content"]
                             full_response += chunk
                             message_queue.put(("chunk", chunk))
-                    except (json.JSONDecodeError, KeyError):
+                    except (json.JSONDecodeError, KeyError) as e:
+                        print(f"[DEBUG] Error parsing line {line_count}: {e}")
                         pass
 
+            print(f"[DEBUG] Response complete: {len(full_response)} chars, {line_count} lines")
             message_queue.put(("done", full_response))
 
         except Exception as e:
+            print(f"[ERROR] Ollama request failed: {e}")
             message_queue.put(("error", str(e)))
 
     def process_ai_response(self, message_queue, thread):
         """Process AI response and update UI with smooth animations"""
+        # Initialize timeout tracking
+        self._response_start_time = __import__('time').time()
+
         # Remove typing indicator
         self._hide_typing_indicator()
 
@@ -399,11 +413,26 @@ class ChatTab(BaseTab):
 
             except queue.Empty:
                 if thread.is_alive():
+                    # Check for timeout (30 seconds)
+                    if not hasattr(self, '_response_start_time'):
+                        self._response_start_time = __import__('time').time()
+                    elif __import__('time').time() - self._response_start_time > 30:
+                        # Timeout - show error
+                        self.chat_history.insert(tk.END, "\n⚠️ Response timeout. Please try again.\n\n", "ai_msg")
+                        self.chat_history.config(state=tk.DISABLED)
+                        self.thinking_label.place_forget()
+                        ScrollAnimator.scroll_to_bottom(self.chat_history, duration=150)
+                        return
                     self.root.after(10, update)
                 else:
                     # Thread ended but no final message received
+                    print(f"[DEBUG] Thread ended, buffer length: {len(response_buffer)}")
                     if response_buffer:
                         self.chat_history.insert(tk.END, "\n\n", "ai_msg")
+                        # Save to conversation history
+                        self.conversation_history.append({"role": "assistant", "content": response_buffer})
+                    else:
+                        self.chat_history.insert(tk.END, "\n⚠️ No response received. Please try again.\n\n", "ai_msg")
                     self.chat_history.config(state=tk.DISABLED)
                     self.thinking_label.place_forget()
                     ScrollAnimator.scroll_to_bottom(self.chat_history, duration=150)
