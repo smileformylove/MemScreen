@@ -33,7 +33,7 @@ class ChatTab(BaseTab):
         self.thinking_label = None
         self.typing_indicator_canvas = None
         self.typing_dots = None
-        self.current_model = "qwen3:1.7b"  # Use available model
+        self.current_model = "gemma3:270m"  # Fast and lightweight model
         self.conversation_history = []
         self.message_count = 0
 
@@ -182,8 +182,14 @@ class ChatTab(BaseTab):
             self.model_combo['values'] = models
 
             if models:
-                self.model_combo.current(0)
-                self.current_model = models[0]
+                # Try to find and set gemma3:270m as default
+                if self.current_model in models:
+                    idx = models.index(self.current_model)
+                    self.model_combo.current(idx)
+                else:
+                    # Fallback to first model
+                    self.model_combo.current(0)
+                    self.current_model = models[0]
         except Exception as e:
             from tkinter import messagebox
             messagebox.showerror("Error", f"Failed to load models: {e}")
@@ -280,35 +286,41 @@ class ChatTab(BaseTab):
         ScrollAnimator.scroll_to_bottom(self.chat_history, duration=150)
 
     def _show_typing_indicator(self):
-        """Show animated typing indicator"""
-        # Add typing indicator to chat
+        """Show simple typing indicator"""
+        # Add simple text indicator to chat
         self.chat_history.config(state=tk.NORMAL)
-        self.chat_history.insert(tk.END, "🤖 AI is typing", "ai")
-
-        # Create typing indicator canvas with bouncing dots
-        self.typing_dots = TypingIndicator.create(
-            self.typing_indicator_canvas,
-            x=30, y=10,
-            color=ANIMATION_COLORS["typing"][0],
-            dot_radius=2
-        )
-
-        self.chat_history.window_create(tk.END, window=self.typing_indicator_canvas)
-        self.chat_history.insert(tk.END, "\n\n")
+        self.chat_history.insert(tk.END, "🤖 AI is typing...\n\n", "ai")
         self.chat_history.config(state=tk.DISABLED)
         self.chat_history.see(tk.END)
 
     def _hide_typing_indicator(self):
-        """Hide typing indicator"""
-        if self.typing_indicator_canvas:
-            try:
-                self.typing_indicator_canvas.destroy()
-                self.typing_indicator_canvas = None
-            except:
-                pass
+        """Hide typing indicator by removing the text"""
+        try:
+            self.chat_history.config(state=tk.NORMAL)
+            content = self.chat_history.get("1.0", tk.END)
+            if "AI is typing..." in content:
+                # Find and remove the typing indicator
+                lines = content.split('\n')
+                new_lines = []
+                skip_next = False
+                for i, line in enumerate(lines):
+                    if "AI is typing..." in line:
+                        skip_next = True  # Skip next empty line too
+                        continue
+                    if skip_next and line.strip() == "":
+                        skip_next = False
+                        continue
+                    new_lines.append(line)
+
+                # Update content
+                self.chat_history.delete("1.0", tk.END)
+                self.chat_history.insert(tk.END, '\n'.join(new_lines))
+            self.chat_history.config(state=tk.DISABLED)
+        except:
+            pass
 
     def send_to_ollama(self, prompt, model_name, message_queue):
-        """Send request to Ollama"""
+        """Send request to Ollama (non-streaming for stability)"""
         url = "http://127.0.0.1:11434/api/chat"
 
         # Limit conversation history to last 4 messages to avoid token limit
@@ -321,123 +333,83 @@ class ChatTab(BaseTab):
         payload = {
             "model": model_name,
             "messages": messages,
-            "stream": True
+            "stream": False  # Use non-streaming for stability
         }
 
         try:
             print(f"[DEBUG] Sending to Ollama: model={model_name}, messages={len(messages)}")
-            response = requests.post(url, json=payload, stream=True, timeout=120)  # Increased timeout
+            response = requests.post(url, json=payload, stream=False, timeout=120)
             response.raise_for_status()
 
-            full_response = ""
-            line_count = 0
+            result = response.json()
+            full_response = result.get("message", {}).get("content", "")
 
-            for line in response.iter_lines():
-                if line:
-                    try:
-                        line_count += 1
-                        data_str = line.decode('utf-8').replace("data: ", "", 1)
-                        if data_str == "[DONE]":
-                            break
-
-                        data = json.loads(data_str)
-                        if "message" in data and "content" in data["message"]:
-                            chunk = data["message"]["content"]
-                            full_response += chunk
-                            message_queue.put(("chunk", chunk))
-                    except (json.JSONDecodeError, KeyError) as e:
-                        print(f"[DEBUG] Error parsing line {line_count}: {e}")
-                        pass
-
-            print(f"[DEBUG] Response complete: {len(full_response)} chars, {line_count} lines")
+            print(f"[DEBUG] Response complete: {len(full_response)} chars")
             message_queue.put(("done", full_response))
 
         except Exception as e:
             print(f"[ERROR] Ollama request failed: {e}")
+            import traceback
+            traceback.print_exc()
             message_queue.put(("error", str(e)))
 
     def process_ai_response(self, message_queue, thread):
-        """Process AI response and update UI with smooth animations"""
-        # Initialize timeout tracking
-        self._response_start_time = __import__('time').time()
+        """Process AI response and update UI"""
+        # Wait for response with timeout
+        import time
+        start_time = time.time()
 
-        # Remove typing indicator
-        self._hide_typing_indicator()
-
-        # Start AI message header
-        from datetime import datetime
-        self.chat_history.config(state=tk.NORMAL)
-        self.chat_history.insert(tk.END, "🤖 ", "avatar")
-        self.chat_history.insert(tk.END, "AI", "ai")
-        timestamp = datetime.now().strftime("%H:%M")
-        self.chat_history.insert(tk.END, f" • {timestamp}\n", "timestamp")
-
-        response_buffer = ""
-
-        def update():
-            nonlocal response_buffer
+        while True:
             try:
-                item = message_queue.get_nowait()
-                if item[0] == "chunk":
-                    # Accumulate response chunks
-                    chunk = item[1]
-                    response_buffer += chunk
-
-                    # Insert chunk with streaming effect
-                    self.chat_history.insert(tk.END, chunk)
-                    self.chat_history.see(tk.END)
-
-                    # Continue updating
-                    self.root.after(10, update)
-
-                elif item[0] == "done":
-                    # Complete the message
-                    self.chat_history.insert(tk.END, "\n\n", "ai_msg")
+                # Check timeout (60 seconds)
+                if time.time() - start_time > 60:
+                    self._hide_typing_indicator()
+                    self.chat_history.config(state=tk.NORMAL)
+                    self.chat_history.insert(tk.END, "\n⚠️ Response timeout. Please try again.\n\n", "ai_msg")
                     self.chat_history.config(state=tk.DISABLED)
+                    self.thinking_label.place_forget()
+                    return
+
+                # Try to get message (with small timeout)
+                item = message_queue.get(timeout=0.1)
+
+                if item[0] == "done":
+                    # Remove typing indicator
+                    self._hide_typing_indicator()
+
+                    # Add AI message
+                    response_text = item[1]
+                    self._add_ai_message(response_text)
+
+                    # Save to conversation history
+                    self.conversation_history.append({"role": "assistant", "content": response_text})
 
                     # Hide thinking label
                     self.thinking_label.place_forget()
-
-                    # Save to conversation history
-                    self.conversation_history.append({"role": "assistant", "content": response_buffer})
-
-                    # Smooth scroll to bottom
-                    ScrollAnimator.scroll_to_bottom(self.chat_history, duration=150)
+                    break
 
                 elif item[0] == "error":
+                    # Remove typing indicator
+                    self._hide_typing_indicator()
+
                     # Show error
-                    self.chat_history.insert(tk.END, f"\nError: {item[1]}\n\n", "ai_msg")
+                    self.chat_history.config(state=tk.NORMAL)
+                    self.chat_history.insert(tk.END, f"\n❌ Error: {item[1]}\n\n", "ai_msg")
                     self.chat_history.config(state=tk.DISABLED)
                     self.thinking_label.place_forget()
-                    ScrollAnimator.scroll_to_bottom(self.chat_history, duration=150)
+                    break
 
             except queue.Empty:
-                if thread.is_alive():
-                    # Check for timeout (30 seconds)
-                    if not hasattr(self, '_response_start_time'):
-                        self._response_start_time = __import__('time').time()
-                    elif __import__('time').time() - self._response_start_time > 30:
-                        # Timeout - show error
-                        self.chat_history.insert(tk.END, "\n⚠️ Response timeout. Please try again.\n\n", "ai_msg")
-                        self.chat_history.config(state=tk.DISABLED)
-                        self.thinking_label.place_forget()
-                        ScrollAnimator.scroll_to_bottom(self.chat_history, duration=150)
-                        return
-                    self.root.after(10, update)
-                else:
-                    # Thread ended but no final message received
-                    print(f"[DEBUG] Thread ended, buffer length: {len(response_buffer)}")
-                    if response_buffer:
-                        self.chat_history.insert(tk.END, "\n\n", "ai_msg")
-                        # Save to conversation history
-                        self.conversation_history.append({"role": "assistant", "content": response_buffer})
-                    else:
-                        self.chat_history.insert(tk.END, "\n⚠️ No response received. Please try again.\n\n", "ai_msg")
+                # Check if thread is still alive
+                if not thread.is_alive():
+                    self._hide_typing_indicator()
+                    self.chat_history.config(state=tk.NORMAL)
+                    self.chat_history.insert(tk.END, "\n⚠️ No response from AI. Check if Ollama is running.\n\n", "ai_msg")
                     self.chat_history.config(state=tk.DISABLED)
                     self.thinking_label.place_forget()
-                    ScrollAnimator.scroll_to_bottom(self.chat_history, duration=150)
-
-        update()
+                    break
+                # Continue waiting
+                continue
 
 
 __all__ = ["ChatTab"]

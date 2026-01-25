@@ -427,19 +427,37 @@ class RecordingTab(BaseTab):
         threading.Thread(target=self.save_recording, daemon=True).start()
 
     def record_screen(self):
-        """Record screen in background thread"""
-        start_time = time.time()
-        last_screenshot_time = start_time
+        """Record screen in background thread - split video every duration"""
+        last_screenshot_time = time.time()
+        last_save_time = time.time()  # Track when last video was saved
 
         try:
             while self.app.is_recording:
                 current_time = time.time()
-                elapsed = current_time - start_time
+                elapsed = current_time - self.app.recording_start_time
 
-                # Check if duration reached
-                if elapsed >= self.app.recording_duration:
-                    self.root.after(0, self.stop_recording)
-                    break
+                # Check if it's time to save a new video segment
+                time_since_last_save = current_time - last_save_time
+                if time_since_last_save >= self.app.recording_duration:
+                    # Save current frames as a video segment
+                    if len(self.app.recording_frames) > 0:
+                        print(f"[DEBUG] Saving segment after {time_since_last_save:.1f}s: {len(self.app.recording_frames)} frames")
+
+                        # Copy frames to avoid race condition
+                        frames_to_save = list(self.app.recording_frames)
+
+                        # Clear frames list immediately so new frames can be captured
+                        self.app.recording_frames = []
+
+                        # Save in background thread
+                        threading.Thread(
+                            target=self.save_video_segment,
+                            args=(frames_to_save, self.app.recording_interval),
+                            daemon=True
+                        ).start()
+
+                    # Reset save timer
+                    last_save_time = current_time
 
                 # Capture screenshot at interval
                 if current_time - last_screenshot_time >= self.app.recording_interval:
@@ -448,6 +466,9 @@ class RecordingTab(BaseTab):
                         frame = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
                         self.app.recording_frames.append(frame)
                         last_screenshot_time = current_time
+
+                        if len(self.app.recording_frames) % 10 == 0:
+                            print(f"[DEBUG] Buffer: {len(self.app.recording_frames)} frames at {elapsed:.1f}s")
                     except Exception as e:
                         print(f"Capture error: {e}")
 
@@ -472,27 +493,18 @@ class RecordingTab(BaseTab):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = os.path.join(self.app.recording_output_dir, f"recording_{timestamp}.mp4")
 
-            # Save video
-            height, width = self.app.recording_frames[0].shape[:2]
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            fps = 1.0 / self.app.recording_interval
-            video = cv2.VideoWriter(filename, fourcc, fps, (width, height))
-
-            for frame in self.app.recording_frames:
-                video.write(frame)
-            video.release()
-
-            # Save to database
-            self.save_to_database(DB_NAME, filename, len(self.app.recording_frames), fps)
-
-            # Update UI
+            # Update UI to show saving in progress
             self.root.after(0, lambda: self.recording_status_label.config(
-                text="● Saved!", fg=COLORS["success"]))
-            self.root.after(0, lambda: messagebox.showinfo("Success", f"Recording saved:\n{filename}"))
+                text="● Saving video...", fg=COLORS["warning"]))
 
-            # Refresh video list if Videos tab exists
-            if hasattr(self.app, 'video_listbox'):
-                self.root.after(0, self.app.load_video_list)
+            # Save video in background thread to avoid blocking UI
+            import threading
+            save_thread = threading.Thread(
+                target=self._save_video_worker,
+                args=(filename, self.app.recording_frames, self.app.recording_interval),
+                daemon=True
+            )
+            save_thread.start()
 
         except Exception as e:
             self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to save: {e}"))
@@ -500,6 +512,111 @@ class RecordingTab(BaseTab):
                 text="● Save failed", fg=COLORS["error"]))
         finally:
             self.app.recording_frames = []
+
+    def save_video_segment(self, frames, interval):
+        """Save a video segment independently"""
+        DB_NAME = "./db/screen_capture.db"
+
+        try:
+            import time
+            start_time = time.time()
+
+            # Generate filename with segment timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = os.path.join(self.app.recording_output_dir, f"segment_{timestamp}.mp4")
+
+            # Get frame dimensions
+            height, width = frames[0].shape[:2]
+
+            # Use faster codec
+            try:
+                fourcc = cv2.VideoWriter_fourcc(*'avc1')  # H264
+            except:
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Fallback
+
+            fps = 1.0 / interval
+            video = cv2.VideoWriter(filename, fourcc, fps, (width, height))
+
+            # Write frames
+            for frame in frames:
+                video.write(frame)
+            video.release()
+
+            save_time = time.time() - start_time
+            print(f"[DEBUG] Segment saved: {filename} ({len(frames)} frames, {save_time:.2f}s)")
+
+            # Save to database
+            self.save_to_database(DB_NAME, filename, len(frames), fps)
+
+            # Update UI to show segment saved
+            self.root.after(0, lambda: self.recording_status_label.config(
+                text=f"● Segment saved! ({len(frames)} frames)", fg=COLORS["success"]))
+            self.root.after(2000, lambda: self.recording_status_label.config(
+                text="● Recording...", fg=STATUS_COLORS["recording"]["text"]))
+
+            # Refresh video list if exists
+            if hasattr(self.app, 'video_listbox'):
+                self.root.after(0, self.app.load_video_list)
+
+        except Exception as e:
+            print(f"[ERROR] Failed to save segment: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _save_video_worker(self, filename, frames, interval):
+        """Worker function to save video in background thread"""
+        try:
+            import time
+            start_time = time.time()
+
+            # Get frame dimensions
+            height, width = frames[0].shape[:2]
+
+            # Use faster codec - H264 is faster than MP4V
+            # Try H264 first, fallback to MP4V if not available
+            try:
+                fourcc = cv2.VideoWriter_fourcc(*'avc1')  # H264
+            except:
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Fallback
+
+            fps = 1.0 / interval
+            video = cv2.VideoWriter(filename, fourcc, fps, (width, height))
+
+            # Write frames
+            frame_count = len(frames)
+            for i, frame in enumerate(frames):
+                video.write(frame)
+                # Update progress every 10 frames
+                if i % 10 == 0:
+                    progress = int((i / frame_count) * 100)
+                    self.root.after(0, lambda p=progress: self.recording_status_label.config(
+                        text=f"● Saving {p}%...", fg=COLORS["warning"]))
+
+            video.release()
+
+            save_time = time.time() - start_time
+            print(f"[DEBUG] Video saved in {save_time:.2f}s: {filename}")
+
+            # Save to database
+            self.save_to_database(DB_NAME, filename, frame_count, fps)
+
+            # Update UI on success
+            self.root.after(0, lambda: self.recording_status_label.config(
+                text="● Saved!", fg=COLORS["success"]))
+            self.root.after(0, lambda: messagebox.showinfo("Success",
+                f"Recording saved:\n{filename}\n\nFrames: {frame_count}\nDuration: {save_time:.1f}s"))
+
+            # Refresh video list if Videos tab exists
+            if hasattr(self.app, 'video_listbox'):
+                self.root.after(0, self.app.load_video_list)
+
+        except Exception as e:
+            print(f"[ERROR] Failed to save video: {e}")
+            import traceback
+            traceback.print_exc()
+            self.root.after(0, lambda: self.recording_status_label.config(
+                text="● Save failed", fg=COLORS["error"]))
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to save: {e}"))
 
     def save_to_database(self, db_name, filename, frame_count, fps):
         """Save recording info to database"""
@@ -541,20 +658,21 @@ class RecordingTab(BaseTab):
             print(f"Database error: {e}")
 
     def update_recording_status(self):
-        """Update recording status in real-time with animations"""
+        """Update recording status in real-time"""
         if self.app.is_recording and self.app.recording_start_time:
             elapsed = time.time() - self.app.recording_start_time
-            remaining = max(0, self.app.recording_duration - elapsed)
             frame_count = len(self.app.recording_frames)
 
-            # Update progress bar
-            progress = elapsed / self.app.recording_duration
-            self._update_progress_bar(progress)
+            # Calculate which segment we're on
+            segment_number = int(elapsed / self.app.recording_duration) + 1
 
-            # Update countdown timer
-            self._update_countdown(int(remaining))
+            # Update status text
+            self.recording_status_label.config(
+                text=f"● Recording: segment {segment_number} | {frame_count} buffered frames | {int(elapsed)}s",
+                fg=STATUS_COLORS["recording"]["text"]
+            )
 
-            # Update frame counter with animation
+            # Update frame counter
             self._update_frame_counter(frame_count)
 
             # Schedule next update
