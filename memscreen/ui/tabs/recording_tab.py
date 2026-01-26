@@ -764,11 +764,12 @@ When users ask about what was on their screen or what they were doing, reference
             import requests
             import base64
 
-            # Encode frame to base64
-            _, buffer = cv2.imencode('.jpg', frame)
+            # Encode frame to base64 (lower quality for faster processing)
+            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             img_str = base64.b64encode(buffer).decode('utf-8')
 
-            # Send to Ollama vision API
+            # Send to Ollama vision API with increased timeout
+            print(f"[DEBUG] Sending frame to Ollama vision API...")
             response = requests.post(
                 "http://127.0.0.1:11434/api/generate",
                 json={
@@ -777,15 +778,21 @@ When users ask about what was on their screen or what they were doing, reference
                     "images": [img_str],
                     "stream": False
                 },
-                timeout=30
+                timeout=60  # Increased timeout to 60 seconds
             )
 
             if response.status_code == 200:
                 result = response.json()
                 text = result.get("response", "").strip()
-                if text and text.lower() not in ["no text", "none", "no text found"]:
+                if text and text.lower() not in ["no text", "none", "no text found", "no text in image"]:
                     print(f"[DEBUG] Ollama vision found text: {text[:100]}...")
                     return f"Detected text on screen: {text}"
+                else:
+                    print(f"[DEBUG] Ollama vision: No text detected")
+            else:
+                print(f"[DEBUG] Ollama vision returned status {response.status_code}")
+        except requests.exceptions.Timeout:
+            print(f"[DEBUG] Ollama vision API timed out (vision model may be slow)")
         except Exception as e:
             print(f"[DEBUG] Ollama vision API failed: {e}")
 

@@ -1,0 +1,25 @@
+# MemScreen Requirements
+
+# Core dependencies
+numpy>=1.21.0
+opencv-python>=4.8.0
+pillow>=10.0.0
+
+# AI/ML
+chromadb>=0.4.0
+requests>=2.31.0
+
+# UI - Kivy (NEW)
+kivy>=2.3.0
+kivy-deps.angle>=0.3.0
+pillow>=10.0.0
+python-for-android>=0.0.1
+
+# Input tracking
+pynput>=1.7.6
+
+# Database
+sqlalchemy>=2.0.0
+
+# Utilities
+python-dotenv>=1.0.0
