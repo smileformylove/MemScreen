@@ -1,25 +1,37 @@
-### copyright 2025 jixiangluo    ###
-### email:jixiangluo85@gmail.com ###
-### rights reserved by author    ###
-### time: 2025-11-09             ###
-### license: MIT                 ###
+# MemScreen Requirements
+# Version: v0.3
 
+# Core dependencies
+numpy>=1.21.0
+opencv-python>=4.8.0
+opencv-python-headless>=4.10.0
+pillow>=10.0.0
 
-toolz==0.12.0
-torch==2.0.1+cu118
-torchinfo==1.8.0
-torchvision==0.15.2+cu118
-pydantic==2.11.7
-pydantic_core==2.33.2
-ttkthemes==3.2.2
-ollama==0.3.3
-mss==9.0.1
-matplotlib==3.8.2
-matplotlib-inline==0.1.6
-openai==1.102.0
-opencv-python==4.8.1.78
-opencv-python-headless==4.10.0.84
-Pillow==9.5.0
-numpy==1.24.3
-easyocr==1.7.2
-pynput==1.8.1
+# AI/ML & Memory
+chromadb>=0.4.0
+requests>=2.31.0
+ollama>=0.3.3
+openai>=1.102.0
+
+# UI - Kivy
+kivy>=2.3.0
+kivy-deps.angle>=0.3.0
+ttkthemes>=3.2.2
+
+# Input tracking & screen capture
+pynput>=1.7.6
+mss>=9.0.1
+
+# OCR & Computer Vision
+easyocr>=1.7.2
+
+# Database
+sqlalchemy>=2.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+toolz>=0.12.0
+pydantic>=2.11.0
+
+# Visualization (optional)
+matplotlib>=3.8.0
