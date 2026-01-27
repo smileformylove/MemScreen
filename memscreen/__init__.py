@@ -4,17 +4,50 @@ MemScreen - Ask Screen Anything with AI-Powered Visual Memory
 A local, privacy-focused screen recording and analysis system that uses
 computer vision and language models to understand and remember your screen content.
 
+Version: v0.3
+
+Architecture:
+- MVP Pattern: Presenters handle business logic
+- Memory System: ChromaDB + SQLite for vector and structured storage
+- LLM Integration: Ollama for local AI inference
+- UI: Kivy-based cross-platform interface
+
 Example:
-    >>> import memscreen
-    >>> memscreen.capture_screen()
-    >>> memscreen.query_screen("What did I just capture?")
+    >>> from memscreen import Memory
+    >>> memory = Memory(config=MemoryConfig(...))
+    >>> memory.search("What did I just capture?")
 """
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 __author__ = "Jixiang Luo"
 __email__ = "jixiangluo85@gmail.com"
 
-from .memory import Memory
-from .chroma import ChromaDB
+# Main Memory system
+from .memory import Memory, MemoryConfig, MemoryItem, MemoryType
 
-__all__ = ["Memory", "ChromaDB"]
+# LLM providers
+from .llm import OllamaLLM, BaseLlmConfig, LlmConfig
+
+# Embedding providers
+from .embeddings import OllamaEmbedding, BaseEmbedderConfig, EmbedderConfig
+
+# Vector store
+from .vector_store import VectorStoreFactory
+
+# Storage
+from .storage import SQLiteManager
+
+__all__ = [
+    "Memory",
+    "MemoryConfig",
+    "MemoryItem",
+    "MemoryType",
+    "OllamaLLM",
+    "BaseLlmConfig",
+    "LlmConfig",
+    "OllamaEmbedding",
+    "BaseEmbedderConfig",
+    "EmbedderConfig",
+    "VectorStoreFactory",
+    "SQLiteManager",
+]

@@ -62,7 +62,7 @@ class VectorStoreFactory:
     """Factory class for creating vector store instances."""
 
     provider_to_class = {
-        "chroma": "memscreen.chroma.ChromaDB",
+        "chroma": "memscreen.vector_store.chroma.ChromaDB",
         "milvus": "MilvusDB",
     }
 
