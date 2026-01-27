@@ -26,10 +26,13 @@ __email__ = "jixiangluo85@gmail.com"
 from .memory import Memory, MemoryConfig, MemoryItem, MemoryType
 
 # LLM providers
-from .llm import OllamaLLM, BaseLlmConfig, LlmConfig
+from .llm import OllamaLLM, BaseLlmConfig
+
+# Import configs from memory.models
+from .memory.models import LlmConfig, EmbedderConfig, VectorStoreConfig
 
 # Embedding providers
-from .embeddings import OllamaEmbedding, BaseEmbedderConfig, EmbedderConfig
+from .embeddings import OllamaEmbedding
 
 # Vector store
 from .vector_store import VectorStoreFactory
@@ -46,8 +49,8 @@ __all__ = [
     "BaseLlmConfig",
     "LlmConfig",
     "OllamaEmbedding",
-    "BaseEmbedderConfig",
     "EmbedderConfig",
+    "VectorStoreConfig",
     "VectorStoreFactory",
     "SQLiteManager",
 ]

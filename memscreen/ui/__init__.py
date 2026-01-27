@@ -6,6 +6,6 @@
 
 """MemScreen UI module"""
 
-from .app import MemScreenApp
+from .kivy_app import MemScreenKivyApp
 
-__all__ = ["MemScreenApp"]
+__all__ = ["MemScreenKivyApp"]
