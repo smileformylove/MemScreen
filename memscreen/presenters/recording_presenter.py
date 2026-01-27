@@ -241,7 +241,13 @@ class RecordingPresenter(BasePresenter):
 
             # Capture screen
             screenshot = ImageGrab.grab()
-            frame = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
+            # Convert to numpy array and ensure proper format
+            frame_array = np.array(screenshot)
+            # Ensure uint8 format
+            if frame_array.dtype != np.uint8:
+                frame_array = frame_array.astype(np.uint8)
+            # Convert RGB to BGR
+            frame = cv2.cvtColor(frame_array, cv2.COLOR_RGB2BGR)
 
             return frame
 
@@ -323,7 +329,13 @@ class RecordingPresenter(BasePresenter):
                 if time_since_last_shot >= self.interval:
                     # Capture screen
                     screenshot = ImageGrab.grab()
-                    frame = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
+                    # Convert to numpy array and ensure proper format
+                    frame_array = np.array(screenshot)
+                    # Ensure uint8 format
+                    if frame_array.dtype != np.uint8:
+                        frame_array = frame_array.astype(np.uint8)
+                    # Convert RGB to BGR
+                    frame = cv2.cvtColor(frame_array, cv2.COLOR_RGB2BGR)
 
                     # Add to frames list
                     self.recording_frames.append(frame)

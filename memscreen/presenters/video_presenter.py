@@ -79,6 +79,9 @@ class VideoPresenter(BasePresenter):
         self.playback_thread: Optional[threading.Thread] = None
         self.stop_playback_flag = False
 
+        # Thread lock for video capture access
+        self._capture_lock = threading.Lock()
+
         self._is_initialized = False
 
     def initialize(self):
@@ -95,9 +98,10 @@ class VideoPresenter(BasePresenter):
         """Clean up resources"""
         self.stop_playback()
 
-        if self.video_capture:
-            self.video_capture.release()
-            self.video_capture = None
+        with self._capture_lock:
+            if self.video_capture:
+                self.video_capture.release()
+                self.video_capture = None
 
         self._is_initialized = False
 
@@ -150,25 +154,35 @@ class VideoPresenter(BasePresenter):
             True if video loaded successfully
         """
         try:
+            print(f"[VideoPresenter] load_video called: {filename}")
             # Stop current playback
             self.stop_playback()
 
-            # Check if file exists
-            if not os.path.exists(filename):
-                self.show_error(f"Video file not found: {filename}")
-                return False
+            with self._capture_lock:
+                # Release old capture if exists
+                if self.video_capture:
+                    self.video_capture.release()
+                    self.video_capture = None
 
-            # Open video capture
-            self.video_capture = cv2.VideoCapture(filename)
+                # Check if file exists
+                if not os.path.exists(filename):
+                    self.show_error(f"Video file not found: {filename}")
+                    return False
 
-            if not self.video_capture.isOpened():
-                self.show_error("Failed to open video file")
-                return False
+                # Open video capture
+                self.video_capture = cv2.VideoCapture(filename)
 
-            # Get video properties
-            self.total_frames = int(self.video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
-            self.fps = self.video_capture.get(cv2.CAP_PROP_FPS) or 30.0
-            self.current_frame_number = 0
+                if not self.video_capture.isOpened():
+                    self.show_error("Failed to open video file")
+                    self.video_capture = None
+                    return False
+
+                # Get video properties
+                self.total_frames = int(self.video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
+                self.fps = self.video_capture.get(cv2.CAP_PROP_FPS) or 30.0
+                self.current_frame_number = 0
+
+            print(f"[VideoPresenter] Video loaded: {self.total_frames} frames at {self.fps} FPS")
 
             # Get video info from database
             video_info = self._get_video_info(filename)
@@ -182,6 +196,9 @@ class VideoPresenter(BasePresenter):
             return True
 
         except Exception as e:
+            print(f"[VideoPresenter] Error loading video: {e}")
+            import traceback
+            traceback.print_exc()
             self.handle_error(e, f"Failed to load video: {filename}")
             return False
 
@@ -192,17 +209,28 @@ class VideoPresenter(BasePresenter):
         Returns:
             True if playback started
         """
+        print(f"[VideoPresenter] play_video called, is_playing={self.is_playing}")
         if not self.video_capture:
+            print("[VideoPresenter] Error: No video loaded")
             self.show_error("No video loaded")
             return False
 
         if self.is_playing:
+            print("[VideoPresenter] Already playing")
             return True  # Already playing
 
         try:
+            # Reset to beginning if at end
+            with self._capture_lock:
+                if self.current_frame_number >= self.total_frames - 1:
+                    print(f"[VideoPresenter] Resetting to beginning (was at frame {self.current_frame_number})")
+                    self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    self.current_frame_number = 0
+
             self.is_playing = True
             self.stop_playback_flag = False
 
+            print(f"[VideoPresenter] Starting playback thread...")
             # Start playback thread
             self.playback_thread = threading.Thread(
                 target=self._playback_loop,
@@ -210,13 +238,14 @@ class VideoPresenter(BasePresenter):
             )
             self.playback_thread.start()
 
-            # Notify view
-            if self.view:
-                self.view.on_playback_started()
-
+            # Don't notify view here - will be done via Clock in Kivy thread
+            print(f"[VideoPresenter] Playback started successfully")
             return True
 
         except Exception as e:
+            print(f"[VideoPresenter] Error starting playback: {e}")
+            import traceback
+            traceback.print_exc()
             self.handle_error(e, "Failed to start playback")
             self.is_playing = False
             return False
@@ -253,12 +282,17 @@ class VideoPresenter(BasePresenter):
             self.playback_thread.join(timeout=2)
 
         # Reset to beginning
-        if self.video_capture:
-            self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            self.current_frame_number = 0
+        with self._capture_lock:
+            if self.video_capture:
+                self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                self.current_frame_number = 0
 
         if self.view:
-            self.view.on_playback_stopped()
+            # Use on_playback_finished if on_playback_stopped doesn't exist
+            if hasattr(self.view, 'on_playback_stopped'):
+                self.view.on_playback_stopped()
+            elif hasattr(self.view, 'on_playback_finished'):
+                self.view.on_playback_finished()
 
         return True
 
@@ -279,15 +313,18 @@ class VideoPresenter(BasePresenter):
             # Clamp frame number
             frame_number = max(0, min(frame_number, self.total_frames - 1))
 
-            # Set position
-            self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-            self.current_frame_number = frame_number
+            with self._capture_lock:
+                # Set position
+                self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+                self.current_frame_number = frame_number
 
-            # Get and display frame
-            ret, frame = self.video_capture.read()
-            if ret:
-                if self.view:
-                    self.view.on_frame_changed(frame, frame_number)
+                # Get and display frame
+                ret, frame = self.video_capture.read()
+                if ret:
+                    if self.view:
+                        self.view.on_frame_changed(frame, frame_number)
+                    # Seek back so next read gets the same frame
+                    self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
 
             return True
 
@@ -309,9 +346,10 @@ class VideoPresenter(BasePresenter):
             # Stop playback if this video is playing
             if self.current_video and self.current_video.filename == filename:
                 self.stop_playback()
-                if self.video_capture:
-                    self.video_capture.release()
-                    self.video_capture = None
+                with self._capture_lock:
+                    if self.video_capture:
+                        self.video_capture.release()
+                        self.video_capture = None
                 self.current_video = None
 
             # Delete file
@@ -391,21 +429,32 @@ class VideoPresenter(BasePresenter):
         """Video playback loop (runs in background thread)"""
         try:
             while self.is_playing and not self.stop_playback_flag:
+                # Check if we've reached the end
                 if self.current_frame_number >= self.total_frames:
-                    # End of video
+                    print(f"[VideoPresenter] End of video reached (frame {self.current_frame_number}/{self.total_frames})")
                     break
 
-                # Read next frame
-                ret, frame = self.video_capture.read()
+                # Read next frame with lock
+                with self._capture_lock:
+                    if not self.video_capture or not self.video_capture.isOpened():
+                        print("[VideoPresenter] Video capture not available")
+                        break
 
-                if not ret:
-                    break
+                    ret, frame = self.video_capture.read()
+
+                    if not ret or frame is None:
+                        print("[VideoPresenter] Failed to read frame")
+                        break
 
                 self.current_frame_number += 1
 
-                # Notify view with new frame
-                if self.view:
-                    self.view.on_playback_frame(frame, self.current_frame_number)
+                # Notify view with new frame (outside lock to avoid deadlock)
+                try:
+                    if self.view:
+                        self.view.on_playback_frame(frame, self.current_frame_number)
+                except Exception as view_err:
+                    print(f"[VideoPresenter] Error notifying view: {view_err}")
+                    break
 
                 # Control playback speed
                 delay = int(1000 / self.fps)
@@ -413,10 +462,15 @@ class VideoPresenter(BasePresenter):
 
         except Exception as e:
             print(f"[VideoPresenter] Playback error: {e}")
+            import traceback
+            traceback.print_exc()
 
         finally:
             self.is_playing = False
 
             # Notify view of playback completion
             if self.view:
-                self.view.on_playback_finished()
+                try:
+                    self.view.on_playback_finished()
+                except Exception as e:
+                    print(f"[VideoPresenter] Error notifying playback finished: {e}")
