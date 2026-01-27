@@ -12,6 +12,7 @@ import cv2
 import threading
 from typing import Optional, List, Dict, Any
 
+from kivy.clock import Clock
 from .base_presenter import BasePresenter
 
 
@@ -126,15 +127,23 @@ class VideoPresenter(BasePresenter):
 
             videos = []
             for row in cursor.fetchall():
-                video = VideoInfo(
-                    filename=row[0],
-                    timestamp=row[1],
-                    frame_count=row[2],
-                    fps=row[3] or 30.0,
-                    duration=row[4] or 0.0,
-                    file_size=row[5] or 0
-                )
-                videos.append(video)
+                filename = row[0]
+                # Only include videos that actually exist
+                if os.path.exists(filename):
+                    video = VideoInfo(
+                        filename=filename,
+                        timestamp=row[1],
+                        frame_count=row[2],
+                        fps=row[3] or 30.0,
+                        duration=row[4] or 0.0,
+                        file_size=row[5] or 0
+                    )
+                    videos.append(video)
+                else:
+                    # Clean up database records for deleted files
+                    print(f"[VideoPresenter] Cleaning up database record for missing file: {filename}")
+                    cursor.execute('DELETE FROM recordings WHERE filename = ?', (filename,))
+                    conn.commit()
 
             conn.close()
             return videos
@@ -142,6 +151,35 @@ class VideoPresenter(BasePresenter):
         except Exception as e:
             self.handle_error(e, "Failed to get video list")
             return []
+
+    def delete_video(self, filename: str) -> bool:
+        """
+        Delete a video from database.
+
+        Args:
+            filename: Path to video file
+
+        Returns:
+            True if deleted successfully
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+
+            cursor.execute('DELETE FROM recordings WHERE filename = ?', (filename,))
+            conn.commit()
+
+            deleted = cursor.rowcount > 0
+            conn.close()
+
+            if deleted:
+                print(f"[VideoPresenter] Deleted video record from database: {filename}")
+
+            return deleted
+
+        except Exception as e:
+            self.handle_error(e, "Failed to delete video from database")
+            return False
 
     def load_video(self, filename: str) -> bool:
         """
@@ -267,6 +305,15 @@ class VideoPresenter(BasePresenter):
 
         return True
 
+    def stop_video(self) -> bool:
+        """
+        Alias for stop_playback for compatibility with UI.
+
+        Returns:
+            True if stopped successfully
+        """
+        return self.stop_playback()
+
     def stop_playback(self) -> bool:
         """
         Stop video playback and reset to beginning.
@@ -297,20 +344,11 @@ class VideoPresenter(BasePresenter):
         return True
 
     def seek_to_frame(self, frame_number: int) -> bool:
-        """
-        Seek to specific frame.
-
-        Args:
-            frame_number: Frame number to seek to
-
-        Returns:
-            True if seek successful
-        """
+        """Seek to specific frame and display it"""
         if not self.video_capture:
             return False
 
         try:
-            # Clamp frame number
             frame_number = max(0, min(frame_number, self.total_frames - 1))
 
             with self._capture_lock:
@@ -318,12 +356,14 @@ class VideoPresenter(BasePresenter):
                 self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
                 self.current_frame_number = frame_number
 
-                # Get and display frame
+                # Read the frame
                 ret, frame = self.video_capture.read()
-                if ret:
+
+                if ret and frame is not None:
+                    # Display the frame via callback
                     if self.view:
                         self.view.on_frame_changed(frame, frame_number)
-                    # Seek back so next read gets the same frame
+                    # Reset position for next read
                     self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
 
             return True
@@ -427,11 +467,13 @@ class VideoPresenter(BasePresenter):
 
     def _playback_loop(self):
         """Video playback loop (runs in background thread)"""
+        reached_end = False
         try:
             while self.is_playing and not self.stop_playback_flag:
                 # Check if we've reached the end
                 if self.current_frame_number >= self.total_frames:
                     print(f"[VideoPresenter] End of video reached (frame {self.current_frame_number}/{self.total_frames})")
+                    reached_end = True
                     break
 
                 # Read next frame with lock
@@ -468,8 +510,9 @@ class VideoPresenter(BasePresenter):
         finally:
             self.is_playing = False
 
-            # Notify view of playback completion
-            if self.view:
+            # Only notify playback finished if we reached the end naturally
+            # Don't call it if user paused (is_playing was set to False externally)
+            if reached_end and self.view:
                 try:
                     self.view.on_playback_finished()
                 except Exception as e:

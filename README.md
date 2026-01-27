@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-green.svg)](https://www.python.org/downloads/)
 [![Ollama](https://img.shields.io/badge/ollama-supported-orange.svg)](https://ollama.com)
-[![Version](https://img.shields.io/badge/version-v0.3-brightgreen.svg)](https://github.com/smileformylove/MemScreen)
+[![Version](https://img.shields.io/badge/version-v0.3.5-brightgreen.svg)](https://github.com/smileformylove/MemScreen)
 
 *Transform your screen into an intelligent memory that you can query anytime*
 
@@ -24,7 +24,7 @@ MemScreen is your **personal AI-powered visual memory system**. It captures, und
 
 > **Imagine having a photographic memory for your digital life.** Need to find that article you skimmed yesterday? That code snippet from last week? That design inspiration from months ago? Just ask MemScreen.
 
-**🎉 v0.3 Released — Now with Process Mining!** Track your keyboard/mouse patterns and discover workflow insights.
+**🎉 v0.3.5 Released — Timeline UI improvements!** Fixed timeline alignment and video marker positioning for better user experience.
 
 ---
 

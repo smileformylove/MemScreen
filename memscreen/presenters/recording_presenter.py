@@ -327,20 +327,57 @@ class RecordingPresenter(BasePresenter):
                 # Capture frame at specified interval
                 time_since_last_shot = current_time - last_screenshot_time
                 if time_since_last_shot >= self.interval:
-                    # Capture screen
-                    screenshot = ImageGrab.grab()
-                    # Convert to numpy array and ensure proper format
-                    frame_array = np.array(screenshot)
-                    # Ensure uint8 format
-                    if frame_array.dtype != np.uint8:
-                        frame_array = frame_array.astype(np.uint8)
-                    # Convert RGB to BGR
-                    frame = cv2.cvtColor(frame_array, cv2.COLOR_RGB2BGR)
+                    try:
+                        # Capture screen
+                        screenshot = ImageGrab.grab()
 
-                    # Add to frames list
-                    self.recording_frames.append(frame)
-                    self.frame_count += 1
-                    last_screenshot_time = current_time
+                        # Convert to numpy array
+                        frame_array = np.array(screenshot)
+
+                        # Debug: print dtype
+                        if self.frame_count == 0:
+                            print(f"[Recording] Initial frame dtype: {frame_array.dtype}, shape: {frame_array.shape}")
+
+                        # Handle different data types
+                        if frame_array.dtype == np.float64 or frame_array.dtype == np.float32:
+                            # Float images - normalize to 0-255
+                            if frame_array.max() <= 1.0:
+                                frame_array = np.clip(frame_array * 255, 0, 255).astype(np.uint8)
+                            else:
+                                frame_array = np.clip(frame_array, 0, 255).astype(np.uint8)
+                        elif frame_array.dtype != np.uint8:
+                            # Any other non-uint8 type
+                            frame_array = np.clip(frame_array, 0, 255).astype(np.uint8)
+
+                        # Ensure we have the right shape and channels
+                        if len(frame_array.shape) == 2:
+                            # Grayscale - convert to RGB
+                            frame_array = cv2.cvtColor(frame_array, cv2.COLOR_GRAY2RGB)
+                        elif len(frame_array.shape) == 3 and frame_array.shape[2] == 4:
+                            # RGBA - convert to RGB
+                            frame_array = cv2.cvtColor(frame_array, cv2.COLOR_RGBA2RGB)
+
+                        # Now convert RGB to BGR for OpenCV
+                        if len(frame_array.shape) == 3 and frame_array.shape[2] == 3:
+                            frame = cv2.cvtColor(frame_array, cv2.COLOR_RGB2BGR)
+                        else:
+                            frame = frame_array
+
+                        # Validate final frame
+                        if frame.dtype != np.uint8:
+                            print(f"[Recording] Warning: frame dtype is still {frame.dtype}, converting...")
+                            frame = frame.astype(np.uint8)
+
+                        # Add to frames list
+                        self.recording_frames.append(frame)
+                        self.frame_count += 1
+                        last_screenshot_time = current_time
+
+                    except Exception as e:
+                        print(f"[Recording] Error capturing frame: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        # Continue recording even if one frame fails
 
                     # Update view with frame count
                     if self.view and self.frame_count % 10 == 0:
@@ -444,10 +481,13 @@ class RecordingPresenter(BasePresenter):
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
+            # Get current timestamp
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
             cursor.execute('''
-                INSERT INTO recordings (filename, frame_count, fps, duration, file_size)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (filename, frame_count, fps, duration, file_size))
+                INSERT INTO recordings (filename, timestamp, frame_count, fps, duration, file_size)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (filename, timestamp, frame_count, fps, duration, file_size))
 
             conn.commit()
             conn.close()

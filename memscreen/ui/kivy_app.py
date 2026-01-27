@@ -13,8 +13,10 @@ from kivy.uix.spinner import Spinner
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.image import Image
+from kivy.uix.slider import Slider
+from kivy.uix.relativelayout import RelativeLayout
 from kivy.clock import Clock
-from kivy.graphics import Color, Rectangle
+from kivy.graphics import Color, Rectangle, Line
 from kivy.core.window import Window
 from kivy.config import Config
 from kivy.core.text import LabelBase
@@ -25,7 +27,7 @@ import threading
 
 Config.set('graphics', 'width', '1200')
 Config.set('graphics', 'height', '800')
-Window.title = "MemScreen v0.3"
+Window.title = "MemScreen v0.3.5"
 
 # Register Chinese fonts
 mac_fonts = [
@@ -102,27 +104,56 @@ class RecordingScreen(BaseScreen):
         layout.add_widget(self.status_label)
 
         # Settings
-        settings = BoxLayout(size_hint_y=None, height=90, spacing=12)
-        settings.add_widget(Label(text='Duration (seconds):', font_name='chinese', font_size='18', color=(0, 0, 0, 1)))
+        settings = BoxLayout(size_hint_y=None, height=100, spacing=15)
+
+        # Duration
+        duration_container = BoxLayout(orientation='vertical', spacing=5)
+        duration_label = Label(
+            text='Duration (seconds)',
+            font_name='chinese',
+            font_size='18',
+            size_hint_y=None,
+            height=30,
+            color=(0, 0, 0, 1)
+        )
+        duration_container.add_widget(duration_label)
         self.duration_spinner = Spinner(
             text='60',
             values=['30', '60', '120', '300'],
             font_name='chinese',
-            font_size='15'
+            font_size='22',
+            size_hint_y=None,
+            height=55
         )
-        settings.add_widget(self.duration_spinner)
-        settings.add_widget(Label(text='Interval (seconds):', font_name='chinese', font_size='18', color=(0, 0, 0, 1)))
+        duration_container.add_widget(self.duration_spinner)
+        settings.add_widget(duration_container)
+
+        # Interval
+        interval_container = BoxLayout(orientation='vertical', spacing=5)
+        interval_label = Label(
+            text='Interval (seconds)',
+            font_name='chinese',
+            font_size='18',
+            size_hint_y=None,
+            height=30,
+            color=(0, 0, 0, 1)
+        )
+        interval_container.add_widget(interval_label)
         self.interval_spinner = Spinner(
             text='2.0',
             values=['0.5', '1.0', '1.5', '2.0', '3.0', '5.0'],
             font_name='chinese',
-            font_size='18'
+            font_size='22',
+            size_hint_y=None,
+            height=55
         )
-        settings.add_widget(self.interval_spinner)
+        interval_container.add_widget(self.interval_spinner)
+        settings.add_widget(interval_container)
+
         layout.add_widget(settings)
 
-        # Preview area with image widget
-        self.preview_box = BoxLayout(size_hint_y=0.45)
+        # Preview area with image widget - larger
+        self.preview_box = BoxLayout(size_hint_y=0.6)
         with self.preview_box.canvas.before:
             Color(0.88, 0.85, 0.92, 1)  # Light purple gray
             self.preview_bg = Rectangle(pos=self.preview_box.pos, size=self.preview_box.size)
@@ -214,10 +245,11 @@ class RecordingScreen(BaseScreen):
         self.record_btn.background_color = (0.6, 0.4, 0.75, 1)
         self.status_label.text = "Status: Saved"
 
-    def on_frame_captured(self, frame, frame_count):
+    def on_frame_captured(self, frame_count, elapsed_time):
         """Callback when a frame is captured"""
         self.frame_label.text = f'Frames: {frame_count}'
-        self._display_frame(frame)
+        # Don't update preview during recording to avoid type issues
+        # Preview will update when recording stops
 
     def on_recording_saved(self, filename, file_size):
         """Callback when recording is saved"""
@@ -243,18 +275,6 @@ class ChatScreen(BaseScreen):
         super().__init__(**kwargs)
 
         layout = BoxLayout(orientation='vertical', spacing=15, padding=25)
-
-        # Title
-        title = Label(
-            text='AI Chat',
-            font_name='chinese',
-            font_size='40',
-            bold=True,
-            size_hint_y=None,
-            height=70,
-            color=(0, 0, 0, 1)  # Black
-        )
-        layout.add_widget(title)
 
         # Model selector - larger
         model_box = BoxLayout(size_hint_y=None, height=70, spacing=10)
@@ -290,17 +310,23 @@ class ChatScreen(BaseScreen):
             background_color=(1, 1, 1, 1),
             cursor_color=(0, 0, 0, 1),
             use_bubble=False,
-            write_tab=False
+            write_tab=False,
+            size_hint_x=0.85  # Take up 85% of the space
         )
         send_btn = Button(
             text='Send',
             font_name='chinese',
-            font_size='22',
+            font_size='20',
             bold=True,
             background_color=(0.6, 0.4, 0.75, 1),
-            color=(1, 1, 1, 1)
+            color=(1, 1, 1, 1),
+            size_hint_x=0.15  # Take up 15% of the space
         )
         send_btn.bind(on_press=self.send_message)
+
+        # Bind Enter key to send message
+        self.chat_input.bind(on_text_validate=self.send_message)
+
         input_box.add_widget(self.chat_input)
         input_box.add_widget(send_btn)
         layout.add_widget(input_box)
@@ -470,6 +496,122 @@ Respond naturally without mentioning your model provider or technical details.""
         thread.start()
 
 
+# Timeline marker class (defined at module level for visibility)
+from kivy.graphics import Color, Ellipse, Line
+from kivy.uix.button import Button
+from kivy.uix.label import Label
+from kivy.uix.relativelayout import RelativeLayout
+from datetime import datetime
+
+class TimelineMarker(RelativeLayout):
+    """Video marker on timeline with tech styling"""
+    def __init__(self, video, **kwargs):
+        self.video = video
+        # Initialize size_hint before calling super().__init__
+        kwargs.setdefault('size_hint', (None, None))
+
+        super().__init__(**kwargs)
+
+        # Extract time from timestamp
+        try:
+            dt = datetime.strptime(video.timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
+            time_str = dt.strftime('%H:%M')
+        except:
+            time_str = '??'
+
+        # Main circle button
+        self.circle_btn = Button(
+            size_hint=(None, None),
+            background_color=(0.6, 0.4, 0.75, 1),
+            color=(1, 1, 1, 1)
+        )
+        self.circle_btn.bind(on_press=self.on_press)
+        self.add_widget(self.circle_btn)
+
+        # Time label below circle
+        self.time_label = Label(
+            text=time_str,
+            font_name='chinese',
+            font_size='11',
+            color=(0.6, 0.4, 0.75, 1),
+            size_hint=(None, None),
+            halign='center',
+            valign='middle'
+        )
+        self.add_widget(self.time_label)
+
+        # Draw circle and glow on canvas
+        self._setup_canvas()
+
+        # Bind size/pos changes AFTER adding children
+        self.bind(pos=self.update_styling, size=self.update_styling)
+
+        # Force initial update
+        if self.width > 0 and self.height > 0:
+            self.update_styling(self, None)
+
+    def _setup_canvas(self):
+        """Setup canvas drawing"""
+        with self.canvas.before:
+            # Outer glow
+            Color(0.6, 0.4, 0.75, 0.2)
+            self.outer_glow = Ellipse()
+
+            # Circle border
+            Color(0.6, 0.4, 0.75, 0.8)
+            self.circle_border = Line(width=1.5, cap='round', joint='round')
+
+    def on_press(self, instance):
+        """Handle press event"""
+        if self.parent and hasattr(self.parent, 'parent'):
+            # Find the VideoScreen and trigger play_video
+            from kivy.utils import get_color_from_hex
+            # This will be handled by the parent's binding
+            pass
+
+    def update_styling(self, instance, value):
+        """Update visual styling"""
+        # Set circle size (make it a perfect circle)
+        circle_size = min(self.width, self.height) * 0.6
+
+        # Position circle centered ON the timeline line (y=45)
+        # Timeline line is at y=45 in the timeline_content coordinate system
+        # We need to position relative to parent (marker_container which is at y=0)
+        circle_x = self.x + (self.width - circle_size) / 2
+        circle_y = 45 - circle_size / 2  # Center on timeline line (y=45)
+
+        self.circle_btn.size = (circle_size, circle_size)
+        self.circle_btn.pos = (circle_x, circle_y)
+
+        # Outer glow (larger than circle) - centered on same position
+        glow_size = circle_size * 1.6
+        glow_x = self.x + (self.width - glow_size) / 2
+        glow_y = 45 - glow_size / 2
+        self.outer_glow.pos = (glow_x, glow_y)
+        self.outer_glow.size = (glow_size, glow_size)
+
+        # Circle border - centered at (center_x, 45)
+        center_x = self.x + self.width / 2
+        self.circle_border.circle = (
+            center_x, 45,  # Explicitly center on y=45
+            circle_size / 2 - 2
+        )
+
+        # Time label size and position (below the circle, below timeline line)
+        self.time_label.texture_update()
+        self.time_label.size = self.time_label.texture_size
+        label_x = center_x - self.time_label.width / 2
+        # Position time label below the circle
+        label_y = circle_y + circle_size + 3
+        self.time_label.pos = (label_x, label_y)
+
+    def bind(self, **kwargs):
+        """Forward bind to circle_btn"""
+        if 'on_press' in kwargs:
+            self.circle_btn.bind(on_press=kwargs['on_press'])
+        super().bind(**kwargs)
+
+
 class VideoScreen(BaseScreen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -477,21 +619,11 @@ class VideoScreen(BaseScreen):
         self.current_video = None
         self.is_playing = False
 
-        layout = BoxLayout(orientation='vertical', spacing=15, padding=25)
+        # Main layout
+        main_layout = BoxLayout(orientation='vertical', spacing=10, padding=20)
 
-        # Header with title, back button and refresh button
-        header = BoxLayout(size_hint_y=None, height=60, spacing=15)
-        self.back_btn = Button(
-            text='← List',
-            font_name='chinese',
-            font_size='14',
-            background_color=(0.5, 0.4, 0.6, 1),
-            color=(1, 1, 1, 1),
-            size_hint_x=0.15,
-            size_hint_y=None,
-            height=50
-        )
-        self.back_btn.bind(on_press=self.show_list)
+        # Header: Title + Refresh button
+        header = BoxLayout(size_hint_y=None, height=55, spacing=15)
 
         self.title_label = Label(
             text='Recorded Videos',
@@ -499,98 +631,339 @@ class VideoScreen(BaseScreen):
             font_size='32',
             bold=True,
             color=(0, 0, 0, 1),
-            size_hint_x=0.55,
-            halign='center'
+            size_hint_x=0.7,
+            halign='left',
+            valign='middle'
         )
 
         refresh_btn = Button(
             text='Refresh',
             font_name='chinese',
-            font_size='16',
+            font_size='18',
             background_color=(0.6, 0.4, 0.75, 1),
             color=(1, 1, 1, 1),
             size_hint_x=0.3,
             size_hint_y=None,
-            height=50
+            height=45
         )
         refresh_btn.bind(on_press=self.refresh)
 
-        header.add_widget(self.back_btn)
         header.add_widget(self.title_label)
         header.add_widget(refresh_btn)
-        layout.add_widget(header)
+        main_layout.add_widget(header)
 
-        # Info label
-        self.info_label = Label(
+        # Status label (count) - moved into list_layout to avoid overlap with timeline
+        # We'll add it later in the list_layout instead
+
+        # Content area for switching views
+        self.content_area = BoxLayout(orientation='vertical')
+        main_layout.add_widget(self.content_area)
+
+        # ===== VIDEO LIST =====
+        self.list_layout = BoxLayout(orientation='vertical')
+
+        # Status label (count) - add at top of list_layout
+        self.status_label = Label(
             text='Loading...',
             font_name='chinese',
-            font_size='18',
-            color=(0.2, 0.2, 0.25, 1),
+            font_size='15',
+            color=(0.4, 0.4, 0.45, 1),
             size_hint_y=None,
-            height=35,
-            halign='left'
+            height=25,
+            halign='left',
+            valign='middle',
+            padding=(15, 0, 15, 0)
         )
-        layout.add_widget(self.info_label)
+        self.list_layout.add_widget(self.status_label)
 
-        # Content area - switches between list and player
-        self.content_area = BoxLayout(orientation='vertical')
-        layout.add_widget(self.content_area)
+        # Add spacing between status label and timeline
+        spacing_widget = BoxLayout(size_hint_y=None, height=10)
+        self.list_layout.add_widget(spacing_widget)
 
-        # Video list container
-        self.list_container = BoxLayout(orientation='vertical')
-        scroll = ScrollView(size_hint=(1, 1))
-        self.video_list = BoxLayout(orientation='vertical', size_hint_y=None, spacing=8, padding=10)
+        # Timeline at top of list
+        self.timeline_container = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            height=130,
+            spacing=10,
+            padding=(15, 5, 15, 5)  # Reduced top padding since we have spacing widget above
+        )
+
+        # Timeline title
+        timeline_title = Label(
+            text='Timeline - Click a dot to play',
+            font_name='chinese',
+            font_size='14',
+            color=(0.4, 0.4, 0.45, 1),
+            size_hint_y=None,
+            height=20,
+            halign='center'
+        )
+        self.timeline_container.add_widget(timeline_title)
+
+        # Container for timeline with scrolling - increased height
+        timeline_scroll_wrapper = BoxLayout(
+            orientation='vertical',
+            size_hint=(1, None),
+            height=115  # Increased to accommodate navigation slider
+        )
+
+        self.marker_scroll = ScrollView(
+            size_hint=(1, None),
+            height=90,  # Fixed height for timeline
+            do_scroll_y=False,
+            do_scroll_x=True,
+            bar_width=4,
+            bar_color=(0.6, 0.4, 0.75, 0.4),
+            scroll_type=['bars', 'content'],  # Enable both bar and touch scrolling
+            scroll_wheel_distance=50,  # Smooth scrolling with mouse wheel
+            always_overscroll=False  # Prevent overscroll bounce for smoother feel
+        )
+
+        # Store reference to scroll_x for navigation slider
+        self.marker_scroll.bind(scroll_x=self._on_timeline_scroll)
+
+        # Use RelativeLayout to layer line behind markers
+        self.timeline_content = RelativeLayout(
+            size_hint_y=None,
+            height=90,
+            size_hint_x=None,
+            width=2000  # Extended initial width for more scrolling
+        )
+
+        # Draw timeline line with enhanced tech effect - more glow layers
+        with self.timeline_content.canvas.before:
+            # Widest outer glow - very diffuse
+            Color(0.5, 0.3, 0.7, 0.08)
+            self.timeline_glow_ultra = Line(
+                points=[0, 45, 2000, 45],
+                width=12,
+                cap='round'
+            )
+
+            # Wide outer glow
+            Color(0.6, 0.4, 0.75, 0.12)
+            self.timeline_glow_outer = Line(
+                points=[0, 45, 2000, 45],
+                width=8,
+                cap='round'
+            )
+
+            # Middle glow
+            Color(0.65, 0.45, 0.8, 0.25)
+            self.timeline_glow_middle = Line(
+                points=[0, 45, 2000, 45],
+                width=4,
+                cap='round'
+            )
+
+            # Inner bright glow
+            Color(0.7, 0.5, 0.85, 0.5)
+            self.timeline_glow_inner = Line(
+                points=[0, 45, 2000, 45],
+                width=2.5,
+                cap='round'
+            )
+
+            # Core line (brightest - almost white)
+            Color(0.85, 0.75, 0.95, 1.0)
+            self.timeline_line = Line(
+                points=[0, 45, 2000, 45],  # Center of 90px height
+                width=1.2,
+                cap='round'
+            )
+
+            # Add tick marks along the timeline for tech feel
+            Color(0.6, 0.4, 0.75, 0.3)
+            self.timeline_ticks = []
+            for i in range(0, 2000, 100):  # Tick every 100 pixels
+                tick = Line(
+                    points=[i, 40, i, 50],  # Small vertical tick marks
+                    width=1,
+                    cap='round'
+                )
+                self.timeline_ticks.append(tick)
+
+        # Play position indicator - draw on canvas.after so it appears ON TOP of everything
+        with self.timeline_content.canvas.after:
+            # Outer glow - very bright orange
+            Color(1.0, 0.6, 0.1, 1.0)  # Full opacity, bright orange
+            self.play_indicator_glow_outer = Line(
+                points=[0, 43, 0, 47],  # Vertical marker
+                width=12,  # Very wide glow
+                cap='round'
+            )
+            # Inner glow
+            Color(1.0, 0.75, 0.3, 1.0)  # Orange
+            self.play_indicator_glow = Line(
+                points=[0, 44, 0, 46],  # Slightly smaller
+                width=6,
+                cap='round'
+            )
+            # Bright core - pure yellow-white
+            Color(1.0, 1.0, 0.7, 1.0)  # Bright yellow-white, full opacity
+            self.play_indicator = Line(
+                points=[0, 44.5, 0, 45.5],  # Very thin, exactly centered on timeline
+                width=2.5,
+                cap='round'
+            )
+
+        # Marker container - use BoxLayout for horizontal layout
+        self.marker_container = BoxLayout(
+            orientation='horizontal',
+            size_hint_y=None,
+            height=90,
+            size_hint_x=None,
+            width=2000,
+            pos=(0, 0),
+            spacing=10,
+            padding=(80, 0, 80, 0)  # Increased padding for more centering space
+        )
+
+        # Bind to update marker_container size when timeline_content changes
+        self.timeline_content.bind(size=self._update_marker_size, pos=self._update_marker_pos)
+
+        self.timeline_content.add_widget(self.marker_container)
+        self.marker_scroll.add_widget(self.timeline_content)
+        timeline_scroll_wrapper.add_widget(self.marker_scroll)
+
+        # Add navigation slider below timeline
+        self.timeline_nav_slider = Slider(
+            size_hint=(1, None),
+            height=15,
+            min=0,
+            max=1,
+            value=0,
+            step=0.001,
+            value_track=True,
+            value_track_color=(0.6, 0.4, 0.75, 0.6),
+            value_track_width=2,
+            cursor_size=(20, 20)
+        )
+        # Bind to value property, not on_value_change
+        self.timeline_nav_slider.bind(value=self._on_nav_slider_change)
+        timeline_scroll_wrapper.add_widget(self.timeline_nav_slider)
+
+        self.timeline_container.add_widget(timeline_scroll_wrapper)
+        self.list_layout.add_widget(self.timeline_container)
+
+        # Video list scroll
+        scroll = ScrollView(
+            size_hint=(1, 1),
+            do_scroll_x=False,
+            bar_width=10,
+            bar_color=(0.7, 0.65, 0.75, 1),
+            scroll_type=['bars', 'content']
+        )
+        self.video_list = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            spacing=10,
+            padding=5
+        )
         self.video_list.bind(minimum_height=self.video_list.setter('height'))
         scroll.add_widget(self.video_list)
-        self.list_container.add_widget(scroll)
-        self.content_area.add_widget(self.list_container)
+        self.list_layout.add_widget(scroll)
+        self.content_area.add_widget(self.list_layout)
 
-        # Video player container (hidden initially)
-        self.player_container = BoxLayout(orientation='vertical', spacing=10)
+        # ===== VIDEO PLAYER =====
+        self.player_layout = BoxLayout(orientation='vertical', spacing=10)
 
-        # Video preview image
-        self.video_preview = Image(
-            size_hint=(1, 0.6),
-            allow_stretch=True,
-            keep_ratio=False
+        # Back button
+        self.back_btn = Button(
+            text='← Back to List',
+            font_name='chinese',
+            font_size='16',
+            background_color=(0.5, 0.4, 0.6, 1),
+            color=(1, 1, 1, 1),
+            size_hint_y=None,
+            height=40
         )
-        with self.video_preview.canvas.before:
-            Color(0.85, 0.82, 0.88, 1)
-            self.preview_bg = Rectangle(pos=self.video_preview.pos, size=self.video_preview.size)
-        self.video_preview.bind(pos=self._update_preview_bg, size=self._update_preview_bg)
-        self.player_container.add_widget(self.video_preview)
+        self.back_btn.bind(on_press=self.show_list)
+        self.player_layout.add_widget(self.back_btn)
+
+        # Video preview
+        self.video_preview = Image(
+            size_hint=(1, 0.7),
+            allow_stretch=True
+        )
+        self.player_layout.add_widget(self.video_preview)
 
         # Video info
         self.video_info_label = Label(
             text='Select a video to play',
             font_name='chinese',
-            font_size='18',
-            color=(0, 0, 0, 1),
+            font_size='16',
+            color=(0.2, 0.2, 0.2, 1),
             size_hint_y=None,
-            height=50,
-            halign='center'
+            height=40,
+            halign='center',
+            valign='middle'
         )
-        self.player_container.add_widget(self.video_info_label)
+        self.player_layout.add_widget(self.video_info_label)
 
-        # Controls
-        controls = BoxLayout(size_hint_y=None, height=60, spacing=10)
+        # Controls row
+        controls = BoxLayout(size_hint_y=None, height=50, spacing=10)
+
+        # Play button
         self.play_btn = Button(
             text='Play',
             font_name='chinese',
-            font_size='20',
+            font_size='18',
             background_color=(0.6, 0.4, 0.75, 1),
-            color=(1, 1, 1, 1)
+            color=(1, 1, 1, 1),
+            size_hint_x=None,
+            width=80
         )
         self.play_btn.bind(on_press=self.toggle_play)
         controls.add_widget(self.play_btn)
-        self.player_container.add_widget(controls)
 
-        self.add_widget(layout)
+        # Progress bar container
+        progress_container = BoxLayout(orientation='vertical', spacing=2)
+
+        # Time labels row
+        time_labels = BoxLayout(size_hint_y=None, height=20, spacing=5)
+
+        self.current_time_label = Label(
+            text='0:00',
+            font_name='chinese',
+            font_size='13',
+            color=(0.4, 0.4, 0.4, 1)
+        )
+        time_labels.add_widget(self.current_time_label)
+
+        self.total_time_label = Label(
+            text='0:00',
+            font_name='chinese',
+            font_size='13',
+            color=(0.4, 0.4, 0.4, 1),
+            halign='right'
+        )
+        time_labels.add_widget(self.total_time_label)
+
+        progress_container.add_widget(time_labels)
+
+        # Progress slider - simple and reliable
+        self.progress_slider = Slider(
+            min=0,
+            max=100,
+            value=0,
+            value_track=True,
+            value_track_color=(0.6, 0.4, 0.75, 1),
+            value_track_width=3
+        )
+        progress_container.add_widget(self.progress_slider)
+
+        controls.add_widget(progress_container)
+        self.player_layout.add_widget(controls)
+
+        # Track video state for progress updates
+        self.total_frames = 0
+        self.fps = 30
+        self.is_seeking = False
+
+        self.add_widget(main_layout)
         Clock.schedule_once(lambda dt: self.refresh(None), 0.3)
-
-    def _update_preview_bg(self, instance, value):
-        self.preview_bg.pos = instance.pos
-        self.preview_bg.size = instance.size
 
     def set_presenter(self, presenter):
         """Set the presenter for this screen"""
@@ -599,113 +972,305 @@ class VideoScreen(BaseScreen):
 
     def refresh(self, instance):
         """Refresh the video list"""
-        self.show_list(None)
+        self.show_list()
         self.video_list.clear_widgets()
 
-        if self.presenter:
-            try:
-                videos = self.presenter.get_video_list()
+        if not self.presenter:
+            self.status_label.text = 'Presenter not available'
+            return
 
-                if not videos:
-                    self.info_label.text = 'No recordings found'
-                    msg = Label(
-                        text='No recordings found.\nStart recording from the Recording tab.',
-                        font_name='chinese',
-                        font_size='22',
-                        color=(0.3, 0.3, 0.35, 1),
-                        size_hint_y=None,
-                        height=100,
-                        halign='center'
-                    )
-                    self.video_list.add_widget(msg)
-                else:
-                    self.info_label.text = f'Found {len(videos)} recording(s)'
+        try:
+            videos = self.presenter.get_video_list()
 
-                    for idx, video in enumerate(videos):
-                        item = BoxLayout(
-                            orientation='vertical',
-                            size_hint_y=None,
-                            spacing=6,
-                            padding=14
-                        )
-
-                        with item.canvas.before:
-                            Color(0.98, 0.95, 1.0, 1)
-                            item_bg = Rectangle(pos=item.pos, size=item.size)
-                        item.bind(pos=lambda i,v: setattr(item_bg, 'pos', i.pos),
-                                  size=lambda i,v: setattr(item_bg, 'size', i.size))
-
-                        # Video info row with play button - larger
-                        info_row = BoxLayout(size_hint_y=None, height=35, spacing=15)
-
-                        filename = os.path.basename(video.filename)
-                        duration_str = f"{video.duration:.1f}s"
-                        timestamp_str = video.timestamp.split('.')[0] if '.' in video.timestamp else video.timestamp
-                        frames_str = f"{video.frame_count} frames" if video.frame_count else "N/A"
-
-                        filename_label = Label(
-                            text=f'{filename}',
-                            font_name='chinese',
-                            font_size='20',
-                            bold=True,
-                            halign='left',
-                            color=(0, 0, 0, 1),
-                            text_size=(None, None)
-                        )
-                        info_row.add_widget(filename_label)
-
-                        # Play button - larger
-                        play_btn = Button(
-                            text='▶ Play',
-                            font_name='chinese',
-                            font_size='16',
-                            bold=True,
-                            background_color=(0.6, 0.4, 0.75, 1),
-                            color=(1, 1, 1, 1),
-                            size_hint_x=0.2,
-                            size_hint_y=None,
-                            height=40
-                        )
-                        play_btn.bind(on_press=lambda instance, v=video: self.play_video(v))
-                        info_row.add_widget(play_btn)
-
-                        item.add_widget(info_row)
-
-                        # Details - larger font
-                        details = f'Duration: {duration_str}  |  Recorded: {timestamp_str}  |  Frames: {frames_str}'
-                        details_label = Label(
-                            text=details,
-                            font_name='chinese',
-                            font_size='16',
-                            halign='left',
-                            color=(0.3, 0.3, 0.35, 1),
-                            size_hint_y=None,
-                            height=25
-                        )
-                        item.add_widget(details_label)
-
-                        self.video_list.add_widget(item)
-
-            except Exception as e:
-                self.info_label.text = 'Error loading videos'
-                error_label = Label(
-                    text=f'Error: {str(e)}',
+            if not videos:
+                self.status_label.text = 'No recordings found'
+                msg = Label(
+                    text='No recordings found.\nStart recording from the Recording tab.',
                     font_name='chinese',
-                    font_size='18',
-                    color=(0.8, 0.2, 0.2, 1),
+                    font_size='20',
+                    color=(0.3, 0.3, 0.35, 1),
                     size_hint_y=None,
-                    height=50
+                    height=100,
+                    halign='center',
+                    valign='middle'
                 )
-                self.video_list.add_widget(error_label)
-                import traceback
-                traceback.print_exc()
+                self.video_list.add_widget(msg)
+                return
 
-    def show_list(self, instance):
+            self.status_label.text = f'Found {len(videos)} recording(s)'
+
+            # Update timeline with videos
+            self._update_timeline(videos)
+
+            for video in videos:
+                # Create video item
+                item = self._create_video_item(video)
+                self.video_list.add_widget(item)
+
+        except Exception as e:
+            self.status_label.text = 'Error loading videos'
+            error_label = Label(
+                text=f'Error: {str(e)}',
+                font_name='chinese',
+                font_size='18',
+                color=(0.8, 0.2, 0.2, 1),
+                size_hint_y=None,
+                height=60
+            )
+            self.video_list.add_widget(error_label)
+            import traceback
+            traceback.print_exc()
+
+    def _update_marker_size(self, instance, value):
+        """Update marker container size to match timeline content"""
+        if hasattr(self, 'marker_container'):
+            self.marker_container.width = instance.width
+            self.marker_container.height = instance.height
+
+    def _update_marker_pos(self, instance, value):
+        """Update marker container position"""
+        if hasattr(self, 'marker_container'):
+            self.marker_container.pos = instance.pos
+
+    def _on_timeline_scroll(self, instance, value):
+        """Handle timeline scroll event - update navigation slider"""
+        if hasattr(self, 'timeline_nav_slider'):
+            # Update the slider to match scroll position (only if not being dragged)
+            # Check if the slider is not the source of the change
+            try:
+                self.timeline_nav_slider.value = value
+            except:
+                pass  # Ignore errors during binding
+
+    def _on_nav_slider_change(self, instance, value):
+        """Handle navigation slider change - scroll timeline"""
+        if hasattr(self, 'marker_scroll'):
+            # Scroll the timeline to match slider position
+            self.marker_scroll.scroll_x = value
+
+    def update_play_position(self, progress):
+        """Update the play position indicator on timeline
+
+        Args:
+            progress: float between 0 and 1 representing play progress
+        """
+        if hasattr(self, 'timeline_content') and hasattr(self, 'play_indicator'):
+            # Calculate position on timeline
+            # Consider the padding (80px on each side) for accurate positioning
+            padding = 80
+            usable_width = self.timeline_content.width - (padding * 2)
+            x_pos = padding + (progress * usable_width)
+
+            # Update all three layers of the play indicator
+            self.play_indicator_glow_outer.points = [x_pos, 43, x_pos, 47]
+            self.play_indicator_glow.points = [x_pos, 44, x_pos, 46]
+            self.play_indicator.points = [x_pos, 44.5, x_pos, 45.5]
+
+    def _update_timeline_line(self, instance, value):
+        """Update timeline line position"""
+        if hasattr(self, 'timeline_line') and hasattr(self, 'timeline_content'):
+            # Update line to span the entire width of timeline_content
+            y = self.timeline_content.center_y
+            width = self.timeline_content.width
+
+            # Update all five line layers
+            self.timeline_glow_ultra.points = [0, y, width, y]
+            self.timeline_glow_outer.points = [0, y, width, y]
+            self.timeline_glow_middle.points = [0, y, width, y]
+            self.timeline_glow_inner.points = [0, y, width, y]
+            self.timeline_line.points = [0, y, width, y]
+
+            # Note: Tick marks are dynamically recreated in _update_timeline
+            # so they don't need to be updated here
+
+    def _update_timeline(self, videos):
+        """Update timeline markers with videos"""
+        self.marker_container.clear_widgets()
+        self.marker_widgets = []
+
+        if not videos:
+            print("[VideoScreen] _update_timeline: No videos to display")
+            return
+
+        # Sort videos by timestamp
+        sorted_videos = sorted(videos, key=lambda v: v.timestamp)
+        print(f"[VideoScreen] _update_timeline: Found {len(sorted_videos)} videos")
+
+        # Get the padding from marker_container (left and right are both 80)
+        padding = 80
+        padding_total = padding * 2
+
+        # Adaptive spacing and size based on video count
+        num_videos = len(sorted_videos)
+        if num_videos <= 5:
+            marker_size = 45  # Increased to accommodate time label
+            spacing = 100  # Increased for better spread
+        elif num_videos <= 15:
+            marker_size = 40
+            spacing = 90
+        elif num_videos <= 30:
+            marker_size = 36
+            spacing = 80
+        else:
+            marker_size = 32
+            spacing = 70
+
+        # Calculate content width (markers + spacing between them)
+        # The actual space needed for markers themselves
+        content_width = num_videos * marker_size + (num_videos - 1) * (spacing - marker_size)
+
+        # Calculate total width - include padding and ensure minimum width
+        # Extended minimum width for more scrolling space
+        total_width = max(2000, content_width + padding_total + 200)
+        print(f"[VideoScreen] _update_timeline: total_width={total_width}, marker_size={marker_size}, spacing={spacing}")
+
+        # Update timeline_content and marker_container width
+        self.timeline_content.width = total_width
+        self.marker_container.width = total_width
+
+        # Update all timeline lines to span the ENTIRE width including padding
+        if hasattr(self, 'timeline_line'):
+            y = self.timeline_content.center_y
+            # Update all five line layers
+            self.timeline_glow_ultra.points = [0, y, total_width, y]
+            self.timeline_glow_outer.points = [0, y, total_width, y]
+            self.timeline_glow_middle.points = [0, y, total_width, y]
+            self.timeline_glow_inner.points = [0, y, total_width, y]
+            self.timeline_line.points = [0, y, total_width, y]
+
+            # Note: Don't redraw canvas here - it's already drawn in __init__
+            # We just update the line points above
+
+        # Update BoxLayout spacing
+        self.marker_container.spacing = max(10, spacing - marker_size)
+
+        # Add all markers
+        for i, video in enumerate(sorted_videos):
+            # Create marker
+            marker = TimelineMarker(
+                video=video,
+                size_hint=(None, None),
+                size=(marker_size, marker_size)
+            )
+
+            # Use a closure to properly capture the video variable
+            def make_play_callback(v):
+                return lambda btn: self.play_video(v)
+
+            marker.circle_btn.bind(on_press=make_play_callback(video))
+            self.marker_container.add_widget(marker)
+            self.marker_widgets.append(marker)
+
+        print(f"[VideoScreen] _update_timeline: Added {len(self.marker_widgets)} markers to timeline")
+
+    def _create_video_item(self, video):
+        """Create a single video list item"""
+        # Parse video info
+        filename = os.path.basename(video.filename)
+        duration_str = f"{video.duration:.1f}s"
+        timestamp_str = video.timestamp.split('.')[0] if '.' in video.timestamp else video.timestamp
+        frames_str = f"{video.frame_count} frames" if video.frame_count else "N/A"
+
+        # Main container
+        item = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            spacing=6,
+            padding=12
+        )
+
+        # Add background
+        with item.canvas.before:
+            from kivy.graphics import Color, Rectangle
+            Color(0.98, 0.96, 1.0, 1)
+            item.bg_rect = Rectangle(pos=item.pos, size=item.size)
+
+        def update_bg(instance, value):
+            item.bg_rect.pos = instance.pos
+            item.bg_rect.size = instance.size
+
+        item.bind(pos=update_bg, size=update_bg)
+
+        # Top row: filename + play button
+        top_row = BoxLayout(size_hint_y=None, height=35, spacing=10)
+
+        filename_label = Label(
+            text=filename,
+            font_name='chinese',
+            font_size='18',
+            bold=True,
+            color=(0, 0, 0, 1),
+            halign='left',
+            valign='middle',
+            text_size=(None, None)
+        )
+        top_row.add_widget(filename_label)
+
+        # Buttons container
+        buttons_layout = BoxLayout(size_hint_x=None, width=210, spacing=5)
+
+        play_btn = Button(
+            text='▶ Play',
+            font_name='chinese',
+            font_size='15',
+            background_color=(0.6, 0.4, 0.75, 1),
+            color=(1, 1, 1, 1),
+            size_hint_x=None,
+            width=100,
+            size_hint_y=None,
+            height=33
+        )
+        play_btn.bind(on_press=lambda inst, v=video: self.play_video(v))
+        buttons_layout.add_widget(play_btn)
+
+        delete_btn = Button(
+            text='Delete',
+            font_name='chinese',
+            font_size='15',
+            background_color=(0.8, 0.3, 0.3, 1),
+            color=(1, 1, 1, 1),
+            size_hint_x=None,
+            width=100,
+            size_hint_y=None,
+            height=33
+        )
+        delete_btn.bind(on_press=lambda inst, v=video: self.delete_video(v))
+        buttons_layout.add_widget(delete_btn)
+
+        top_row.add_widget(buttons_layout)
+
+        item.add_widget(top_row)
+
+        # Bottom row: details
+        details = f'Duration: {duration_str}  |  Recorded: {timestamp_str}  |  Frames: {frames_str}'
+        details_label = Label(
+            text=details,
+            font_name='chinese',
+            font_size='14',
+            color=(0.35, 0.35, 0.4, 1),
+            halign='left',
+            valign='middle',
+            size_hint_y=None,
+            height=20,
+            text_size=(None, None)
+        )
+        item.add_widget(details_label)
+
+        # Calculate total height
+        item.height = 35 + 6 + 20 + 24  # rows + spacing + padding
+
+        return item
+
+    def show_list(self, instance=None):
         """Show video list"""
         self.content_area.clear_widgets()
-        self.content_area.add_widget(self.list_container)
-        self.back_btn.disabled = True
-        self.title_label.text = 'Recorded Videos'
+        self.content_area.add_widget(self.list_layout)
+
+        # Stop playback if playing
+        if self.is_playing and self.presenter:
+            self.is_playing = False
+            self.play_btn.text = 'Play'
+            self.presenter.stop_video()
 
     def play_video(self, video):
         """Play a video"""
@@ -714,9 +1279,12 @@ class VideoScreen(BaseScreen):
 
         # Show player
         self.content_area.clear_widgets()
-        self.content_area.add_widget(self.player_container)
-        self.back_btn.disabled = False
+        self.content_area.add_widget(self.player_layout)
         self.title_label.text = os.path.basename(video.filename)
+
+        # Store video info for progress bar
+        self.total_frames = video.frame_count or 0
+        self.fps = video.fps or 30
 
         # Update info
         duration_str = f"{video.duration:.1f}s"
@@ -726,16 +1294,48 @@ class VideoScreen(BaseScreen):
         info_text = f"Duration: {duration_str}  |  Frames: {frames_str}\nRecorded: {timestamp_str}"
         self.video_info_label.text = info_text
 
-        # Load video without showing preview first (avoid frame position issues)
+        # Reset progress bar
+        self.progress_slider.value = 0
+        self.progress_slider.max = max(1, self.total_frames)
+        self.current_time_label.text = '0:00'
+        self.total_time_label.text = self._format_time(video.duration)
+
+        # Bind slider event - unbind first to avoid duplicates
+        self.progress_slider.unbind(on_touch_up=self._on_slider_touch)
+        self.progress_slider.bind(on_touch_up=self._on_slider_touch)
+
+        # Load video
         if self.presenter:
             print(f"[VideoScreen] Loading video...")
             if self.presenter.load_video(video.filename):
                 self.video_info_label.text = info_text + "\nReady to play"
                 print(f"[VideoScreen] Video loaded successfully")
-                # Don't show first frame - let user press play to avoid thread conflicts
             else:
                 self.video_info_label.text = "Failed to load video"
                 print(f"[VideoScreen] Failed to load video")
+
+    def _on_slider_touch(self, slider, touch):
+        """Handle slider touch event"""
+        if slider.collide_point(*touch.pos):
+            # Seek when user releases the slider
+            target_frame = int(slider.value)
+            self._seek_to_frame(target_frame)
+
+    def _seek_to_frame(self, frame_number):
+        """Seek to a specific frame"""
+        if not self.presenter or self.total_frames == 0:
+            return
+
+        # Pause if playing
+        if self.is_playing:
+            self.presenter.pause_video()
+
+        # Update time label
+        current_time = frame_number / self.fps
+        self.current_time_label.text = self._format_time(current_time)
+
+        # Seek via presenter
+        self.presenter.seek_to_frame(frame_number)
 
     def _display_frame(self, frame):
         """Display a frame in the preview"""
@@ -776,16 +1376,15 @@ class VideoScreen(BaseScreen):
             # Pause
             print("[VideoScreen] Pausing video...")
             self.presenter.pause_video()
-            # Update UI immediately
             self.is_playing = False
             self.play_btn.text = 'Play'
         else:
             # Play
             print("[VideoScreen] Starting video playback...")
             if self.presenter.play_video():
-                # Update UI immediately after starting playback
                 self.is_playing = True
                 self.play_btn.text = 'Pause'
+                print("[VideoScreen] Playback started successfully")
             else:
                 print("[VideoScreen] Failed to start playback")
 
@@ -794,6 +1393,17 @@ class VideoScreen(BaseScreen):
         # Schedule display update on main thread using Clock
         def update_frame(dt):
             self._display_frame(frame)
+
+            # Update progress bar if not seeking
+            if not self.is_seeking and self.total_frames > 0:
+                self.progress_slider.value = frame_number
+                current_time = frame_number / self.fps
+                self.current_time_label.text = self._format_time(current_time)
+
+                # Update timeline play position indicator
+                progress = frame_number / self.total_frames if self.total_frames > 0 else 0
+                self.update_play_position(progress)
+
         Clock.schedule_once(update_frame)
 
     def on_playback_finished(self):
@@ -801,6 +1411,11 @@ class VideoScreen(BaseScreen):
         def update_ui(dt):
             self.is_playing = False
             self.play_btn.text = 'Play'
+            # Update progress to end
+            self.progress_slider.value = self.total_frames
+            if self.total_frames > 0:
+                current_time = self.total_frames / self.fps
+                self.current_time_label.text = self._format_time(current_time)
         Clock.schedule_once(update_ui)
 
     def on_video_loaded(self, filename, total_frames, fps):
@@ -817,6 +1432,49 @@ class VideoScreen(BaseScreen):
         self.is_playing = False
         self.play_btn.text = 'Play'
 
+    def _format_time(self, seconds):
+        """Format seconds to MM:SS"""
+        if not seconds or seconds <= 0:
+            return "0:00"
+
+        minutes = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{minutes}:{secs:02d}"
+
+    def delete_video(self, video):
+        """Delete a video file"""
+        print(f"[VideoScreen] delete_video called: {video.filename}")
+
+        # Check if file exists
+        if not os.path.exists(video.filename):
+            self.status_label.text = 'File already deleted'
+            # Still need to refresh to clean up UI
+            Clock.schedule_once(lambda dt: self._do_refresh(), 0.1)
+            return
+
+        try:
+            # Delete the file
+            os.remove(video.filename)
+            print(f"[VideoScreen] Deleted: {video.filename}")
+            self.status_label.text = 'Video deleted successfully'
+
+            # Also delete from database through presenter
+            if self.presenter:
+                self.presenter.delete_video(video.filename)
+
+            # Refresh the list immediately
+            Clock.schedule_once(lambda dt: self._do_refresh(), 0.1)
+
+        except Exception as e:
+            print(f"[VideoScreen] Error deleting video: {e}")
+            import traceback
+            traceback.print_exc()
+            self.status_label.text = f'Delete failed: {str(e)}'
+
+    def _do_refresh(self):
+        """Internal refresh method"""
+        self.refresh(None)
+
     def on_playback_stopped(self):
         """Callback when playback is stopped"""
         self.is_playing = False
@@ -824,6 +1482,7 @@ class VideoScreen(BaseScreen):
 
     def on_frame_changed(self, frame, frame_number):
         """Callback when frame changes (seek)"""
+        # Display frame immediately
         self._display_frame(frame)
 
     def on_video_deleted(self, filename):
@@ -904,53 +1563,116 @@ class ProcessScreen(BaseScreen):
         self.events.add_widget(event)
 
 
-class SettingsScreen(BaseScreen):
+class AboutScreen(BaseScreen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        layout = BoxLayout(orientation='vertical', spacing=15, padding=25)
+        # Main scrollable layout
+        scroll = ScrollView()
+        main_layout = BoxLayout(orientation='vertical', spacing=20, padding=30, size_hint_y=None)
+        main_layout.bind(minimum_height=main_layout.setter('height'))
+        scroll.add_widget(main_layout)
 
-        # Title
-        title = Label(
-            text='Settings',
+        # Author section
+        author_box = self._create_section_box("About MemScreen", [
+            ("Developer", "Jixiang Luo"),
+            ("Email", "jixiangluo85@gmail.com"),
+            ("Version", "v0.3"),
+            ("License", "MIT License - Copyright 2025")
+        ])
+        main_layout.add_widget(author_box)
+
+        self.add_widget(scroll)
+
+    def _create_section_box(self, title, items):
+        """Create a nicely formatted section box"""
+        from kivy.metrics import dp
+
+        section_layout = BoxLayout(orientation='vertical', spacing=12, size_hint_y=None, padding=dp(20))
+        section_layout.bind(minimum_height=section_layout.setter('height'))
+
+        # Section title
+        title_label = Label(
+            text=title,
             font_name='chinese',
-            font_size='40',
+            font_size=dp(20),
             bold=True,
             size_hint_y=None,
-            height=70,
-            color=(0, 0, 0, 1)  # Black
-        )
-        layout.add_widget(title)
-
-        # Info
-        info = Label(
-            text='''''Memory System: ChromaDB + SQLite
-LLM Provider: Ollama
-Embedding Model: nomic-embed-text
-Database Path: ./db/
-
-Version: v0.3
-UI Framework: Kivy
-
-Features:
-  - Screen Recording
-  - AI Chat
-  - Video Management
-  - Process Mining
-  - Privacy-First Design''',
-            font_name='chinese',
-            font_size='18',
+            height=dp(45),
+            color=(0.4, 0.2, 0.6, 1),  # Purple
             halign='left',
-            valign='top',
-            color=(0, 0, 0, 1)  # Black
+            valign='middle',
+            text_size=(None, dp(45))
         )
-        layout.add_widget(info)
+        section_layout.add_widget(title_label)
 
-        self.add_widget(layout)
+        # Separator line
+        sep = BoxLayout(size_hint_y=None, height=dp(2))
+        with sep.canvas.before:
+            Color(0.7, 0.65, 0.75, 1)  # Light purple separator
+            sep_bg = Rectangle(pos=sep.pos, size=sep.size)
+        sep.bind(pos=lambda i,v: setattr(sep_bg, 'pos', i.pos),
+                size=lambda i,v: setattr(sep_bg, 'size', i.size))
+        section_layout.add_widget(sep)
+
+        # Items
+        for label, value in items:
+            if not label:  # Continuation line
+                item_label = Label(
+                    text=f"  {value}",
+                    font_name='chinese',
+                    font_size=dp(15),
+                    size_hint_y=None,
+                    height=dp(30),
+                    color=(0.3, 0.3, 0.3, 1),
+                    halign='left',
+                    valign='middle',
+                    text_size=(None, dp(30))
+                )
+            else:
+                item_label = Label(
+                    text=f"[b]{label}:[/b]  {value}",
+                    font_name='chinese',
+                    font_size=dp(15),
+                    size_hint_y=None,
+                    height=dp(30),
+                    color=(0, 0, 0, 1),
+                    halign='left',
+                    valign='middle',
+                    markup=True,
+                    text_size=(None, dp(30))
+                )
+            section_layout.add_widget(item_label)
+
+        # Background for the section
+        with section_layout.canvas.before:
+            Color(0.98, 0.96, 1.0, 1)  # Very light purple background
+            section_bg = Rectangle(pos=section_layout.pos, size=section_layout.size)
+        section_layout.bind(pos=lambda i,v: setattr(section_bg, 'pos', i.pos),
+                          size=lambda i,v: setattr(section_bg, 'size', i.size))
+
+        # Border
+        with section_layout.canvas.before:
+            Color(0.6, 0.5, 0.7, 1)  # Purple border
+            section_border = Line(rectangle=[section_layout.x, section_layout.y,
+                                            section_layout.width, section_layout.height],
+                                  width=1.5)
+        section_layout.bind(pos=lambda i,v: self._update_border(section_border, i),
+                          size=lambda i,v: self._update_border(section_border, i))
+
+        return section_layout
+
+    def _update_border(self, border, widget):
+        """Update border rectangle position and size"""
+        border.rectangle = [widget.x, widget.y, widget.width, widget.height]
 
 
-class MemScreenKivyApp(App):
+class MemScreenApp(App):
     def build(self):
+        # Set window title
+        from kivy.core.window import Window
+        Window.title = "MemScreen v0.3.5"
+
         # Memory
         try:
             config = MemoryConfig(
@@ -1026,7 +1748,7 @@ class MemScreenKivyApp(App):
             ('chat', 'AI Chat'),
             ('video', 'Videos'),
             ('process', 'Process'),
-            ('settings', 'Settings'),
+            ('settings', 'About'),
         ]:
             btn = ToggleButton(
                 text=label,
@@ -1069,7 +1791,7 @@ class MemScreenKivyApp(App):
         self.sm.add_widget(video_screen)
 
         self.sm.add_widget(ProcessScreen(name='process', memory_system=self.memory))
-        self.sm.add_widget(SettingsScreen(name='settings', memory_system=self.memory))
+        self.sm.add_widget(AboutScreen(name='settings', memory_system=self.memory))
 
         root.add_widget(self.sm)
 
@@ -1100,4 +1822,4 @@ class MemScreenKivyApp(App):
 
 
 if __name__ == '__main__':
-    MemScreenKivyApp().run()
+    MemScreenApp().run()
