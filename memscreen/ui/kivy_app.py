@@ -49,6 +49,7 @@ from memscreen import Memory
 from memscreen.memory.models import MemoryConfig, EmbedderConfig, LlmConfig, VectorStoreConfig
 from memscreen.presenters.recording_presenter import RecordingPresenter
 from memscreen.presenters.video_presenter import VideoPresenter
+from memscreen.memory.manager import get_memory_manager
 
 
 class BaseScreen(Screen):

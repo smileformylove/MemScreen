@@ -32,6 +32,9 @@ from .models import (
 # Import main Memory implementation
 from .memory import Memory, _build_filters_and_metadata
 
+# Import Memory Manager
+from .manager import MemoryManager, get_memory_manager, reset_memory_manager
+
 __all__ = [
     # Base classes
     "MemoryBase",
@@ -46,6 +49,10 @@ __all__ = [
     "VectorStoreConfig",
     # Main implementation
     "Memory",
+    # Memory Manager
+    "MemoryManager",
+    "get_memory_manager",
+    "reset_memory_manager",
     # Helper functions
     "_build_filters_and_metadata",
 ]

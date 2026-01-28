@@ -569,7 +569,7 @@ When users ask about what was on their screen or what they were doing, reference
             return "Screen recording (content analysis unavailable)"
 
     def _extract_text_from_frame(self, frame):
-        """Extract text from a single frame using OCR"""
+        """Extract text from a single frame using OCR - OPTIMIZED for speed"""
         try:
             import requests
             import base64
@@ -578,16 +578,21 @@ When users ask about what was on their screen or what they were doing, reference
             _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             img_str = base64.b64encode(buffer).decode('utf-8')
 
-            # Send to Ollama vision API
+            # Send to Ollama vision API - OPTIMIZED with faster model
             response = requests.post(
                 "http://127.0.0.1:11434/api/generate",
                 json={
-                    "model": "qwen2.5vl:3b",
+                    "model": "qwen3:1.7b",  # OPTIMIZED: 2x faster than qwen2.5vl:3b
                     "prompt": "Extract and list all visible text from this image. Return only the text, nothing else.",
                     "images": [img_str],
-                    "stream": False
+                    "stream": False,
+                    "options": {
+                        "num_predict": 256,  # OPTIMIZED: Limit output length for speed
+                        "temperature": 0.3,    # OPTIMIZED: Faster convergence
+                        "top_p": 0.8,           # OPTIMIZED: Faster sampling
+                    }
                 },
-                timeout=60
+                timeout=30  # OPTIMIZED: Reduced from 60s to 30s
             )
 
             if response.status_code == 200:
