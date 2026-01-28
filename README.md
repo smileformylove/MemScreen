@@ -141,20 +141,100 @@ Experience a sleek, light-purple themed UI built with Kivy framework
 
 ### 🍎 macOS (Recommended)
 
+#### Prerequisites Check
+
 ```bash
-# Install Ollama (required for AI)
+# Check Python version (requires 3.8+)
+python3 --version
+
+# Check if Homebrew is installed
+brew --version
+```
+
+#### Step 1: Install Ollama
+
+```bash
+# Install Ollama using Homebrew
 brew install ollama
 
-# Pull AI models (one-time, ~2GB total)
+# Start Ollama service (if not running automatically)
+ollama serve
+# Keep this terminal open, or press Ctrl+Z and type 'bg' to run in background
+```
+
+#### Step 2: Download AI Models
+
+```bash
+# Pull vision-language model (~2GB)
 ollama pull qwen2.5vl:3b
+
+# Pull text embedding model (~274MB)
 ollama pull nomic-embed-text
 
-# Clone and install MemScreen
+# Verify models are installed
+ollama list
+```
+
+#### Step 3: Install MemScreen
+
+```bash
+# Clone the repository
 git clone https://github.com/smileformylove/MemScreen.git
 cd MemScreen
-pip install -r requirements.txt
 
-# Launch
+# (Optional) Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install Python dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+#### Step 4: Launch MemScreen
+
+```bash
+# Start the application
+python start_kivy.py
+```
+
+#### (Optional) Verify Installation
+
+```bash
+# Run the installation test script to verify everything is set up correctly
+./test_installation.sh
+```
+
+This script checks:
+- ✅ Python version (3.8+)
+- ✅ Homebrew installation
+- ✅ Ollama service and models
+- ✅ Python dependencies
+- ✅ MemScreen directory structure
+
+#### Troubleshooting
+
+**Problem**: `command not found: brew`
+```bash
+# Install Homebrew first
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+**Problem**: Ollama models download fails
+```bash
+# Try pulling models again with verbose output
+ollama pull qwen2.5vl:3b --verbose
+```
+
+**Problem**: Kivy window doesn't appear
+```bash
+# Ensure Ollama is running
+ollama serve
+
+# Check if models are available
+ollama list
+
+# Try running with debug output
 python start_kivy.py
 ```
 
