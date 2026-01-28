@@ -438,6 +438,35 @@ Respond naturally without mentioning your model provider or technical details.""
 
                 if response:
                     ai_text = str(response)
+
+                    # Save conversation to memory system for future context
+                    if self.memory_system:
+                        try:
+                            # Create conversation messages
+                            conversation = [
+                                {"role": "user", "content": text},
+                                {"role": "assistant", "content": ai_text}
+                            ]
+
+                            # Add to memory with user_id for later retrieval
+                            memory_result = self.memory_system.add(
+                                conversation,
+                                user_id="default_user",
+                                metadata={
+                                    "source": "ai_chat",
+                                    "timestamp": __import__('datetime').datetime.now().isoformat(),
+                                    "model": self.model_spinner.text
+                                },
+                                infer=True  # Let LLM extract key facts
+                            )
+
+                            if memory_result and "results" in memory_result:
+                                print(f"[Chat] Saved conversation to memory: {len(memory_result['results'])} memory items created/updated")
+                        except Exception as mem_err:
+                            print(f"[Chat] Failed to save conversation to memory: {mem_err}")
+                            # Don't fail the chat if memory save fails
+                            import traceback
+                            traceback.print_exc()
                 else:
                     ai_text = "I apologize, but I couldn't generate a response."
 
