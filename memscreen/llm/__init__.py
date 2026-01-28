@@ -7,6 +7,7 @@ Currently supports Ollama for local model inference.
 
 from .base import BaseLlmConfig, LLMBase
 from .ollama import OllamaLLM, OllamaConfig
+from .ollama_optimized import OptimizedOllamaLLM, OptimizedOllamaConfig
 from .factory import LlmFactory, load_class
 
 __all__ = [
@@ -14,6 +15,8 @@ __all__ = [
     "LLMBase",
     "OllamaLLM",
     "OllamaConfig",
+    "OptimizedOllamaLLM",
+    "OptimizedOllamaConfig",
     "LlmFactory",
     "load_class",
 ]

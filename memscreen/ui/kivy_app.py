@@ -1678,7 +1678,7 @@ class MemScreenApp(App):
             config = MemoryConfig(
                 embedder=EmbedderConfig(provider="ollama", config={"model": "nomic-embed-text"}),
                 vector_store=VectorStoreConfig(provider="chroma", config={"path": "./db/chroma_db"}),
-                llm=LlmConfig(provider="ollama", config={"model": "qwen2.5vl:3b"})
+                llm=LlmConfig(provider="ollama", config={"model": "qwen3:1.7b", "max_tokens": 512, "temperature": 0.7})
             )
             self.memory = Memory(config=config)
             print("[App] Memory initialized")
