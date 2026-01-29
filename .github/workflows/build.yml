@@ -46,9 +46,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyinstaller
 
+      - name: Install project dependencies
+        shell: bash
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "Installing from pyproject.toml dependencies"
+            pip install torch torchvision pydantic ttkthemes ollama mss matplotlib openai opencv-python Pillow numpy easyocr pynput chromadb toolz pytz kivy
+          fi
+
       - name: Build with PyInstaller
         run: |
           pyinstaller --clean MemScreen.spec
+
+      - name: List build outputs
+        shell: bash
+        run: |
+          echo "Build directory contents:"
+          ls -la build/ || echo "No build directory"
+          echo ""
+          echo "Dist directory contents:"
+          ls -la dist/ || echo "No dist directory"
 
       - name: Create distribution archive (macOS)
         if: matrix.os == 'macos-latest'
@@ -57,8 +76,10 @@ jobs:
 
       - name: Create distribution archive (Windows)
         if: matrix.os == 'windows-latest'
+        shell: pwsh
         run: |
-          cd dist && tar -czf MemScreen-0.4.0-windows.zip MemScreen
+          cd dist
+          Compress-Archive -Path MemScreen -DestinationPath MemScreen-0.4.0-windows.zip
 
       - name: Create distribution archive (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -68,7 +89,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: memscreen-platform
+          name: memscreen-${{ matrix.platform }}
           path: dist/MemScreen-*.zip
           retention-days: 30
 
@@ -93,7 +114,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: artifacts/**/*/*.zip
+          files: artifacts/**/*.zip
           draft: false
           prerelease: false
           generate_release_notes: true
