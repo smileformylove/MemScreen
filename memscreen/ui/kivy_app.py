@@ -1298,7 +1298,7 @@ class VideoScreen(BaseScreen):
         details_label = Label(
             text=details,
             font_name='chinese',
-            font_size='14',
+            font_size='16',
             color=(0.35, 0.35, 0.4, 1),
             halign='left',
             valign='middle',
@@ -1547,41 +1547,41 @@ class ProcessScreen(BaseScreen):
         super().__init__(**kwargs)
         self.is_tracking = False
         self.current_session_events = []
+        self.selected_session_id = None  # Track selected session
 
-        layout = BoxLayout(orientation='vertical', spacing=15, padding=25)
+        layout = BoxLayout(orientation='vertical', spacing=12, padding=20)
 
-        # Title and Stats row
-        header_row = BoxLayout(orientation='horizontal', spacing=15, size_hint_y=None, height=70)
-
+        # Title
         title = Label(
             text='Process Mining',
-            font_name='chinese',
+            font_name='Roboto',  # 使用Roboto字体
             font_size='32',
             bold=True,
+            size_hint_y=None,
+            height=55,
             color=(0, 0, 0, 1)
         )
-        header_row.add_widget(title)
+        layout.add_widget(title)
 
-        # Control button
+        # Start Tracking button (full width)
         self.track_btn = Button(
             text='Start Tracking',
-            font_name='chinese',
-            font_size='18',
+            font_name='Roboto',  # 使用Roboto字体
+            font_size='24',
             bold=True,
-            size_hint_x=0.3,
+            size_hint_y=None,
+            height=60,
             background_color=(0.6, 0.4, 0.75, 1),
             color=(1, 1, 1, 1)
         )
         self.track_btn.bind(on_press=self.toggle)
-        header_row.add_widget(self.track_btn)
-
-        layout.add_widget(header_row)
+        layout.add_widget(self.track_btn)
 
         # Current Session Stats
         self.session_stats = Label(
             text='Events: 0 | Keystrokes: 0 | Mouse Clicks: 0',
-            font_name='chinese',
-            font_size='16',
+            font_name='Roboto',  # 使用Roboto字体
+            font_size='18',
             size_hint_y=None,
             height=40,
             color=(0.4, 0.4, 0.4, 1),
@@ -1589,10 +1589,10 @@ class ProcessScreen(BaseScreen):
         )
         layout.add_widget(self.session_stats)
 
-        # Current Session Timeline
+        # Current Session Section (15% height)
         session_label = Label(
             text='Current Session',
-            font_name='chinese',
+            font_name='Roboto',  # 使用Roboto字体
             font_size='20',
             bold=True,
             size_hint_y=None,
@@ -1602,37 +1602,110 @@ class ProcessScreen(BaseScreen):
         )
         layout.add_widget(session_label)
 
-        # Current session events scroll
-        session_scroll = ScrollView(size_hint_y=0.35)
-        self.session_events = BoxLayout(orientation='vertical', size_hint_y=None, spacing=6, padding=12)
+        session_scroll = ScrollView(size_hint_y=0.10)
+        self.session_events = BoxLayout(orientation='vertical', size_hint_y=None, spacing=5, padding=10)
         self.session_events.bind(minimum_height=self.session_events.setter('height'))
         session_scroll.add_widget(self.session_events)
         layout.add_widget(session_scroll)
 
-        # History Section
+        # Session History Section (50% height)
+        history_header = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None, height=40)
+
         history_label = Label(
             text='Session History',
-            font_name='chinese',
+            font_name='Roboto',  # 使用Roboto字体
+            font_size='20',
+            bold=True,
+            size_hint_x=0.6,
+            color=(0, 0, 0, 1),
+            halign='left'
+        )
+        history_header.add_widget(history_label)
+
+        # Refresh button
+        refresh_btn = Button(
+            text='Refresh',
+            font_name='Roboto',
+            font_size='16',
+            size_hint_x=0.2,
+            background_color=(0.3, 0.6, 0.9, 1),
+            color=(1, 1, 1, 1)
+        )
+        refresh_btn.bind(on_press=self._refresh_history)
+        history_header.add_widget(refresh_btn)
+
+        # Delete All button
+        delete_all_btn = Button(
+            text='Clear All',
+            font_name='Roboto',
+            font_size='16',
+            size_hint_x=0.2,
+            background_color=(0.8, 0.3, 0.3, 1),
+            color=(1, 1, 1, 1)
+        )
+        delete_all_btn.bind(on_press=self._delete_all_sessions)
+        history_header.add_widget(delete_all_btn)
+
+        layout.add_widget(history_header)
+
+        # Add spacing between header and list
+        spacing_widget = Widget(size_hint_y=None, height=15)
+        layout.add_widget(spacing_widget)
+
+        history_scroll = ScrollView(size_hint_y=0.50)
+        self.history_list = BoxLayout(orientation='vertical', size_hint_y=None, spacing=10, padding=(10, 20, 10, 10))
+        self.history_list.bind(minimum_height=self.history_list.setter('height'))
+        history_scroll.add_widget(self.history_list)
+        layout.add_widget(history_scroll)
+
+        # Session Analysis Section (40% height, centered)
+        analysis_label = Label(
+            text='Session Analysis',
+            font_name='Roboto',  # 使用Roboto字体
             font_size='20',
             bold=True,
             size_hint_y=None,
             height=40,
             color=(0, 0, 0, 1),
-            halign='left'
+            halign='center'
         )
-        layout.add_widget(history_label)
+        layout.add_widget(analysis_label)
 
-        # History list scroll
-        history_scroll = ScrollView(size_hint_y=0.45)
-        self.history_list = BoxLayout(orientation='vertical', size_hint_y=None, spacing=10, padding=12)
-        self.history_list.bind(minimum_height=self.history_list.setter('height'))
-        history_scroll.add_widget(self.history_list)
-        layout.add_widget(history_scroll)
+        # Analysis result display with ScrollView (centered)
+        analysis_scroll = ScrollView(
+            size_hint_y=0.4,
+            scroll_type=['content', 'bars'],
+            bar_width=8,
+            bar_color=(0.6, 0.4, 0.75, 0.8),
+            bar_inactive_color=(0.6, 0.4, 0.75, 0.3),
+            do_scroll_x=False,
+            do_scroll_y=True
+        )
+        self.analysis_result = BoxLayout(
+            orientation='vertical',
+            spacing=8,
+            size_hint_y=None,
+            padding=20
+        )
+        self.analysis_result.bind(minimum_height=self.analysis_result.setter('height'))
+
+        self.analysis_content = Label(
+            text='Select a session to view analysis\n\nTap on any session in Session History to see detailed categorization',
+            font_name='Roboto',  # 使用Roboto字体
+            font_size='18',
+            color=(0.5, 0.5, 0.5, 1),
+            halign='center',
+            valign='top',
+            text_size=(650, None),
+            size_hint_y=None,
+            size_hint_x=1
+        )
+        self.analysis_content.bind(texture_size=self.analysis_content.setter('size'))
+        self.analysis_result.add_widget(self.analysis_content)
+        analysis_scroll.add_widget(self.analysis_result)
+        layout.add_widget(analysis_scroll)
 
         self.add_widget(layout)
-
-        # Store reference for detail popup
-        self.detail_popup = None
 
         # Load history on init
         self._load_history()
@@ -1647,14 +1720,14 @@ class ProcessScreen(BaseScreen):
         self.is_tracking = True
         self.track_btn.text = "Stop Tracking"
         self.track_btn.background_color = (0.75, 0.3, 0.4, 1)
-        self._add_session_event("🔴 Tracking started")
+        self._add_session_event("Tracking started")
         self._update_session_stats()
 
     def stop(self):
         self.is_tracking = False
         self.track_btn.text = "Start Tracking"
         self.track_btn.background_color = (0.6, 0.4, 0.75, 1)
-        self._add_session_event("⏸️ Tracking stopped")
+        self._add_session_event("Tracking stopped")
 
         # Save session to history
         if len(self.current_session_events) > 1:
@@ -1673,12 +1746,12 @@ class ProcessScreen(BaseScreen):
             "success": (0.1, 0.5, 0.2, 1)
         }
 
-        event_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None, height=35)
+        event_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None, height=38)
 
         time_label = Label(
             text=timestamp,
-            font_name='chinese',
-            font_size='14',
+            font_name='Roboto',  # 使用Roboto字体
+            font_size='16',
             size_hint_x=0.15,
             color=(0.5, 0.5, 0.5, 1)
         )
@@ -1686,8 +1759,8 @@ class ProcessScreen(BaseScreen):
 
         event_label = Label(
             text=text,
-            font_name='chinese',
-            font_size='16',
+            font_name='Roboto',  # 使用Roboto字体
+            font_size='17',
             size_hint_x=0.85,
             color=color_map.get(event_type, (0.2, 0.2, 0.2, 1)),
             halign='left',
@@ -1756,7 +1829,7 @@ class ProcessScreen(BaseScreen):
             self.session_events.clear_widgets()
             self._update_session_stats()
 
-            self._add_session_event("💾 Session saved to history", "success")
+            self._add_session_event("Session saved to history", "success")
 
         except Exception as e:
             print(f"[ProcessScreen] Error saving session: {e}")
@@ -1805,7 +1878,7 @@ class ProcessScreen(BaseScreen):
             print(f"[ProcessScreen] Error loading history: {e}")
 
     def _create_session_item(self, session_id, start_time, end_time, event_count, keystrokes, clicks):
-        """Create a session history item widget"""
+        """Create a clickable session history item widget"""
         from kivy.metrics import dp
 
         # Main container
@@ -1816,59 +1889,113 @@ class ProcessScreen(BaseScreen):
             padding=dp(18)
         )
 
+        # Store session data
+        item_box.session_id = session_id
+        item_box.start_time = start_time
+        item_box.end_time = end_time
+        item_box.event_count = event_count
+        item_box.keystrokes = keystrokes
+        item_box.clicks = clicks
+        item_box.delete_btn = None  # Will be set later
+
+        # Add touch/click handler
+        def on_touch_down(instance, touch):
+            if instance.collide_point(*touch.pos):
+                # Check if touch is on delete button
+                if item_box.delete_btn and item_box.delete_btn.collide_point(*touch.pos):
+                    # Let the button handle the click
+                    return False
+                # Otherwise, handle as session item click
+                print(f"[ProcessScreen] Session #{session_id} selected")
+                self._show_session_analysis(session_id, start_time, end_time, event_count, keystrokes, clicks)
+                return True
+
+        item_box.bind(on_touch_down=on_touch_down)
+
         # Header with time and stats
-        header = BoxLayout(orientation='horizontal', spacing=15, size_hint_y=None)
+        header = BoxLayout(orientation='horizontal', spacing=15, size_hint_y=None, height=35)
 
         time_label = Label(
             text=f'Session #{session_id} • {start_time}',
-            font_name='chinese',
+            font_name='Roboto',
             font_size='19',
             bold=True,
-            size_hint_x=0.6,
+            size_hint_x=0.55,
             color=(0, 0, 0, 1),
             halign='left',
-            text_size=(None, None)
+            valign='middle',
+            text_size=(250, None)
         )
         header.add_widget(time_label)
 
         stats_label = Label(
-            text=f'{event_count} events | {keystrokes} keys | {clicks} clicks',
-            font_name='chinese',
+            text=f'{event_count} actions • {keystrokes} keys',
+            font_name='Roboto',
             font_size='17',
-            size_hint_x=0.4,
+            size_hint_x=0.45,
             color=(0.5, 0.5, 0.5, 1),
             halign='right',
-            text_size=(None, None)
+            valign='middle',
+            text_size=(250, None)
         )
         header.add_widget(stats_label)
 
         item_box.add_widget(header)
 
-        # Duration
-        duration_label = Label(
-            text=f'⏱️ {start_time} → {end_time}',
-            font_name='chinese',
-            font_size='17',
+        # Combined row: duration + hint + delete button
+        combined_row = BoxLayout(
+            orientation='horizontal',
+            spacing=10,
             size_hint_y=None,
-            height=32,
+            height=30
+        )
+
+        # Duration label (left side)
+        duration_label = Label(
+            text=f'{start_time} → {end_time}',
+            font_name='Roboto',
+            font_size='15',
+            size_hint_x=0.45,
             color=(0.4, 0.4, 0.4, 1),
             halign='left',
-            text_size=(None, None)
+            valign='middle',
+            text_size=(200, None)
         )
-        item_box.add_widget(duration_label)
+        combined_row.add_widget(duration_label)
 
-        # Info label (TEMPORARILY DISABLED BUTTON)
-        info_label = Label(
-            text='ID: {}'.format(session_id),
-            font_name='chinese',
-            font_size='15',
-            size_hint_y=None,
-            height=28,
+        # Hint label (middle)
+        hint_label = Label(
+            text='Tap to analyze',
+            font_name='Roboto',
+            font_size='16',
+            size_hint_x=0.35,
             color=(0.6, 0.4, 0.75, 1),
             halign='center',
-            text_size=(None, None)
+            valign='middle',
+            text_size=(200, None)
         )
-        item_box.add_widget(info_label)
+        combined_row.add_widget(hint_label)
+
+        # Delete button (right side)
+        delete_btn = Button(
+            text='Delete',
+            font_name='Roboto',
+            font_size='14',
+            size_hint_x=0.20,
+            background_color=(0.9, 0.4, 0.4, 1),
+            color=(1, 1, 1, 1)
+        )
+
+        def delete_session(instance):
+            self._delete_session(session_id)
+
+        delete_btn.bind(on_press=delete_session)
+        combined_row.add_widget(delete_btn)
+
+        # Store delete button reference for touch handling
+        item_box.delete_btn = delete_btn
+
+        item_box.add_widget(combined_row)
 
         # Separator line
         separator = Widget(size_hint_y=None, height=2)
@@ -1892,6 +2019,243 @@ class ProcessScreen(BaseScreen):
             print(f"[ProcessScreen] ERROR: {e}")
             import traceback
             traceback.print_exc()
+
+    def _refresh_history(self, instance):
+        """Refresh the session history list"""
+        print("[ProcessScreen] Refreshing session history...")
+        self._load_history()
+        self._add_session_event("History refreshed", "success")
+
+    def _delete_session(self, session_id):
+        """Delete a specific session from database"""
+        import sqlite3
+
+        try:
+            conn = sqlite3.connect('./db/process_mining.db')
+            cursor = conn.cursor()
+
+            cursor.execute('DELETE FROM sessions WHERE id=?', (session_id,))
+            conn.commit()
+            deleted_count = cursor.rowcount
+            conn.close()
+
+            if deleted_count > 0:
+                print(f"[ProcessScreen] Session #{session_id} deleted")
+                self._load_history()
+                self._add_session_event(f"Session #{session_id} deleted", "success")
+            else:
+                print(f"[ProcessScreen] Session #{session_id} not found")
+
+        except Exception as e:
+            print(f"[ProcessScreen] Error deleting session: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _delete_all_sessions(self, instance):
+        """Delete all sessions from database"""
+        import sqlite3
+
+        try:
+            conn = sqlite3.connect('./db/process_mining.db')
+            cursor = conn.cursor()
+
+            # Get count before deleting
+            cursor.execute('SELECT COUNT(*) FROM sessions')
+            count = cursor.fetchone()[0]
+
+            if count == 0:
+                conn.close()
+                self._add_session_event("No sessions to delete", "info")
+                return
+
+            # Delete all sessions
+            cursor.execute('DELETE FROM sessions')
+            conn.commit()
+            conn.close()
+
+            print(f"[ProcessScreen] All {count} sessions deleted")
+            self._load_history()
+            self._add_session_event(f"All {count} sessions deleted", "success")
+
+        except Exception as e:
+            print(f"[ProcessScreen] Error deleting all sessions: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _show_session_analysis(self, session_id, start_time, end_time, event_count, keystrokes, clicks):
+        """Show categorized analysis of selected session"""
+        import sqlite3
+        import json
+
+        try:
+            # Load events from database
+            conn = sqlite3.connect('./db/process_mining.db')
+            cursor = conn.cursor()
+            cursor.execute('SELECT events_json FROM sessions WHERE id=?', (session_id,))
+            result = cursor.fetchone()
+            conn.close()
+
+            if not result:
+                self.analysis_content.text = f'No data found for Session #{session_id}'
+                self.analysis_content.color = (0.5, 0.5, 0.5, 1)
+                return
+
+            events = json.loads(result[0])
+
+            # Categorize activities
+            categories = self._categorize_activities(events)
+            patterns = self._analyze_patterns(events)
+
+            # Format duration
+            duration_min = patterns['duration_minutes']
+            duration_str = f"{duration_min:.1f} min" if duration_min > 0 else "N/A"
+
+            # Build analysis text (centered layout)
+            analysis_text = f'''
+════════════════════════════════════════
+           Session #{session_id} Analysis
+════════════════════════════════════════
+
+ACTIVITY BREAKDOWN
+════════════════════════════════════════
+  Typing:        {categories['typing']['percentage']:>3}%
+  Browsing:      {categories['browsing']['percentage']:>3}%
+  Design:        {categories['design']['percentage']:>3}%
+  Programming:   {categories['programming']['percentage']:>3}%
+  Communication: {categories['communication']['percentage']:>3}%
+  Documents:     {categories['document']['percentage']:>3}%
+  Gaming:        {categories['gaming']['percentage']:>3}%
+  Other:         {categories['other']['percentage']:>3}%
+
+════════════════════════════════════════
+SESSION STATISTICS
+════════════════════════════════════════
+  Total Events:       {event_count:>6}
+  Keystrokes:         {keystrokes:>6}
+  Mouse Clicks:       {clicks:>6}
+  Duration:           {duration_str:>6}
+  Events/min:         {patterns['avg_events_per_minute']:>6.1f}
+  Click Intensity:    {patterns['click_ratio']*100:>5.1f}%
+
+════════════════════════════════════════
+PRIMARY ACTIVITY: {categories['primary'].upper()}
+════════════════════════════════════════
+
+Top Keys: {', '.join(patterns['top_keys'][:3])}
+
+Time: {start_time} → {end_time}
+'''
+            # Update analysis display (centered)
+            self.analysis_content.text = analysis_text
+            self.analysis_content.color = (0.2, 0.2, 0.2, 1)
+            self.analysis_content.halign = 'center'
+            self.analysis_content.valign = 'top'
+            self.analysis_content.text_size = (650, None)
+
+            print(f"[ProcessScreen] Analysis displayed for Session #{session_id}")
+
+        except Exception as e:
+            print(f"[ProcessScreen] Error showing analysis: {e}")
+            import traceback
+            traceback.print_exc()
+            self.analysis_content.text = f'Error loading analysis: {str(e)}'
+            self.analysis_content.color = (0.8, 0.3, 0.3, 1)
+
+    def _categorize_activities(self, events):
+        """Categorize events into detailed activity types"""
+        typing_score = 0
+        browsing_score = 0
+        design_score = 0
+        programming_score = 0
+        communication_score = 0
+        document_score = 0
+        gaming_score = 0
+        other_score = 0
+
+        for event in events:
+            event_type = event.get("type", "")
+            text = event.get("text", "").lower()
+
+            # Typing indicators (general keyboard activity)
+            if event_type == "keypress":
+                typing_score += 1
+
+            # Browsing indicators
+            if any(word in text for word in ["scroll", "browser", "chrome", "safari", "firefox", "edge", "webkit", "navigator"]):
+                browsing_score += 2
+
+            # Design indicators
+            if any(word in text for word in ["figma", "sketch", "design", "draw", "paint", "canvas", "adobe", "photoshop", "illustrator"]):
+                design_score += 3
+
+            # Programming indicators
+            if any(word in text for word in ["code", "python", "javascript", "java", "terminal", "console", "debug", "compile", "git", "vscode", "intellij", "vim", "emacs", "function", "class", "import"]):
+                programming_score += 3
+
+            # Communication indicators
+            if any(word in text for word in ["slack", "teams", "zoom", "meet", "chat", "message", "email", "outlook", "telegram", "whatsapp", "discord"]):
+                communication_score += 2
+
+            # Document editing indicators
+            if any(word in text for word in ["word", "excel", "powerpoint", "docs", "sheets", "slides", "notion", "evernote", "text", "edit", "document", "write"]):
+                document_score += 2
+
+            # Gaming indicators
+            if any(word in text for word in ["game", "play", "steam", "epic", "minecraft", "lol", "valorant", "overwatch", "fps", "rpg"]):
+                gaming_score += 3
+
+            # General activity (baseline)
+            other_score += 0.5
+
+        # Calculate total and percentages
+        total = typing_score + browsing_score + design_score + programming_score + communication_score + document_score + gaming_score + other_score
+
+        if total == 0:
+            return {
+                'typing': {'score': 0, 'percentage': 0},
+                'browsing': {'score': 0, 'percentage': 0},
+                'design': {'score': 0, 'percentage': 0},
+                'programming': {'score': 0, 'percentage': 0},
+                'communication': {'score': 0, 'percentage': 0},
+                'document': {'score': 0, 'percentage': 0},
+                'gaming': {'score': 0, 'percentage': 0},
+                'other': {'score': 0, 'percentage': 100},
+                'primary': 'Unknown'
+            }
+
+        typing_pct = int((typing_score / total) * 100)
+        browsing_pct = int((browsing_score / total) * 100)
+        design_pct = int((design_score / total) * 100)
+        programming_pct = int((programming_score / total) * 100)
+        communication_pct = int((communication_score / total) * 100)
+        document_pct = int((document_score / total) * 100)
+        gaming_pct = int((gaming_score / total) * 100)
+        other_pct = 100 - typing_pct - browsing_pct - design_pct - programming_pct - communication_pct - document_pct - gaming_pct
+
+        # Determine primary activity
+        scores = {
+            'Typing': typing_pct,
+            'Browsing': browsing_pct,
+            'Design': design_pct,
+            'Programming': programming_pct,
+            'Communication': communication_pct,
+            'Documents': document_pct,
+            'Gaming': gaming_pct,
+            'Other': other_pct
+        }
+        primary = max(scores, key=scores.get)
+
+        return {
+            'typing': {'score': typing_score, 'percentage': typing_pct},
+            'browsing': {'score': browsing_score, 'percentage': browsing_pct},
+            'design': {'score': design_score, 'percentage': design_pct},
+            'programming': {'score': programming_score, 'percentage': programming_pct},
+            'communication': {'score': communication_score, 'percentage': communication_pct},
+            'document': {'score': document_score, 'percentage': document_pct},
+            'gaming': {'score': gaming_score, 'percentage': gaming_pct},
+            'other': {'score': other_score, 'percentage': other_pct},
+            'primary': primary
+        }
 
     def _analyze_patterns(self, events):
         """Analyze patterns in session events"""

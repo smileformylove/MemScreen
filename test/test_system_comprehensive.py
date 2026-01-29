@@ -164,12 +164,12 @@ def test_llm_generation(result: TestResult):
         from memscreen.llm import LlmFactory
 
         # Test with smaller model
-        llm = LlmFactory().get_instance(
-            provider="ollama",
+        llm = LlmFactory.create(
+            provider_name="ollama",
             config={
                 "model": "qwen2.5vl:3b",
                 "temperature": 0.6,
-                "num_predict": 100  # Small limit for testing
+                "max_tokens": 100  # Small limit for testing
             }
         )
 
@@ -206,9 +206,10 @@ def test_embeddings(result: TestResult):
     try:
         from memscreen.embeddings import EmbedderFactory
 
-        embedder = EmbedderFactory().get_instance(
-            provider="ollama",
-            config={"model": "nomic-embed-text"}
+        embedder = EmbedderFactory.create(
+            provider_name="ollama",
+            config={"model": "nomic-embed-text"},
+            vector_config=None
         )
 
         result.add_pass("Embedder Initialization")
@@ -216,7 +217,7 @@ def test_embeddings(result: TestResult):
         # Test embedding generation
         try:
             text = "This is a test text for embedding generation"
-            embedding = embedder.get_embedding(text)
+            embedding = embedder.embed(text)
 
             if embedding and len(embedding) > 0:
                 result.add_pass("Embedding Generation")
