@@ -8,7 +8,7 @@ class Memscreen < Formula
   homepage "https://github.com/smileformylove/MemScreen"
   url "https://github.com/smileformylove/MemScreen.git",
     revision: "main"
-  version "0.1.0"
+  version "0.4.0"
   license "MIT"
 
   depends_on "python@3.13"
@@ -29,10 +29,10 @@ class Memscreen < Formula
     system libexec/"bin/pip", "install", "-e", "."
 
     # Create wrapper scripts
-    bin.install_symlink libexec/"bin/memsreen" => "memscreen"
-    bin.install_symlink libexec/"bin/memsreen-chat" => "memscreen-chat"
-    bin.install_symlink libexec/"bin/memsreen-screenshots" => "memscreen-screenshots"
-    bin.install_symlink libexec/"bin/memsreen-process-mining" => "memscreen-process-mining"
+    bin.install_symlink libexec/"bin/memscreen" => "memscreen"
+    bin.install_symlink libexec/"bin/memscreen-chat" => "memscreen-chat"
+    bin.install_symlink libexec/"bin/memscreen-screenshots" => "memscreen-screenshots"
+    bin.install_symlink libexec/"bin/memscreen-process-mining" => "memscreen-process-mining"
 
     # Create macOS app launcher
     (buildpath/"MemScreen Launcher").write <<~EOS

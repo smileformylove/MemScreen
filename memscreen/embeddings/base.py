@@ -1,7 +1,7 @@
-### copyright 2025 jixiangluo    ###
+### copyright 2026 jixiangluo    ###
 ### email:jixiangluo85@gmail.com ###
 ### rights reserved by author    ###
-### time: 2025-11-09             ###
+### time: 2026-01-29             ###
 ### license: MIT                 ###
 
 from abc import ABC, abstractmethod

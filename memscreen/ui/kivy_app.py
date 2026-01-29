@@ -2008,21 +2008,19 @@ class ProcessScreen(BaseScreen):
         return item_box
 
     def _show_session_detail(self, session_id, start_time, end_time):
-        """Show session detail popup with events and pattern analysis"""
+        """Show session detail popup with events and pattern analysis
+
+        Note: This feature is temporarily disabled. Will be re-enabled in future versions.
+        """
         try:
-            print(f"\n{'='*50}")
-            print(f"[ProcessScreen] ========== CLICKED SESSION #{session_id} ==========")
-            print(f"[ProcessScreen] Time: {start_time} → {end_time}")
-            print(f"[ProcessScreen] This is a test - popup disabled for debugging")
-            print(f"{'='*50}\n")
+            # TODO: Implement session detail popup with event timeline and pattern analysis
+            pass
         except Exception as e:
-            print(f"[ProcessScreen] ERROR: {e}")
-            import traceback
-            traceback.print_exc()
+            import logging
+            logging.error(f"Failed to show session detail: {e}")
 
     def _refresh_history(self, instance):
         """Refresh the session history list"""
-        print("[ProcessScreen] Refreshing session history...")
         self._load_history()
         self._add_session_event("History refreshed", "success")
 
@@ -2352,7 +2350,7 @@ class AboutScreen(BaseScreen):
             ("Developer", "Jixiang Luo"),
             ("Email", "jixiangluo85@gmail.com"),
             ("Version", "v0.4.0"),
-            ("License", "MIT License - Copyright 2025")
+            ("License", "MIT License - Copyright 2026")
         ])
         main_layout.add_widget(author_box)
 

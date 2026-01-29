@@ -1,7 +1,7 @@
-### copyright 2025 jixiangluo    ###
+### copyright 2026 jixiangluo    ###
 ### email:jixiangluo85@gmail.com ###
 ### rights reserved by author    ###
-### time: 2025-11-09             ###
+### time: 2026-01-29             ###
 ### license: MIT                 ###
 
 """
@@ -334,7 +334,7 @@ class Memory(MemoryBase):
             warnings.warn(
                 "The current add API output format is deprecated. "
                 "To use the latest format, set `api_version='v1.1'`. "
-                "The current format will be removed in memscreenai 1.1.0 and later versions.",
+                "The current format will be removed in MemScreen 1.0.0 and later versions.",
                 category=DeprecationWarning,
                 stacklevel=2,
             )
@@ -697,7 +697,7 @@ class Memory(MemoryBase):
             warnings.warn(
                 "The current get_all API output format is deprecated. "
                 "To use the latest format, set `api_version='v1.1'` (which returns a dict with a 'results' key). "
-                "The current format (direct list for v1.0) will be removed in memscreenai 1.1.0 and later versions.",
+                "The current format (direct list for v1.0) will be removed in MemScreen 1.0.0 and later versions.",
                 category=DeprecationWarning,
                 stacklevel=2,
             )
@@ -813,7 +813,7 @@ class Memory(MemoryBase):
             warnings.warn(
                 "The current search API output format is deprecated. "
                 "To use the latest format, set `api_version='v1.1'`. "
-                "The current format will be removed in memscreenai 1.1.0 and later versions.",
+                "The current format will be removed in MemScreen 1.0.0 and later versions.",
                 category=DeprecationWarning,
                 stacklevel=2,
             )

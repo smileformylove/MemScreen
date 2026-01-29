@@ -1,7 +1,7 @@
-### copyright 2025 jixiangluo    ###
+### copyright 2026 jixiangluo    ###
 ### email:jixiangluo85@gmail.com ###
 ### rights reserved by author    ###
-### time: 2025-11-09             ###
+### time: 2026-01-29             ###
 ### license: MIT                ###
 
 """Presenter for Screen Recording functionality (MVP Pattern)"""
@@ -602,9 +602,11 @@ When users ask about what was on their screen or what they were doing, reference
                     return f"Detected text on screen: {text}"
 
         except requests.exceptions.Timeout:
-            print("[DEBUG] Ollama vision API timed out")
+            # Ollama vision API timed out, using fallback
+            pass
         except Exception as e:
-            print(f"[DEBUG] OCR failed: {e}")
+            # OCR failed, using fallback analysis
+            pass
 
         # Fallback to basic analysis
         try:

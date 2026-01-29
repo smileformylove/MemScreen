@@ -22,8 +22,8 @@ New recommended imports:
 """
 
 # Version info
-__version__ = "2.0.0"
-__author__ = "MemScreen Team"
+__version__ = "0.4.0"
+__author__ = "Jixiang Luo"
 
 # Import all classes from new modules for backward compatibility
 from .llm import (
@@ -105,7 +105,7 @@ New: from memscreen.embeddings import OllamaEmbedding
 Old: from memscreen.memory import SQLiteManager
 New: from memscreen.storage import SQLiteManager
 
-This compatibility wrapper will be removed in MemScreen 3.0.
+This compatibility wrapper will be removed in MemScreen 1.0.0.
 """
 
 # Show deprecation warning only once

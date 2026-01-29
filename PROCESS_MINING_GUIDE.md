@@ -1,6 +1,6 @@
 # Process Mining Tab - 使用说明
 
-## v0.4.2 新功能
+## v0.4.0 新功能
 
 Process Mining标签页已增强，现在支持点击会话记录查看详情和Pattern Analysis。
 
@@ -186,4 +186,4 @@ def _create_detail_event_item()  # 创建详情页事件项（新）
 ---
 
 *更新时间: 2026-01-29*
-*版本: v0.4.2*
+*版本: v0.4.0*
