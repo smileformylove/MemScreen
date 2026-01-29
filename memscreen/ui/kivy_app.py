@@ -1808,9 +1808,13 @@ class ProcessScreen(BaseScreen):
         """Create a session history item widget"""
         from kivy.metrics import dp
         from kivy.uix.button import Button
+        from kivy.uix.behaviors import ButtonBehavior
 
-        # Make item_box clickable
-        item_box = BoxLayout(
+        # Create clickable container using ButtonBehavior
+        class ClickableBox(BoxLayout, ButtonBehavior):
+            pass
+
+        item_box = ClickableBox(
             orientation='vertical',
             spacing=8,
             size_hint_y=None,
@@ -1818,11 +1822,7 @@ class ProcessScreen(BaseScreen):
         )
 
         # Add click handler
-        def on_item_touch(instance, touch):
-            if instance.collide_point(*touch.pos):
-                self._show_session_detail(session_id, start_time, end_time)
-
-        item_box.bind(on_touch_down=on_item_touch)
+        item_box.bind(on_press=lambda instance: self._show_session_detail(session_id, start_time, end_time))
 
         # Header with time and stats
         header = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None)
