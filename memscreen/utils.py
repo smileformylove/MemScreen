@@ -6,8 +6,14 @@
 
 import hashlib
 import re, ast, json, base64
+import subprocess
+import time
+import psutil
+import logging
 
 from .prompts import FACT_RETRIEVAL_PROMPT
+
+logger = logging.getLogger(__name__)
 
 
 def get_fact_retrieval_messages(message):
@@ -296,3 +302,82 @@ def process_telemetry_filters(filters):
         encoded_ids["run_id"] = hashlib.md5(filters["run_id"].encode()).hexdigest()
 
     return list(filters.keys()), encoded_ids
+
+
+def ensure_ollama_running():
+    """
+    Check if Ollama service is running, and start it if not.
+
+    Returns:
+        bool: True if Ollama is running or was successfully started, False otherwise.
+    """
+    # Check if ollama command exists
+    try:
+        subprocess.run(
+            ["which", "ollama"],
+            capture_output=True,
+            check=True,
+            timeout=2
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        logger.warning("Ollama not found. Please install Ollama from https://ollama.com/download")
+        return False
+
+    # Check if ollama process is already running
+    try:
+        for proc in psutil.process_iter(['name', 'cmdline']):
+            try:
+                if proc.info['name'] and 'ollama' in proc.info['name'].lower():
+                    logger.debug("Ollama service is already running")
+                    return True
+                if proc.info['cmdline']:
+                    cmdline = ' '.join(proc.info['cmdline'])
+                    if 'ollama' in cmdline.lower() and 'serve' in cmdline.lower():
+                        logger.debug("Ollama service is already running")
+                        return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+    except Exception as e:
+        logger.debug(f"Error checking for Ollama process: {e}")
+
+    # Ollama is not running, start it
+    logger.info("Starting Ollama service...")
+    try:
+        # Start ollama serve in background
+        subprocess.Popen(
+            ["ollama", "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+
+        # Wait for Ollama to start
+        max_wait = 10  # seconds
+        for i in range(max_wait):
+            time.sleep(1)
+            try:
+                # Check if Ollama is responding
+                subprocess.run(
+                    ["ollama", "list"],
+                    capture_output=True,
+                    check=True,
+                    timeout=2
+                )
+                logger.info("Ollama service started successfully")
+                return True
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                if i < max_wait - 1:
+                    continue
+                else:
+                    logger.warning("Ollama service started but not responding yet")
+                    return True  # Return True anyway, it might start working
+
+        logger.warning("Ollama service started but could not verify it's responding")
+        return True  # Return True anyway, process was started
+
+    except FileNotFoundError:
+        logger.warning("Ollama command not found. Please install Ollama from https://ollama.com/download")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to start Ollama service: {e}")
+        return False

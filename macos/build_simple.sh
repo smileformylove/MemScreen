@@ -106,7 +106,7 @@ Models to download:
 Click OK to start download." buttons {"OK"} with title "MemScreen - AI Models" giving up after 0' &> /dev/null
 
         # Create download script
-        cat > /tmp/memscreen_download_models.sh << 'EOF'
+        cat > /tmp/memscreen_download_models.sh << 'DOWNLOAD_EOF'
 #!/bin/bash
 cd "$HOME"
 
@@ -132,7 +132,7 @@ echo "You can now launch MemScreen."
 
 # Show notification
 osascript -e 'display notification "MemScreen" with title "AI Models Ready!"' &> /dev/null
-EOF
+DOWNLOAD_EOF
 
         chmod +x /tmp/memscreen_download_models.sh
 
@@ -155,20 +155,7 @@ To check progress, open Terminal and see the download progress."
     touch "$MODELS_CHECK_FILE"
 fi
 
-# Check if Ollama service is running
-if ! pgrep -x "ollama" > /dev/null; then
-    osascript -e 'display dialog "Starting Ollama service...
-
-This will take a few seconds." buttons {"OK"} with title "MemScreen - Starting Ollama" giving up after 0' &> /dev/null
-
-    # Start Ollama in background
-    ollama serve > /tmp/ollama.log 2>&1 &
-
-    # Wait for Ollama to start
-    sleep 5
-fi
-
-# Launch MemScreen
+# Launch MemScreen (Ollama service will be started automatically by start.py)
 cd "$SCRIPT_DIR/../Resources"
 exec python3 start.py "$@"
 EOF

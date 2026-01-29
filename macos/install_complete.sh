@@ -62,13 +62,23 @@ else
     echo ""
 fi
 
-# Start Ollama service
+# Start Ollama service and keep it running
 echo -e "${YELLOW}Starting Ollama service...${NC}"
 if ! pgrep -x "ollama" > /dev/null; then
+    echo "Launching Ollama in background..."
     ollama serve > /tmp/ollama_install.log 2>&1 &
-    sleep 3
+    sleep 5
+
+    # Verify Ollama is running
+    if pgrep -x "ollama" > /dev/null; then
+        echo -e "${GREEN}✓ Ollama service started successfully${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Ollama started but verification failed${NC}"
+        echo "Check log: tail -f /tmp/ollama_install.log"
+    fi
+else
+    echo -e "${GREEN}✓ Ollama service already running${NC}"
 fi
-echo -e "${GREEN}✓ Ollama service running${NC}"
 echo ""
 
 # Check and download models
