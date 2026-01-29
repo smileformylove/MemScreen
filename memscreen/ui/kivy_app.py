@@ -1967,10 +1967,19 @@ class ProcessScreen(BaseScreen):
             pattern_section.add_widget(pattern_title)
 
             # Pattern insights
-            pattern_text = f"""• Most Active Keys: {', '.join(patterns['top_keys'][:3])}
-• Event Frequency: {patterns['avg_events_per_minute']:.1f} events/min
-• Click Intensity: {patterns['click_ratio']:.1%} of all events
-• Session Duration: {patterns['duration_minutes']:.1f} minutes"""
+            try:
+                top_keys_str = ', '.join(patterns['top_keys'][:3]) if patterns['top_keys'] else 'N/A'
+                freq_str = f"{patterns['avg_events_per_minute']:.1f}" if patterns['avg_events_per_minute'] > 0 else 'N/A'
+                click_str = f"{patterns['click_ratio']:.1%}" if patterns['click_ratio'] >= 0 else 'N/A'
+                duration_str = f"{patterns['duration_minutes']:.1f}" if patterns['duration_minutes'] > 0 else 'N/A'
+
+                pattern_text = f"""• Most Active Keys: {top_keys_str}
+• Event Frequency: {freq_str} events/min
+• Click Intensity: {click_str} of all events
+• Session Duration: {duration_str} minutes"""
+            except Exception as e:
+                print(f"[ProcessScreen] Error formatting pattern text: {e}")
+                pattern_text = "• Pattern analysis unavailable"
 
             pattern_label = Label(
                 text=pattern_text,
@@ -1979,7 +1988,7 @@ class ProcessScreen(BaseScreen):
                 color=(0.3, 0.3, 0.3, 1),
                 halign='left',
                 valign='top',
-                text_size=(None, None),
+                text_size=(600, None),
                 size_hint_y=None,
                 height=dp(120)
             )
@@ -1999,14 +2008,19 @@ class ProcessScreen(BaseScreen):
             main_layout.add_widget(events_label)
 
             # Events scroll view
-            events_scroll = ScrollView()
+            events_scroll = ScrollView(size_hint=(1, 1))
             events_list = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None, padding=dp(10))
             events_list.bind(minimum_height=events_list.setter('height'))
 
             # Add events
-            for event in events[:100]:  # Limit to first 100 events for performance
-                event_item = self._create_detail_event_item(event)
-                events_list.add_widget(event_item)
+            try:
+                for event in events[:100]:  # Limit to first 100 events for performance
+                    event_item = self._create_detail_event_item(event)
+                    events_list.add_widget(event_item)
+            except Exception as e:
+                print(f"[ProcessScreen] Error creating event items: {e}")
+                no_events_label = Label(text='No events to display', font_name='chinese', font_size='14')
+                events_list.add_widget(no_events_label)
 
             events_scroll.add_widget(events_list)
             main_layout.add_widget(events_scroll)
