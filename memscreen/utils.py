@@ -10,6 +10,8 @@ import subprocess
 import time
 import psutil
 import logging
+import platform
+import shutil
 
 from .prompts import FACT_RETRIEVAL_PROMPT
 
@@ -307,33 +309,33 @@ def process_telemetry_filters(filters):
 def ensure_ollama_running():
     """
     Check if Ollama service is running, and start it if not.
+    Cross-platform implementation supporting macOS, Linux, and Windows.
 
     Returns:
         bool: True if Ollama is running or was successfully started, False otherwise.
     """
-    # Check if ollama command exists
-    try:
-        subprocess.run(
-            ["which", "ollama"],
-            capture_output=True,
-            check=True,
-            timeout=2
-        )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+    # Check if ollama command exists (cross-platform)
+    ollama_path = shutil.which("ollama")
+    if not ollama_path:
         logger.warning("Ollama not found. Please install Ollama from https://ollama.com/download")
         return False
+
+    logger.debug(f"Found Ollama at: {ollama_path}")
 
     # Check if ollama process is already running
     try:
         for proc in psutil.process_iter(['name', 'cmdline']):
             try:
+                # Check process name
                 if proc.info['name'] and 'ollama' in proc.info['name'].lower():
-                    logger.debug("Ollama service is already running")
+                    logger.debug("Ollama service is already running (detected by name)")
                     return True
+
+                # Check command line arguments
                 if proc.info['cmdline']:
                     cmdline = ' '.join(proc.info['cmdline'])
                     if 'ollama' in cmdline.lower() and 'serve' in cmdline.lower():
-                        logger.debug("Ollama service is already running")
+                        logger.debug("Ollama service is already running (detected by cmdline)")
                         return True
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
@@ -343,13 +345,26 @@ def ensure_ollama_running():
     # Ollama is not running, start it
     logger.info("Starting Ollama service...")
     try:
-        # Start ollama serve in background
-        subprocess.Popen(
-            ["ollama", "serve"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True
-        )
+        # Platform-specific process startup
+        system = platform.system()
+
+        if system == "Windows":
+            # Windows: use CREATE_NEW_PROCESS_GROUP
+            creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
+            subprocess.Popen(
+                ["ollama", "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=creation_flags
+            )
+        else:
+            # Unix-like (macOS, Linux): use start_new_session
+            subprocess.Popen(
+                ["ollama", "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True
+            )
 
         # Wait for Ollama to start
         max_wait = 10  # seconds
