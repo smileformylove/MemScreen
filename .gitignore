@@ -28,6 +28,7 @@ MANIFEST
 
 # Virtual environments
 venv/
+venv_build/
 ENV/
 env/
 .venv
