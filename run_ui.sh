@@ -22,41 +22,16 @@ echo "📍 Using Python: $(which python3)"
 echo "📍 Python Version: $(python3 --version)"
 echo ""
 
-# Check if dependencies are installed
-echo "📦 Checking dependencies..."
-python3 -c "import pydantic" 2>/dev/null
-if [ $? -ne 0 ]; then
-    echo "⚠️  Dependencies missing."
-    echo ""
-    echo "Please install dependencies using one of these methods:"
-    echo ""
-    echo "1. Using virtual environment (recommended):"
-    echo "   python3 -m venv venv"
-    echo "   source venv/bin/activate"
-    echo "   pip install -e ."
-    echo "   ./run_ui.sh"
-    echo ""
-    echo "2. Using --user flag:"
-    echo "   pip3 install --user -e ."
-    echo ""
-    echo "3. Using --break-system-packages (not recommended):"
-    echo "   pip3 install --break-system-packages -e ."
-    echo ""
-    echo "See TROUBLESHOOTING.md for more details."
+# Check if start.py exists
+if [ ! -f "start.py" ]; then
+    echo "❌ Cannot find start.py"
+    echo "Please ensure you're in the MemScreen directory"
     exit 1
 fi
-
-echo "✅ Dependencies OK"
-echo ""
 
 # Launch the UI
 echo "🖼️  Launching MemScreen UI..."
 echo ""
 
-# Try to launch with unified_ui first (official command)
-if [ -f "memscreen/unified_ui.py" ]; then
-    python3 -m memscreen.ui
-else
-    echo "❌ Cannot find memscreen UI module"
-    exit 1
-fi
+python3 start.py "$@"
+

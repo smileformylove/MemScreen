@@ -74,49 +74,20 @@ fi
 
 echo ""
 echo "================================================"
-echo "Installing MemScreen"
+echo "Installation Complete! 🎉"
 echo "================================================"
 echo ""
-
-# Install MemScreen
-echo "Installing MemScreen and dependencies..."
-$PYTHON_CMD -m pip install --upgrade pip
-$PYTHON_CMD -m pip install git+https://github.com/smileformylove/MemScreen.git
-
-echo -e "${GREEN}✓ MemScreen installed${NC}"
+echo "Next steps:"
 echo ""
-
-# Create command shortcuts in /usr/local/bin (if accessible)
-SHORTCUTS_DIR="/usr/local/bin"
-if [ -w "$SHORTCUTS_DIR" ] || sudo -n true 2>/dev/null; then
-    echo "Creating command shortcuts..."
-
-    # Create launcher scripts
-    sudo mkdir -p "$SHORTCUTS_DIR"
-
-    sudo tee "$SHORTCUTS_DIR/memscreen" > /dev/null << 'EOF'
-#!/bin/bash
-python3 -m memscreen.memscreen "$@"
-EOF
-
-    sudo tee "$SHORTCUTS_DIR/memscreen-chat" > /dev/null << 'EOF'
-#!/bin/bash
-python3 -m memscreen.chat_ui "$@"
-EOF
-
-    sudo tee "$SHORTCUTS_DIR/memscreen-screenshots" > /dev/null << 'EOF'
-#!/bin/bash
-python3 -m memscreen.screenshot_ui "$@"
-EOF
-
-    sudo tee "$SHORTCUTS_DIR/memscreen-process-mining" > /dev/null << 'EOF'
-#!/bin/bash
-python3 -m memscreen.process_mining "$@"
-EOF
-
-    sudo chmod +x "$SHORTCUTS_DIR/memscreen"*
-    echo -e "${GREEN}✓ Command shortcuts created${NC}"
-fi
+echo -e "${BLUE}1. Navigate to MemScreen directory:${NC}"
+echo "   cd MemScreen"
+echo ""
+echo -e "${BLUE}2. Install Python dependencies:${NC}"
+echo "   pip install -r requirements.txt"
+echo ""
+echo -e "${BLUE}3. Launch MemScreen:${NC}"
+echo "   python start.py"
+echo ""
 
 echo ""
 echo "================================================"
@@ -157,16 +128,6 @@ echo ""
 echo "================================================"
 echo -e "${GREEN}Installation Complete! 🎉${NC}"
 echo "================================================"
-echo ""
-echo "You can now use MemScreen with these commands:"
-echo ""
-echo -e "${BLUE}  memscreen${NC}                  - Record your screen"
-echo -e "${BLUE}  memscreen-chat${NC}             - Chat with your screen history"
-echo -e "${BLUE}  memscreen-screenshots${NC}      - Browse screenshots"
-echo -e "${BLUE}  memscreen-process-mining${NC}   - Analyze workflows"
-echo ""
-echo "Or use Python module directly:"
-echo -e "${BLUE}  python3 -m memscreen.memscreen${NC}"
 echo ""
 echo "For more information:"
 echo "  https://github.com/smileformylove/MemScreen"

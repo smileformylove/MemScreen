@@ -66,10 +66,10 @@ brew install ollama        # macOS (visit ollama.com for Linux/Windows)
 
 # 3️⃣ Download AI Models (one-time, ~3GB)
 ollama pull qwen2.5vl:3b          # Vision model (~2GB)
-ollama pull nomic-embed-text     # Text embeddings (~274MB)
+ollama pull mxbai-embed-large     # Text embeddings (~470MB)
 
 # 4️⃣ Launch MemScreen 🚀
-python start_kivy.py
+python start.py
 ```
 
 **That's it!** No API keys, no cloud signup, no configuration. Just start recording and chatting with your local AI Agent.
@@ -205,8 +205,8 @@ ollama serve
 # Pull vision-language model (~2GB)
 ollama pull qwen2.5vl:3b
 
-# Pull text embedding model (~274MB)
-ollama pull nomic-embed-text
+# Pull text embedding model (~470MB)
+ollama pull mxbai-embed-large
 
 # Verify models are installed
 ollama list
@@ -232,7 +232,7 @@ pip install -r requirements.txt
 
 ```bash
 # Start the application
-python start_kivy.py
+python start.py
 ```
 
 #### (Optional) Verify Installation
@@ -272,7 +272,7 @@ ollama serve
 ollama list
 
 # Try running with debug output
-python start_kivy.py
+python start.py
 ```
 
 ### 🐧 Linux / 🪟 Windows
@@ -281,13 +281,13 @@ python start_kivy.py
 # Install Ollama from https://ollama.com
 # Pull AI models
 ollama pull qwen2.5vl:3b
-ollama pull nomic-embed-text
+ollama pull mxbai-embed-large
 
 # Install Python dependencies
 pip install -r requirements.txt
 
 # Launch
-python start_kivy.py
+python start.py
 ```
 
 ### 🔧 Requirements
@@ -328,7 +328,7 @@ python start_kivy.py
 │  ┌──────────────────────────────────────────┐  │
 │  │  🧠 AI & Memory Module                   │  │
 │  │  - Ollama MLLM (qwen2.5vl) Local         │  │
-│  │  - Text Embeddings (nomic-embed) Local   │  │
+│  │  - Text Embeddings (mxbai-embed-large) Local   │  │
 │  │  - ChromaDB Vector Store (Local DB)      │  │
 │  │  - SQLite Metadata DB                    │  │
 │  └──────────────────────────────────────────┘  │
@@ -414,7 +414,7 @@ python start_kivy.py
 | **Screen Capture** | PIL ImageGrab | ✅ Local |
 | **Video Processing** | OpenCV | ✅ Local |
 | **Databases** | SQLite (metadata) + ChromaDB (vectors) | ✅ Local |
-| **AI Models** | Ollama (qwen2.5vl:3b, nomic-embed-text) | ✅ **100% Local** |
+| **AI Models** | Ollama (qwen2.5vl:3b, mxbai-embed-large) | ✅ **100% Local** |
 | **Agent System** | Custom Framework with Planner & Skills | ✅ **100% Local** |
 | **Input Tracking** | pynput | ✅ Local |
 | **Language** | Python 3.8+ | ✅ Local |
@@ -479,7 +479,7 @@ Contributions welcome! Here's how to help:
 git clone https://github.com/smileformylove/MemScreen.git
 cd MemScreen
 pip install -r requirements.txt
-python start_kivy.py
+python start.py
 ```
 
 ---
