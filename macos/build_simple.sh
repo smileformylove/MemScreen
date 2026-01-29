@@ -53,19 +53,106 @@ if [ -f "venv/bin/activate" ]; then
     source venv/bin/activate
 fi
 
-# Check if Ollama is installed
+# Check and install Ollama if needed
 if ! command -v ollama &> /dev/null; then
-    osascript -e 'display dialog "MemScreen requires Ollama to run AI models.
+    osascript -e 'display dialog "MemScreen requires Ollama.
 
-Please install Ollama:
-  brew install ollama
+Would you like to install Ollama now?
+This will open the Ollama download page.
 
-Then download AI models:
-  ollama pull qwen2.5vl:3b
-  ollama pull mxbai-embed-large
+After installing, please restart MemScreen." buttons {"Install Now", "Cancel" default button "Install Now" with title "MemScreen - Ollama Required" giving up after 0' &> /dev/null
 
-Visit ollama.com for more information." buttons {"OK"} with title "MemScreen - Ollama Required"'
+    # Wait for user response
+    sleep 2
+
+    # Open Ollama download page
+    open "https://ollama.com/download"
+
+    osascript -e 'display dialog "After installing Ollama, please restart MemScreen." buttons {"OK"} with title "MemScreen - Installation Required" giving up after 0' &> /dev/null
+
     exit 1
+fi
+
+# Check and download AI models on first run
+MODELS_CHECK_FILE="$HOME/.memscreen_models_installed"
+
+if [ ! -f "$MODELS_CHECK_FILE" ]; then
+    echo "Checking for required AI models..."
+
+    MODELS_OK=true
+
+    # Check if qwen2.5vl:3b exists
+    if ! ollama list | grep -q "qwen2.5vl:3b"; then
+        MODELS_OK=false
+        MODEL1="qwen2.5vl:3b"
+    fi
+
+    # Check if mxbai-embed-large exists
+    if ! ollama list | grep -q "mxbai-embed-large"; then
+        MODELS_OK=false
+        MODEL2="mxbai-embed-large"
+    fi
+
+    if [ "$MODELS_OK" = false ]; then
+        osascript -e 'display dialog "MemScreen needs to download AI models (~2.5GB total).
+
+This one-time download will happen in the background.
+You can continue using MemScreen once models are ready.
+
+Models to download:
+• qwen2.5vl:3b (~2GB) - Vision model
+• mxbai-embed-large (~470MB) - Text embeddings
+
+Click OK to start download." buttons {"OK"} with title "MemScreen - AI Models" giving up after 0' &> /dev/null
+
+        # Create download script
+        cat > /tmp/memscreen_download_models.sh << 'EOF'
+#!/bin/bash
+cd "$HOME"
+
+echo "Downloading AI models for MemScreen..."
+echo "This may take 10-20 minutes depending on your connection."
+
+# Download vision model
+echo ""
+echo "[1/2] Downloading qwen2.5vl:3b (~2GB)..."
+ollama pull qwen2.5vl:3b
+
+# Download embedding model
+echo ""
+echo "[2/2] Downloading mxbai-embed-large (~470MB)..."
+ollama pull mxbai-embed-large
+
+# Create marker file
+touch ~/.memscreen_models_installed
+
+echo ""
+echo "✅ All models downloaded successfully!"
+echo "You can now launch MemScreen."
+
+# Show notification
+osascript -e 'display notification "MemScreen" with title "AI Models Ready!"' &> /dev/null
+EOF
+
+        chmod +x /tmp/memscreen_download_models.sh
+
+        # Run download in background Terminal
+        osascript -e 'tell application "Terminal"
+            do script "chmod +x /tmp/memscreen_download_models.sh && /tmp/memscreen_download_models.sh"
+            end tell' &> /dev/null
+
+        osascript -e 'display dialog "AI models are downloading in the background.
+
+You can close this window. A notification will appear when ready.
+
+To check progress, open Terminal and see the download progress."
+         buttons {"OK"} with title "MemScreen - Downloading Models" giving up after 0' &> /dev/null
+
+        exit 0
+    fi
+
+    # Create marker file
+    touch "$MODELS_CHECK_FILE"
 fi
 
 # Check if Ollama service is running
