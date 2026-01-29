@@ -176,7 +176,13 @@ Experience a sleek, light-purple themed UI built with Kivy framework
 
 ## 📦 Installation
 
-### 🍎 macOS (Recommended)
+### 🚀 Quick Install (macOS)
+
+**Pre-built application available!** Download the DMG installer from [Releases](https://github.com/smileformylove/MemScreen/releases) and double-click to install.
+
+Or install from source (below) for full control.
+
+### 🍎 macOS (From Source)
 
 #### Prerequisites Check
 
