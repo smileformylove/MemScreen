@@ -471,15 +471,27 @@ class ChatPresenter(BasePresenter):
             Context string with relevant memories
         """
         if not self.memory_system:
+            print(f"[ChatPresenter] ⚠️  No memory system available")
             return ""
 
         try:
-            print(f"[ChatPresenter] Searching memory for: {query}")
+            print(f"[ChatPresenter] 🔍 Searching memory for: {query}")
 
             results = self.memory_system.search(query=query, user_id="screenshot")
 
-            if not results or 'results' not in results or not results['results']:
+            if not results:
+                print(f"[ChatPresenter] ⚠️  No results returned from memory search")
                 return ""
+
+            if 'results' not in results:
+                print(f"[ChatPresenter] ⚠️  Results missing 'results' key: {list(results.keys())}")
+                return ""
+
+            if not results['results']:
+                print(f"[ChatPresenter] ⚠️  Empty results list - no memories found for query")
+                return ""
+
+            print(f"[ChatPresenter] ✅ Found {len(results['results'])} memories")
 
             # Prioritize different types of memories
             recording_memories = [
@@ -496,6 +508,10 @@ class ChatPresenter(BasePresenter):
                 r for r in results['results']
                 if 'metadata' in r and r['metadata'].get('type') == 'chat'
             ]
+
+            print(f"[ChatPresenter] - Screen recordings: {len(recording_memories)}")
+            print(f"[ChatPresenter] - OCR memories: {len(ocr_memories)}")
+            print(f"[ChatPresenter] - Chat memories: {len(chat_memories)}")
 
             # Build rich context
             context_parts = []

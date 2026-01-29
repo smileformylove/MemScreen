@@ -36,6 +36,9 @@ class MemScreenConfig:
     DEFAULT_VIDEOS_DIR = "videos"
     DEFAULT_LOGS_DIR = "logs"
 
+    # Default timezone
+    DEFAULT_TIMEZONE = "US/Pacific"
+
     # Ollama configuration
     DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
     DEFAULT_OLLAMA_LLM_MODEL = "qwen3:1.7b"
@@ -109,6 +112,10 @@ class MemScreenConfig:
             "ui": {
                 "chat_input_height": self.CHAT_INPUT_HEIGHT,
                 "preview_update_interval": self.PREVIEW_UPDATE_INTERVAL,
+            },
+            # Timezone configuration
+            "timezone": {
+                "default": self.DEFAULT_TIMEZONE,
             },
         }
 
@@ -280,6 +287,12 @@ class MemScreenConfig:
     def preview_update_interval(self) -> int:
         """Get preview update interval in milliseconds."""
         return self._config["ui"]["preview_update_interval"]
+
+    # Timezone properties
+    @property
+    def timezone(self) -> str:
+        """Get default timezone."""
+        return self._config["timezone"]["default"]
 
     def get_llm_config(self) -> Dict[str, Any]:
         """

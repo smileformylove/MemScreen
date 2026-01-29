@@ -8,6 +8,7 @@ from memscreen.ui import MemScreenApp
 from memscreen import Memory
 from memscreen.memory.models import MemoryConfig, EmbedderConfig, LlmConfig, VectorStoreConfig
 from memscreen.embeddings import MockEmbeddings
+from memscreen.config import get_config
 import tkinter as tk
 
 def main():
@@ -17,34 +18,33 @@ def main():
 
     # Create real memory system with Ollama embeddings
     try:
-        # Create configuration with all required components
+        # Use centralized config system
+        app_config = get_config()
+
+        # Create MemoryConfig from centralized config
         config = MemoryConfig(
             embedder=EmbedderConfig(
-                provider="ollama",
-                config={
-                    "model": "nomic-embed-text",  # Lightweight embedding model
-                    "ollama_base_url": "http://127.0.0.1:11434"
-                }
+                provider=app_config.get_embedder_config()["provider"],
+                config=app_config.get_embedder_config()["config"]
             ),
             vector_store=VectorStoreConfig(
-                provider="chroma",
-                config={
-                    "collection_name": "memscreen_records",
-                    "path": "./db/chroma_db"
-                }
+                provider=app_config.get_vector_store_config()["provider"],
+                config=app_config.get_vector_store_config()["config"]
             ),
             llm=LlmConfig(
-                provider="ollama",
-                config={
-                    "model": "qwen2.5vl:3b",
-                    "ollama_base_url": "http://127.0.0.1:11434"
-                }
+                provider=app_config.get_llm_config()["provider"],
+                config=app_config.get_llm_config()["config"]
             ),
-            history_db_path="./db/memscreen_history.db"
+            mllm=LlmConfig(
+                provider=app_config.get_mllm_config()["provider"],
+                config=app_config.get_mllm_config()["config"]
+            ),
+            history_db_path=str(app_config.db_path),
+            timezone=app_config.timezone if hasattr(app_config, 'timezone') else "US/Pacific"
         )
 
         mem = Memory(config=config)
-        print("✅ Memory system ready (using Ollama embeddings)")
+        print("✅ Memory system ready (using centralized config with Ollama embeddings)")
     except Exception as e:
         print(f"⚠️  Warning: Memory init failed: {e}")
         import traceback

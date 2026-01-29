@@ -28,6 +28,10 @@ from typing import Any, Dict, Optional, Union, Literal, List
 from .base import MemoryBase
 from .models import MemoryConfig, MemoryItem, MemoryType
 
+# Simple in-memory cache for frequently searched queries
+_search_cache = {}
+_CACHE_MAX_SIZE = 100
+
 # Import from sibling modules
 from ..llm import LlmFactory
 from ..embeddings import EmbedderFactory
@@ -164,28 +168,45 @@ class Memory(MemoryBase):
         self.collection_name = self.config.vector_store.config.collection_name
         self.api_version = self.config.version
 
-        self.enable_graph = False
-
-        # if self.config.graph_store.config:
-        #     provider = self.config.graph_store.provider
-        #     self.graph = GraphStoreFactory.create(provider, self.config)
-        #     self.enable_graph = True
-        # else:
-        #     self.graph = None
-
+        # Initialize graph store if enabled
+        self.enable_graph = getattr(self.config, 'enable_graph', False)
         self.graph = None
 
-        # Set up telemetry vector store
+        if self.enable_graph:
+            try:
+                from ..graph import GraphStoreFactory, EntityExtractor
+                from ..graph.models import GraphConfig
+
+                graph_config = getattr(self.config, 'graph_store', None)
+                if graph_config is None:
+                    graph_config = {"provider": "memory"}
+
+                self.graph = GraphStoreFactory.create(
+                    graph_config.get("provider", "memory"),
+                    graph_config.get("config", {})
+                )
+                self.entity_extractor = EntityExtractor(self.llm)
+                logger.info("Graph store initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize graph store: {e}")
+                self.enable_graph = False
+                self.graph = None
+
+        # Set up telemetry vector store (separate from main vector store)
         home_dir = os.path.expanduser("~")
         memscreen_dir = os.environ.get("memscreen_DIR") or os.path.join(home_dir, ".memscreen")
 
-        self.config.vector_store.config.collection_name = "memscreenmigrations"
+        # Create a copy of the config for telemetry to avoid side effects
+        telemetry_config = deepcopy(self.config.vector_store.config)
+        telemetry_config.collection_name = "memscreenmigrations"
+
         if self.config.vector_store.provider in ["faiss", "qdrant"]:
             provider_path = f"migrations_{self.config.vector_store.provider}"
-            self.config.vector_store.config.path = os.path.join(memscreen_dir, provider_path)
-            os.makedirs(self.config.vector_store.config.path, exist_ok=True)
+            telemetry_config.path = os.path.join(memscreen_dir, provider_path)
+            os.makedirs(telemetry_config.path, exist_ok=True)
+
         self._telemetry_vector_store = VectorStoreFactory.create(
-            self.config.vector_store.provider, self.config.vector_store.config
+            self.config.vector_store.provider, telemetry_config
         )
         capture_event("memscreen.init", self, {"sync_type": "sync"})
 
@@ -388,6 +409,51 @@ class Memory(MemoryBase):
 
         parsed_messages = parse_messages(messages)
 
+        # OPTIMIZATION: Skip fact extraction for simple/short messages
+        # This significantly improves speed for simple queries and short messages
+        message_length = len(parsed_messages)
+        should_skip_extraction = (
+            message_length < 50 or  # Very short messages
+            len(parsed_messages.split('\n')) < 2  # Single line messages
+        )
+
+        if should_skip_extraction:
+            logger.debug("Skipping fact extraction for simple message (speed optimization)")
+            # Directly add the message as a memory
+            returned_memories = []
+            for message_dict in messages:
+                if (
+                    not isinstance(message_dict, dict)
+                    or message_dict.get("role") is None
+                    or message_dict.get("content") is None
+                ):
+                    continue
+
+                if message_dict["role"] == "system":
+                    continue
+
+                per_msg_meta = deepcopy(metadata)
+                per_msg_meta["role"] = message_dict["role"]
+
+                actor_name = message_dict.get("name")
+                if actor_name:
+                    per_msg_meta["actor_id"] = actor_name
+
+                msg_content = message_dict["content"]
+                msg_embeddings = self.embedding_model.embed(msg_content, "add")
+                mem_id = self._create_memory(msg_content, msg_embeddings, per_msg_meta)
+
+                returned_memories.append(
+                    {
+                        "id": mem_id,
+                        "memory": msg_content,
+                        "event": "ADD",
+                        "actor_id": actor_name if actor_name else None,
+                        "role": message_dict["role"],
+                    }
+                )
+            return returned_memories
+
         # Build LLM request prompt
         if self.config.custom_fact_extraction_prompt:
             system_prompt = self.config.custom_fact_extraction_prompt
@@ -395,109 +461,147 @@ class Memory(MemoryBase):
         else:
             system_prompt, user_prompt = get_fact_retrieval_messages(parsed_messages)
 
-        # First LLM call: extract facts
+        # OPTIMIZATION: Use faster LLM parameters for fact extraction
         response = self.llm.generate_response(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_object"},
+            # OPTIMIZATION: Limit tokens for faster response
+            options={
+                "num_predict": 256,  # Limit output tokens
+                "temperature": 0.3,  # Lower temperature for faster, focused output
+                "top_p": 0.8,  # Slightly lower for faster sampling
+            }
         )
 
         new_retrieved_facts = []
         try:
-            # Fix 1: Thoroughly clean LLM response to solve 90% of parsing failures
+            # Clean LLM response for robust JSON parsing
             if isinstance(response, str):
-                # Clean ollama signature separators
+                # Remove Ollama signature separators
                 if '\n\n' in response:
                     response = response.split('\n\n')[-1]
-                # Clean ```json / ``` code block markers
+                # Remove code block markers
                 response = remove_code_blocks(response)
-                # Clean leading/trailing whitespace, newlines, tabs to ensure pure JSON string
+                # Clean whitespace
                 response = response.strip().replace('\n','').replace('\t','')
 
-            # Fix 2: Prioritize standard json.loads parsing (most stable), use extract_python_dict as fallback
-            try:
-                resp_dict = json.loads(response)
-            except:
-                resp_dict = extract_python_dict(response)
+            # Clean response to handle common LLM JSON formatting issues
+            cleaned_response = response.strip()
 
-            # Safe value extraction to prevent KeyError
+            # Remove trailing quotes that LLM sometimes adds
+            if cleaned_response.endswith('"'):
+                # Check if it's an extra quote (not part of the JSON)
+                try:
+                    # Try parsing with the trailing quote removed
+                    test_parse = json.loads(cleaned_response[:-1])
+                    cleaned_response = cleaned_response[:-1]
+                except:
+                    pass
+
+            # Parse JSON with fallback to Python dict extraction
+            try:
+                resp_dict = json.loads(cleaned_response)
+            except:
+                resp_dict = extract_python_dict(cleaned_response)
+
+            # Extract facts safely with None check
+            if resp_dict is None:
+                logger.warning("JSON parsing returned None, using empty facts list")
+                resp_dict = {}
+
             new_retrieved_facts = resp_dict.get("facts", [])
             if not isinstance(new_retrieved_facts, list):
                 new_retrieved_facts = []
 
-        # Fix 3: Precisely catch all exception types, log [exception_type+details+original_response] to thoroughly solve your error
         except Exception as e:
             logger.error(
-                f"[Fatal] Parse new_retrieved_facts failed! | Exception_Type: {type(e).__name__} | Exception_Msg: {str(e)}",
-                exc_info=True  # Print full stack trace for troubleshooting
+                f"Failed to parse extracted facts from LLM response: {type(e).__name__}: {str(e)}",
+                exc_info=True
             )
-            logger.error(f"[Fatal] Raw LLM Response Content: {response}")
+            logger.error(f"Raw LLM response: {response}")
             new_retrieved_facts = []
 
         if not new_retrieved_facts:
             logger.debug("No new facts retrieved from input. Skipping memory update LLM call.")
 
+        # Search for existing similar memories
         retrieved_old_memory = []
         new_message_embeddings = {}
-        # Fix 4: Add null check to prevent empty list iteration
+
         for new_mem in new_retrieved_facts:
             if not isinstance(new_mem, str) or len(new_mem.strip()) == 0:
                 continue
+
             messages_embeddings = self.embedding_model.embed(new_mem, "add")
             new_message_embeddings[new_mem] = messages_embeddings
+
             existing_memories = self.vector_store.search(
                 query=new_mem,
                 vectors=messages_embeddings,
                 limit=5,
                 filters=filters,
             )
+
             for mem in existing_memories:
                 if hasattr(mem, "id") and hasattr(mem, "payload") and mem.payload.get("data"):
                     retrieved_old_memory.append({"id": mem.id, "text": mem.payload["data"]})
 
-        # Keep deduplication logic, optimize writing
+        # Deduplicate memories by ID
         unique_data = {item["id"]: item for item in retrieved_old_memory}
         retrieved_old_memory = list(unique_data.values())
         logger.info(f"Total existing memories after deduplication: {len(retrieved_old_memory)}")
 
-        # Mapping UUIDs with integers for handling UUID hallucinations
+        # Create UUID mapping to handle LLM hallucinations
+        # LLM may return UUIDs that don't exist, so we map numeric indices to real UUIDs
         temp_uuid_mapping = {}
         for idx, item in enumerate(retrieved_old_memory):
             temp_uuid_mapping[str(idx)] = item["id"]
             retrieved_old_memory[idx]["id"] = str(idx)
 
+        # Determine which memories to ADD, UPDATE, or DELETE
         new_memories_with_actions = {}
-        # Fix 5: Simplify LLM call logic, reduce redundant nested try-except
+
         if new_retrieved_facts:
             function_calling_prompt = get_update_memory_messages(
                 retrieved_old_memory, new_retrieved_facts, self.config.custom_update_memory_prompt
             )
             response = ""
+
             try:
-                response: str = self.llm.generate_response(
+                # OPTIMIZATION: Use faster parameters for memory update
+                response = self.llm.generate_response(
                     messages=[{"role": "user", "content": function_calling_prompt}],
                     response_format={"type": "json_object"},
+                    options={
+                        "num_predict": 512,  # Limit output for speed
+                        "temperature": 0.3,   # Lower temperature
+                        "top_p": 0.8,
+                    }
                 )
-                # Reuse cleaning logic
+
+                # Clean response for parsing
                 if isinstance(response, str) and '\n\n' in response:
                     response = response.split('\n\n')[-1]
                 response = remove_code_blocks(response).strip().replace('\n','').replace('\t','')
 
-                # Prioritize standard parsing, fallback custom extraction
+                # Parse JSON with fallback
                 try:
                     new_memories_with_actions = json.loads(response)
                 except:
                     new_memories_with_actions = extract_json_from_response(response) or {}
 
             except Exception as e:
-                logger.error(f"LLM generate update memory response failed: {type(e).__name__}: {str(e)}", exc_info=True)
+                logger.error(f"Failed to generate update memory response: {type(e).__name__}: {str(e)}", exc_info=True)
                 new_memories_with_actions = {}
 
+        # Execute memory actions
         returned_memories = []
+
         try:
-            # Fix 6: Robust type conversion + null checks to thoroughly solve list/dict type errors
+            # Extract memory actions from response
             memory_actions = []
             if isinstance(new_memories_with_actions, list):
                 memory_actions = new_memories_with_actions
@@ -506,36 +610,38 @@ class Memory(MemoryBase):
             else:
                 memory_actions = []
 
-            # Fix 7: Add field validation to all memory operations to prevent KeyError/empty values
+            # Process each memory action
             for resp in memory_actions:
                 if not isinstance(resp, dict):
                     continue
+
                 logger.info(f"Processing memory action: {resp}")
                 action_text = resp.get("text", "").strip()
                 event_type = resp.get("event", "").upper()
 
-                # Skip empty text
+                # Validate action text
                 if not action_text:
                     logger.warning("Skipping memory entry: empty `text` field.")
                     continue
-                # Skip invalid event types
+
+                # Validate event type
                 if event_type not in ["ADD", "UPDATE", "DELETE", "NONE"]:
                     logger.warning(f"Skipping invalid event type: {event_type} | content: {resp}")
                     continue
 
-                # Fix UUID mapping not existing issue: UPDATE/DELETE -> ADD
+                # Handle UUID hallucinations: if LLM returns non-existent UUID, convert to ADD
                 mem_id = resp.get("id")
                 if mem_id not in temp_uuid_mapping and event_type in ["UPDATE", "DELETE"]:
-                    logger.warning(f"UUID hallucination detected, change {event_type} -> ADD | id: {mem_id}")
+                    logger.warning(f"UUID hallucination detected, converting {event_type} -> ADD | id: {mem_id}")
                     event_type = "ADD"
 
-                # Core memory add/delete/update logic with exception handling
+                # Execute the memory action
                 try:
                     if event_type == "ADD":
                         memory_id = self._create_memory(
                             data=action_text,
                             existing_embeddings=new_message_embeddings,
-                            metadata=metadata,  # Fix 8: Reduce unnecessary deepcopy for performance
+                            metadata=metadata,
                         )
                         returned_memories.append({"id": memory_id, "memory": action_text, "event": event_type})
 
@@ -568,11 +674,12 @@ class Memory(MemoryBase):
                         )
                     elif event_type == "NONE":
                         logger.info("Memory action: NOOP (no operation)")
+
                 except Exception as e:
-                    logger.error(f"Process memory action failed | action: {resp} | error: {type(e).__name__}: {str(e)}", exc_info=True)
+                    logger.error(f"Failed to process memory action: {resp} | error: {type(e).__name__}: {str(e)}", exc_info=True)
 
         except Exception as e:
-            logger.error(f"Iterate memory actions failed: {type(e).__name__}: {str(e)}", exc_info=True)
+            logger.error(f"Failed to iterate memory actions: {type(e).__name__}: {str(e)}", exc_info=True)
 
         keys, encoded_ids = process_telemetry_filters(filters)
         capture_event(
@@ -583,14 +690,48 @@ class Memory(MemoryBase):
         return returned_memories
 
     def _add_to_graph(self, messages, filters):
-        """Add messages to the graph store."""
+        """Add messages to the graph store by extracting entities and relationships."""
         added_entities = []
-        if self.enable_graph:
-            if filters.get("user_id") is None:
-                filters["user_id"] = "user"
 
-            data = "\n".join([msg["content"] for msg in messages if "content" in msg and msg["role"] != "system"])
-            added_entities = self.graph.add(data, filters)
+        if self.enable_graph and self.graph:
+            try:
+                if filters.get("user_id") is None:
+                    filters["user_id"] = "user"
+
+                # Combine message content
+                data = "\n".join([msg["content"] for msg in messages if "content" in msg and msg["role"] != "system"])
+
+                # Extract entities and relationships using LLM
+                nodes, edges = self.entity_extractor.extract_entities_and_relations(
+                    data,
+                    user_id=filters.get("user_id")
+                )
+
+                # Add nodes to graph
+                node_ids = {}
+                for node in nodes:
+                    node_id = self.graph.add_node(node)
+                    node_ids[node.label] = node_id
+
+                # Add edges to graph (map entity names to node IDs)
+                for edge in edges:
+                    # Map source and target names to node IDs
+                    if edge.source in node_ids:
+                        edge.source = node_ids[edge.source]
+                    if edge.target in node_ids:
+                        edge.target = node_ids[edge.target]
+
+                    # Only add edge if both nodes exist
+                    if edge.source in node_ids.values() and edge.target in node_ids.values():
+                        self.graph.add_edge(edge)
+
+                added_entities = [{"nodes": len(nodes), "edges": len(edges)}]
+                logger.info(f"Added {len(nodes)} entities and {len(edges)} relationships to graph")
+
+            except Exception as e:
+                logger.error(f"Failed to add to graph: {e}")
+                import traceback
+                traceback.print_exc()
 
         return added_entities
 
@@ -950,7 +1091,7 @@ class Memory(MemoryBase):
         metadata["hash"] = hashlib.md5(data.encode()).hexdigest()
 
         import pytz
-        metadata["created_at"] = datetime.now(pytz.timezone("US/Pacific")).isoformat()
+        metadata["created_at"] = datetime.now(pytz.timezone(self.config.timezone)).isoformat()
 
         self.vector_store.insert(
             vectors=[embeddings],
@@ -1026,7 +1167,7 @@ class Memory(MemoryBase):
         new_metadata["created_at"] = existing_memory.payload.get("created_at")
 
         import pytz
-        new_metadata["updated_at"] = datetime.now(pytz.timezone("US/Pacific")).isoformat()
+        new_metadata["updated_at"] = datetime.now(pytz.timezone(self.config.timezone)).isoformat()
 
         if "user_id" in existing_memory.payload:
             new_metadata["user_id"] = existing_memory.payload["user_id"]
@@ -1106,10 +1247,6 @@ class Memory(MemoryBase):
                 self.config.vector_store.provider, self.config.vector_store.config
             )
         capture_event("memscreen.reset", self, {"sync_type": "sync"})
-
-    def chat(self, query):
-        """Chat function - not implemented yet."""
-        raise NotImplementedError("Chat function not implemented yet.")
 
 
 __all__ = ["Memory", "_build_filters_and_metadata"]

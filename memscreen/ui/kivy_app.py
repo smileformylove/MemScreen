@@ -57,6 +57,7 @@ from memscreen.memory.models import MemoryConfig, EmbedderConfig, LlmConfig, Vec
 from memscreen.presenters.recording_presenter import RecordingPresenter
 from memscreen.presenters.video_presenter import VideoPresenter
 from memscreen.memory.manager import get_memory_manager
+from memscreen.config import get_config
 
 
 class BaseScreen(Screen):
@@ -2445,17 +2446,39 @@ class MemScreenApp(App):
         from kivy.core.window import Window
         Window.title = "MemScreen v0.4.0"
 
-        # Memory
+        # Memory system - use centralized config
         try:
+            # Get centralized configuration
+            app_config = get_config()
+
+            # Create MemoryConfig from centralized config
             config = MemoryConfig(
-                embedder=EmbedderConfig(provider="ollama", config={"model": "nomic-embed-text"}),
-                vector_store=VectorStoreConfig(provider="chroma", config={"path": "./db/chroma_db"}),
-                llm=LlmConfig(provider="ollama", config={"model": "qwen3:1.7b", "max_tokens": 512, "temperature": 0.7})
+                embedder=EmbedderConfig(
+                    provider=app_config.get_embedder_config()["provider"],
+                    config=app_config.get_embedder_config()["config"]
+                ),
+                vector_store=VectorStoreConfig(
+                    provider=app_config.get_vector_store_config()["provider"],
+                    config=app_config.get_vector_store_config()["config"]
+                ),
+                llm=LlmConfig(
+                    provider=app_config.get_llm_config()["provider"],
+                    config=app_config.get_llm_config()["config"]
+                ),
+                mllm=LlmConfig(
+                    provider=app_config.get_mllm_config()["provider"],
+                    config=app_config.get_mllm_config()["config"]
+                ),
+                history_db_path=str(app_config.db_path),
+                timezone=app_config.timezone if hasattr(app_config, 'timezone') else "US/Pacific"
             )
+
             self.memory = Memory(config=config)
-            print("[App] Memory initialized")
+            print("[App] Memory initialized with centralized config")
         except Exception as e:
-            print(f"[App] Warning: {e}")
+            print(f"[App] Warning: Memory init failed: {e}")
+            import traceback
+            traceback.print_exc()
             self.memory = None
 
         # Initialize presenters

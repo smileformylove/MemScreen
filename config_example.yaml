@@ -1,0 +1,47 @@
+# MemScreen Configuration Example
+# This file demonstrates all available configuration options
+
+# Database configuration
+db:
+  dir: "./db"
+  name: "screen_capture.db"
+  chroma_name: "chroma.sqlite3"
+  videos_dir: "videos"
+  logs_dir: "logs"
+
+# Ollama configuration
+ollama:
+  base_url: "http://127.0.0.1:11434"
+  llm_model: "qwen3:1.7b"  # Fast model for general LLM tasks
+  vision_model: "qwen2.5vl:3b"  # Vision model for OCR
+  embedding_model: "mxbai-embed-large"  # Embedding model
+
+# Recording configuration
+recording:
+  duration: 60  # seconds per video segment
+  interval: 2.0  # seconds between screenshots
+  screenshot_interval: 2.0  # seconds
+
+# Performance tuning
+performance:
+  km_batch_threshold: 20  # Keyboard/mouse batch threshold
+  flush_interval: 5.0  # Seconds
+  typing_session_threshold: 2.0  # Seconds
+
+# UI configuration
+ui:
+  chat_input_height: 3
+  preview_update_interval: 1000  # milliseconds
+
+# Timezone configuration
+timezone:
+  default: "US/Pacific"
+
+# Enable knowledge graph (EXPERIMENTAL)
+# Set to true to enable entity extraction and relationship tracking
+enable_graph: true
+
+# Graph store configuration (only used if enable_graph is true)
+graph_store:
+  provider: "memory"  # Currently only 'memory' is supported
+  config: {}

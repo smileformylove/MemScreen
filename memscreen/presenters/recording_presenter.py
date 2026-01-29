@@ -501,25 +501,43 @@ class RecordingPresenter(BasePresenter):
             if not self.memory_system:
                 return
 
-            # Analyze video content
-            content_description = self._analyze_video_content(filename, frame_count)
+            # Analyze video content - now returns both description and frame details
+            content_description, frame_details = self._analyze_video_content(filename, frame_count, fps)
 
             # Create memory entry
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             duration = frame_count / fps if fps > 0 else 0
+
+            # Build detailed frame-by-frame summary
+            frame_summary_lines = []
+            if frame_details:
+                frame_summary_lines.append("Frame-by-Frame Analysis:")
+                for frame_info in frame_details:
+                    frame_num = frame_info.get("frame_number", 0)
+                    frame_time = frame_info.get("timestamp", 0)
+                    frame_text = frame_info.get("text", "No text detected")
+
+                    frame_summary_lines.append(f"  - Frame #{frame_num} (t={frame_time:.2f}s): {frame_text}")
+
+            frame_summary = "\n".join(frame_summary_lines) if frame_summary_lines else "No frame analysis available."
 
             memory_text = f"""Screen Recording captured at {timestamp}:
 - Duration: {duration:.1f} seconds
 - Frames: {frame_count}
 - File: {filename}
 
-Content Summary:
-{content_description}
+{frame_summary}
 
 This video screen recording shows what was displayed on screen during the recording period.
 When users ask about what was on their screen or what they were doing, reference this recording."""
 
-            # Add to memory
+            # Add to memory with detailed frame information in metadata
+            # Use infer=True to enable proper indexing and searchability
+            print(f"[RecordingPresenter] Adding recording to memory: {filename}")
+            print(f"[RecordingPresenter] - Duration: {duration:.1f}s, Frames: {frame_count}, FPS: {fps}")
+            print(f"[RecordingPresenter] - Content: {content_description[:100]}...")
+            print(f"[RecordingPresenter] - Frame details: {len(frame_details)} frames analyzed")
+
             result = self.memory_system.add(
                 [{"role": "user", "content": memory_text}],
                 user_id="screenshot",
@@ -530,43 +548,62 @@ When users ask about what was on their screen or what they were doing, reference
                     "fps": fps,
                     "duration": duration,
                     "timestamp": timestamp,
-                    "content_description": content_description
+                    "content_description": content_description,
+                    "frame_details": frame_details,  # Store structured frame information
+                    "ocr_text": combined_text  # Add OCR text for easier search
                 },
-                infer=False
+                infer=True  # Enable fact extraction and indexing
             )
 
-            print(f"[RecordingPresenter] Added to memory: {filename}")
+            print(f"[RecordingPresenter] ✅ Successfully added to memory: {filename}")
+            print(f"[RecordingPresenter] - Result: {result}")
 
         except Exception as e:
             self.handle_error(e, "Failed to add video to memory")
 
-    def _analyze_video_content(self, filename, total_frames):
+    def _analyze_video_content(self, filename, total_frames, fps):
         """Analyze video content by sampling frames and using OCR"""
         try:
             # Sample frames
             num_samples = min(5, total_frames)
             sample_indices = [int(i * total_frames / num_samples) for i in range(num_samples)]
 
+            frame_details = []  # Store structured frame information
             all_text_found = []
             cap = cv2.VideoCapture(filename)
 
-            for idx, frame_idx in enumerate(sample_indices):
+            for sample_idx, frame_idx in enumerate(sample_indices):
                 cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
                 ret, frame = cap.read()
                 if ret:
+                    # Calculate timestamp for this frame
+                    timestamp = frame_idx / fps if fps > 0 else 0
+
+                    # Extract text from frame
                     frame_text = self._extract_text_from_frame(frame)
+
+                    # Store frame details
+                    frame_info = {
+                        "frame_number": frame_idx,
+                        "timestamp": round(timestamp, 2),
+                        "text": frame_text
+                    }
+                    frame_details.append(frame_info)
+
                     if frame_text:
                         all_text_found.append(frame_text)
 
             cap.release()
 
-            # Combine all found text
+            # Combine all found text for backward compatibility
             combined_text = " | ".join(all_text_found) if all_text_found else "Screen recording captured (no clear text detected)"
-            return combined_text
+
+            # Return both combined text and detailed frame information
+            return combined_text, frame_details
 
         except Exception as e:
             self.handle_error(e, "Failed to analyze video content")
-            return "Screen recording (content analysis unavailable)"
+            return "Screen recording (content analysis unavailable)", []
 
     def _extract_text_from_frame(self, frame):
         """Extract text from a single frame using OCR - OPTIMIZED for speed"""

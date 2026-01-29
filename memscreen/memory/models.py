@@ -16,6 +16,14 @@ from typing import Any, Dict, Optional, ClassVar
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+# Import graph models if available
+try:
+    from ..graph.models import GraphConfig
+    GRAPH_AVAILABLE = True
+except ImportError:
+    GRAPH_AVAILABLE = False
+    GraphConfig = None
+
 # Set up the directory path
 home_dir = os.path.expanduser("~")
 memscreen_dir = os.environ.get("memscreen_DIR") or os.path.join(home_dir, ".memscreen")
@@ -186,10 +194,14 @@ class MemoryConfig(BaseModel):
         description="Path to the history database",
         default=os.path.join(memscreen_dir, "history.db"),
     )
-    # graph_store: GraphStoreConfig = Field(
-    #     description="Configuration for the graph",
-    #     default_factory=GraphStoreConfig,
-    # )
+    enable_graph: bool = Field(
+        description="Enable knowledge graph memory",
+        default=False,
+    )
+    graph_store: Optional[GraphConfig] = Field(
+        description="Configuration for the graph store",
+        default=None,
+    )
     version: str = Field(
         description="The version of the API",
         default="v1.1",
@@ -201,6 +213,10 @@ class MemoryConfig(BaseModel):
     custom_update_memory_prompt: Optional[str] = Field(
         description="Custom prompt for the update memory",
         default=None,
+    )
+    timezone: str = Field(
+        description="Timezone for timestamps (e.g., 'US/Pacific', 'UTC')",
+        default="US/Pacific",
     )
 
 
