@@ -15,8 +15,9 @@ from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.image import Image
 from kivy.uix.slider import Slider
 from kivy.uix.relativelayout import RelativeLayout
+from kivy.uix.widget import Widget
 from kivy.clock import Clock
-from kivy.graphics import Color, Rectangle, Line
+from kivy.graphics import Color, Rectangle, Line, Instruction
 from kivy.core.window import Window
 from kivy.config import Config
 from kivy.core.text import LabelBase
@@ -1545,43 +1546,93 @@ class ProcessScreen(BaseScreen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.is_tracking = False
+        self.current_session_events = []
 
         layout = BoxLayout(orientation='vertical', spacing=15, padding=25)
 
-        # Title
+        # Title and Stats row
+        header_row = BoxLayout(orientation='horizontal', spacing=15, size_hint_y=None, height=70)
+
         title = Label(
             text='Process Mining',
             font_name='chinese',
-            font_size='40',
+            font_size='32',
             bold=True,
-            size_hint_y=None,
-            height=70,
-            color=(0, 0, 0, 1)  # Black
+            color=(0, 0, 0, 1)
         )
-        layout.add_widget(title)
+        header_row.add_widget(title)
 
         # Control button
         self.track_btn = Button(
             text='Start Tracking',
             font_name='chinese',
-            font_size='24',
+            font_size='18',
             bold=True,
-            size_hint_y=None,
-            height=75,
+            size_hint_x=0.3,
             background_color=(0.6, 0.4, 0.75, 1),
             color=(1, 1, 1, 1)
         )
         self.track_btn.bind(on_press=self.toggle)
-        layout.add_widget(self.track_btn)
+        header_row.add_widget(self.track_btn)
 
-        # Event feed
-        scroll = ScrollView()
-        self.events = BoxLayout(orientation='vertical', size_hint_y=None, spacing=8, padding=15)
-        self.events.bind(minimum_height=self.events.setter('height'))
-        scroll.add_widget(self.events)
-        layout.add_widget(scroll)
+        layout.add_widget(header_row)
+
+        # Current Session Stats
+        self.session_stats = Label(
+            text='Events: 0 | Keystrokes: 0 | Mouse Clicks: 0',
+            font_name='chinese',
+            font_size='16',
+            size_hint_y=None,
+            height=40,
+            color=(0.4, 0.4, 0.4, 1),
+            halign='center'
+        )
+        layout.add_widget(self.session_stats)
+
+        # Current Session Timeline
+        session_label = Label(
+            text='Current Session',
+            font_name='chinese',
+            font_size='20',
+            bold=True,
+            size_hint_y=None,
+            height=40,
+            color=(0, 0, 0, 1),
+            halign='left'
+        )
+        layout.add_widget(session_label)
+
+        # Current session events scroll
+        session_scroll = ScrollView(size_hint_y=0.35)
+        self.session_events = BoxLayout(orientation='vertical', size_hint_y=None, spacing=6, padding=12)
+        self.session_events.bind(minimum_height=self.session_events.setter('height'))
+        session_scroll.add_widget(self.session_events)
+        layout.add_widget(session_scroll)
+
+        # History Section
+        history_label = Label(
+            text='Session History',
+            font_name='chinese',
+            font_size='20',
+            bold=True,
+            size_hint_y=None,
+            height=40,
+            color=(0, 0, 0, 1),
+            halign='left'
+        )
+        layout.add_widget(history_label)
+
+        # History list scroll
+        history_scroll = ScrollView(size_hint_y=0.45)
+        self.history_list = BoxLayout(orientation='vertical', size_hint_y=None, spacing=10, padding=12)
+        self.history_list.bind(minimum_height=self.history_list.setter('height'))
+        history_scroll.add_widget(self.history_list)
+        layout.add_widget(history_scroll)
 
         self.add_widget(layout)
+
+        # Load history on init
+        self._load_history()
 
     def toggle(self, instance):
         if not self.is_tracking:
@@ -1593,25 +1644,221 @@ class ProcessScreen(BaseScreen):
         self.is_tracking = True
         self.track_btn.text = "Stop Tracking"
         self.track_btn.background_color = (0.75, 0.3, 0.4, 1)
-        self._add_event("Tracking started")
+        self._add_session_event("🔴 Tracking started")
+        self._update_session_stats()
 
     def stop(self):
         self.is_tracking = False
         self.track_btn.text = "Start Tracking"
         self.track_btn.background_color = (0.6, 0.4, 0.75, 1)
-        self._add_event("Tracking stopped")
+        self._add_session_event("⏸️ Tracking stopped")
 
-    def _add_event(self, text):
-        event = Label(
+        # Save session to history
+        if len(self.current_session_events) > 1:
+            self._save_session()
+
+    def _add_session_event(self, text, event_type="info"):
+        """Add event to current session"""
+        import datetime
+
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+
+        color_map = {
+            "info": (0.2, 0.2, 0.2, 1),
+            "keypress": (0.1, 0.3, 0.5, 1),
+            "click": (0.5, 0.3, 0.1, 1),
+            "success": (0.1, 0.5, 0.2, 1)
+        }
+
+        event_box = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None, height=35)
+
+        time_label = Label(
+            text=timestamp,
+            font_name='chinese',
+            font_size='14',
+            size_hint_x=0.15,
+            color=(0.5, 0.5, 0.5, 1)
+        )
+        event_box.add_widget(time_label)
+
+        event_label = Label(
             text=text,
             font_name='chinese',
-            font_size='18',
+            font_size='16',
+            size_hint_x=0.85,
+            color=color_map.get(event_type, (0.2, 0.2, 0.2, 1)),
+            halign='left',
+            text_size=(400, None)
+        )
+        event_label.bind(texture_size=event_label.setter('size'))
+        event_box.add_widget(event_label)
+
+        self.session_events.add_widget(event_box)
+        self.current_session_events.append({"time": timestamp, "text": text, "type": event_type})
+
+    def _update_session_stats(self):
+        """Update session statistics display"""
+        keystrokes = sum(1 for e in self.current_session_events if e["type"] == "keypress")
+        clicks = sum(1 for e in self.current_session_events if e["type"] == "click")
+        total = len(self.current_session_events)
+
+        self.session_stats.text = f'Events: {total} | Keystrokes: {keystrokes} | Mouse Clicks: {clicks}'
+
+    def _save_session(self):
+        """Save current session to history"""
+        import sqlite3
+        import datetime
+
+        try:
+            conn = sqlite3.connect('./db/process_mining.db')
+            cursor = conn.cursor()
+
+            # Create table if not exists
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    start_time TEXT,
+                    end_time TEXT,
+                    event_count INTEGER,
+                    keystrokes INTEGER,
+                    clicks INTEGER,
+                    events_json TEXT
+                )
+            ''')
+
+            # Calculate stats
+            keystrokes = sum(1 for e in self.current_session_events if e["type"] == "keypress")
+            clicks = sum(1 for e in self.current_session_events if e["type"] == "click")
+
+            start_time = self.current_session_events[0]["time"] if self.current_session_events else ""
+            end_time = self.current_session_events[-1]["time"] if self.current_session_events else ""
+
+            import json
+            events_json = json.dumps(self.current_session_events)
+
+            # Insert session
+            cursor.execute('''
+                INSERT INTO sessions (start_time, end_time, event_count, keystrokes, clicks, events_json)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (start_time, end_time, len(self.current_session_events), keystrokes, clicks, events_json))
+
+            conn.commit()
+            conn.close()
+
+            # Refresh history
+            self._load_history()
+
+            # Clear current session
+            self.current_session_events = []
+            self.session_events.clear_widgets()
+            self._update_session_stats()
+
+            self._add_session_event("💾 Session saved to history", "success")
+
+        except Exception as e:
+            print(f"[ProcessScreen] Error saving session: {e}")
+
+    def _load_history(self):
+        """Load session history from database"""
+        import sqlite3
+
+        try:
+            conn = sqlite3.connect('./db/process_mining.db')
+            cursor = conn.cursor()
+
+            cursor.execute('''
+                SELECT id, start_time, end_time, event_count, keystrokes, clicks
+                FROM sessions
+                ORDER BY id DESC
+                LIMIT 20
+            ''')
+
+            sessions = cursor.fetchall()
+            conn.close()
+
+            # Clear existing history
+            self.history_list.clear_widgets()
+
+            if not sessions:
+                # Show empty message
+                empty_label = Label(
+                    text='No session history yet. Start tracking to record your workflow!',
+                    font_name='chinese',
+                    font_size='16',
+                    size_hint_y=None,
+                    height=60,
+                    color=(0.5, 0.5, 0.5, 1),
+                    halign='center',
+                    valign='middle'
+                )
+                self.history_list.add_widget(empty_label)
+            else:
+                # Display sessions
+                for session_id, start_time, end_time, event_count, keystrokes, clicks in sessions:
+                    session_item = self._create_session_item(session_id, start_time, end_time, event_count, keystrokes, clicks)
+                    self.history_list.add_widget(session_item)
+
+        except Exception as e:
+            print(f"[ProcessScreen] Error loading history: {e}")
+
+    def _create_session_item(self, session_id, start_time, end_time, event_count, keystrokes, clicks):
+        """Create a session history item widget"""
+        from kivy.metrics import dp
+
+        item_box = BoxLayout(
+            orientation='vertical',
+            spacing=8,
             size_hint_y=None,
-            height=40,
-            color=(0, 0, 0, 1),  # Black
+            padding=dp(15)
+        )
+
+        # Header with time and stats
+        header = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None)
+
+        time_label = Label(
+            text=f'Session #{session_id} • {start_time}',
+            font_name='chinese',
+            font_size='16',
+            bold=True,
+            size_hint_x=0.6,
+            color=(0, 0, 0, 1),
             halign='left'
         )
-        self.events.add_widget(event)
+        header.add_widget(time_label)
+
+        stats_label = Label(
+            text=f'{event_count} events | {keystrokes} keys | {clicks} clicks',
+            font_name='chinese',
+            font_size='14',
+            size_hint_x=0.4,
+            color=(0.5, 0.5, 0.5, 1),
+            halign='right'
+        )
+        header.add_widget(stats_label)
+
+        item_box.add_widget(header)
+
+        # Duration
+        duration_label = Label(
+            text=f'⏱️ {start_time} → {end_time}',
+            font_name='chinese',
+            font_size='14',
+            size_hint_y=None,
+            height=25,
+            color=(0.4, 0.4, 0.4, 1),
+            halign='left'
+        )
+        item_box.add_widget(duration_label)
+
+        # Separator line
+        separator = Widget(size_hint_y=None, height=2)
+        with separator.canvas.before:
+            Color(0.85, 0.85, 0.85, 1)
+            Rectangle(pos=separator.pos, size=separator.size)
+
+        item_box.add_widget(separator)
+
+        return item_box
 
 
 class AboutScreen(BaseScreen):
