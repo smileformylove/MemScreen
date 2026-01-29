@@ -1631,6 +1631,9 @@ class ProcessScreen(BaseScreen):
 
         self.add_widget(layout)
 
+        # Store reference for detail popup
+        self.detail_popup = None
+
         # Load history on init
         self._load_history()
 
@@ -1804,13 +1807,22 @@ class ProcessScreen(BaseScreen):
     def _create_session_item(self, session_id, start_time, end_time, event_count, keystrokes, clicks):
         """Create a session history item widget"""
         from kivy.metrics import dp
+        from kivy.uix.button import Button
 
+        # Make item_box clickable
         item_box = BoxLayout(
             orientation='vertical',
             spacing=8,
             size_hint_y=None,
             padding=dp(15)
         )
+
+        # Add click handler
+        def on_item_touch(instance, touch):
+            if instance.collide_point(*touch.pos):
+                self._show_session_detail(session_id, start_time, end_time)
+
+        item_box.bind(on_touch_down=on_item_touch)
 
         # Header with time and stats
         header = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None)
@@ -1850,6 +1862,18 @@ class ProcessScreen(BaseScreen):
         )
         item_box.add_widget(duration_label)
 
+        # Click hint
+        hint_label = Label(
+            text='👆 Tap to view details',
+            font_name='chinese',
+            font_size='12',
+            size_hint_y=None,
+            height=20,
+            color=(0.6, 0.4, 0.75, 1),
+            halign='center'
+        )
+        item_box.add_widget(hint_label)
+
         # Separator line
         separator = Widget(size_hint_y=None, height=2)
         with separator.canvas.before:
@@ -1859,6 +1883,233 @@ class ProcessScreen(BaseScreen):
         item_box.add_widget(separator)
 
         return item_box
+
+    def _show_session_detail(self, session_id, start_time, end_time):
+        """Show session detail popup with events and pattern analysis"""
+        import sqlite3
+        import json
+        from collections import Counter
+        from kivy.uix.modalview import ModalView
+        from kivy.metrics import dp
+
+        try:
+            # Load session data from database
+            conn = sqlite3.connect('./db/process_mining.db')
+            cursor = conn.cursor()
+
+            cursor.execute('''
+                SELECT events_json, keystrokes, clicks, event_count
+                FROM sessions
+                WHERE id = ?
+            ''', (session_id,))
+
+            result = cursor.fetchone()
+            conn.close()
+
+            if not result:
+                print(f"[ProcessScreen] Session #{session_id} not found")
+                return
+
+            events_json, keystrokes, clicks, event_count = result
+            events = json.loads(events_json) if events_json else []
+
+            # Perform pattern analysis
+            patterns = self._analyze_patterns(events)
+
+            # Create popup
+            popup = ModalView(
+                size_hint=(0.8, 0.8),
+                background_color=(0.95, 0.95, 0.95, 1)
+            )
+
+            # Main layout
+            main_layout = BoxLayout(orientation='vertical', spacing=15, padding=dp(20))
+
+            # Header
+            header = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None, height=dp(80))
+
+            title = Label(
+                text=f'Session #{session_id} Details',
+                font_name='chinese',
+                font_size='24',
+                bold=True,
+                color=(0.4, 0.2, 0.6, 1),
+                size_hint_y=None,
+                height=dp(40)
+            )
+            header.add_widget(title)
+
+            time_info = Label(
+                text=f'⏱️ {start_time} → {end_time}  |  📊 {event_count} events',
+                font_name='chinese',
+                font_size='16',
+                color=(0.5, 0.5, 0.5, 1),
+                size_hint_y=None,
+                height=dp(30)
+            )
+            header.add_widget(time_info)
+
+            main_layout.add_widget(header)
+
+            # Pattern Analysis Section
+            pattern_section = BoxLayout(orientation='vertical', spacing=8, size_hint_y=None, height=dp(180))
+            pattern_section.padding = dp(10)
+
+            pattern_title = Label(
+                text='📈 Pattern Analysis',
+                font_name='chinese',
+                font_size='18',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint_y=None,
+                height=dp(30)
+            )
+            pattern_section.add_widget(pattern_title)
+
+            # Pattern insights
+            pattern_text = f"""• Most Active Keys: {', '.join(patterns['top_keys'][:3])}
+• Event Frequency: {patterns['avg_events_per_minute']:.1f} events/min
+• Click Intensity: {patterns['click_ratio']:.1%} of all events
+• Session Duration: {patterns['duration_minutes']:.1f} minutes"""
+
+            pattern_label = Label(
+                text=pattern_text,
+                font_name='chinese',
+                font_size='14',
+                color=(0.3, 0.3, 0.3, 1),
+                halign='left',
+                valign='top',
+                text_size=(None, None),
+                size_hint_y=None,
+                height=dp(120)
+            )
+            pattern_section.add_widget(pattern_label)
+            main_layout.add_widget(pattern_section)
+
+            # Events Timeline Section
+            events_label = Label(
+                text='📝 Event Timeline',
+                font_name='chinese',
+                font_size='18',
+                bold=True,
+                color=(0, 0, 0, 1),
+                size_hint_y=None,
+                height=dp(30)
+            )
+            main_layout.add_widget(events_label)
+
+            # Events scroll view
+            events_scroll = ScrollView()
+            events_list = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None, padding=dp(10))
+            events_list.bind(minimum_height=events_list.setter('height'))
+
+            # Add events
+            for event in events[:100]:  # Limit to first 100 events for performance
+                event_item = self._create_detail_event_item(event)
+                events_list.add_widget(event_item)
+
+            events_scroll.add_widget(events_list)
+            main_layout.add_widget(events_scroll)
+
+            # Close button
+            close_btn = Button(
+                text='Close',
+                font_name='chinese',
+                font_size='16',
+                size_hint_y=None,
+                height=dp(50),
+                background_color=(0.6, 0.4, 0.75, 1),
+                color=(1, 1, 1, 1)
+            )
+            close_btn.bind(on_press=popup.dismiss)
+            main_layout.add_widget(close_btn)
+
+            popup.add_widget(main_layout)
+            popup.open()
+
+        except Exception as e:
+            print(f"[ProcessScreen] Error showing session detail: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _analyze_patterns(self, events):
+        """Analyze patterns in session events"""
+        from collections import Counter
+        import datetime
+
+        # Extract key presses
+        key_events = [e for e in events if e.get("type") == "keypress"]
+        click_events = [e for e in events if e.get("type") == "click"]
+
+        # Count top keys
+        key_texts = []
+        for e in key_events:
+            text = e.get("text", "")
+            if "Key press:" in text:
+                key = text.split("Key press:")[-1].strip().strip("'\"")
+                key_texts.append(key)
+
+        top_keys = [k for k, v in Counter(key_texts).most_common(5)]
+
+        # Calculate duration
+        if len(events) >= 2:
+            try:
+                start_time = datetime.datetime.strptime(events[0]["time"], "%H:%M:%S")
+                end_time = datetime.datetime.strptime(events[-1]["time"], "%H:%M:%S")
+                duration_minutes = (end_time - start_time).total_seconds() / 60
+                if duration_minutes < 0:  # Handle midnight crossover
+                    duration_minutes = 24 * 60 + duration_minutes
+            except:
+                duration_minutes = 0
+        else:
+            duration_minutes = 0
+
+        # Calculate metrics
+        avg_events_per_minute = len(events) / duration_minutes if duration_minutes > 0 else 0
+        click_ratio = len(click_events) / len(events) if events else 0
+
+        return {
+            "top_keys": top_keys if top_keys else ["N/A"],
+            "avg_events_per_minute": avg_events_per_minute,
+            "click_ratio": click_ratio,
+            "duration_minutes": duration_minutes
+        }
+
+    def _create_detail_event_item(self, event):
+        """Create a single event item for detail view"""
+        from kivy.metrics import dp
+
+        item = BoxLayout(
+            orientation='horizontal',
+            spacing=10,
+            size_hint_y=None,
+            height=dp(30),
+            padding=dp(5)
+        )
+
+        # Time label
+        time_label = Label(
+            text=event.get("time", ""),
+            font_name='chinese',
+            font_size='12',
+            size_hint_x=0.2,
+            color=(0.5, 0.5, 0.5, 1)
+        )
+        item.add_widget(time_label)
+
+        # Event text
+        text_label = Label(
+            text=event.get("text", ""),
+            font_name='chinese',
+            font_size='13',
+            size_hint_x=0.8,
+            color=(0.2, 0.2, 0.2, 1),
+            halign='left',
+            text_size=(None, None)
+        )
+        item.add_widget(text_label)
+
+        return item
 
 
 class AboutScreen(BaseScreen):
