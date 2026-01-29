@@ -52,6 +52,28 @@ It captures, understands, and remembers everything on your screen using **local 
 
 ---
 
+## 📥 Download Pre-Built Versions
+
+**Ready to use?** Download the pre-built executable for your platform — **no Python installation needed!**
+
+<div align="center">
+
+  [🍎 **macOS Download**](https://github.com/smileformylove/MemScreen/releases/latest) • [🪟 **Windows Download**](https://github.com/smileformylove/MemScreen/releases/latest) • [🐧 **Linux Download**](https://github.com/smileformylove/MemScreen/releases/latest)
+
+  **[Visit Releases Page →](https://github.com/smileformylove/MemScreen/releases)**
+
+</div>
+
+**Quick Install:**
+1. 📥 Download the zip for your platform
+2. 📦 Extract the archive
+3. 🚀 Run MemScreen (app/exe)
+4. ✨ First launch will guide you through Ollama setup
+
+> **📚 [See detailed installation guide](DOWNLOAD_GUIDE.md)**
+
+---
+
 ## ⚡ Quick Start
 
 Get up and running in **3 minutes** — **no API keys needed!**
