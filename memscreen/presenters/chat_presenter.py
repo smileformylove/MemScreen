@@ -11,8 +11,20 @@ import queue
 import threading
 import requests
 from typing import Optional, List, Dict, Any, Callable
+import asyncio
 
 from .base_presenter import BasePresenter
+from .agent_executor import AgentExecutor
+
+# Import Agent system (kept for compatibility)
+try:
+    from ..agent.base_agent import BaseAgent, AgentConfig
+    from ..skills.memory.search_skill import SearchMemorySkill
+    from ..skills.analysis.summary_skill import SummarySkill
+    AGENT_AVAILABLE = True
+except ImportError:
+    AGENT_AVAILABLE = False
+    print("[ChatPresenter] Agent system not available, using standard chat mode")
 
 
 class ChatMessage:
@@ -70,7 +82,73 @@ class ChatPresenter(BasePresenter):
         self.stream_queue = None
         self.stream_thread = None
 
+        # Agent system (seamlessly integrated)
+        self.agent = None
+        self.use_agent_mode = False  # Can be toggled by user
+
+        # NEW: Rule-based Agent Executor (more reliable)
+        self.agent_executor = AgentExecutor(
+            memory_system=memory_system,
+            ollama_base_url=ollama_base_url,
+            current_model="qwen2.5vl:3b"
+        )
+
         self._is_initialized = False
+
+        # Initialize legacy agent if available (kept for compatibility)
+        if AGENT_AVAILABLE:
+            try:
+                # Create a simple LLM client wrapper
+                class LLMClient:
+                    def __init__(self, base_url):
+                        self.base_url = base_url
+
+                    def generate_response(self, messages, **kwargs):
+                        # Synchronous wrapper for async compatibility
+                        import requests
+                        # Extract the last message content for simpler interface
+                        if messages and len(messages) > 0:
+                            content = messages[-1].get("content", "")
+                        else:
+                            content = str(messages)
+
+                        # Use Ollama generate endpoint
+                        response = requests.post(
+                            f"{self.base_url}/api/generate",
+                            json={
+                                "model": "qwen2.5vl:3b",
+                                "prompt": content,
+                                "stream": False
+                            },
+                            timeout=120
+                        )
+                        if response.status_code == 200:
+                            data = response.json()
+                            return data.get("response", "")
+                        return ""
+
+                llm_client = LLMClient(ollama_base_url)
+                agent_config = AgentConfig(
+                    name="MemScreen Chat Agent",
+                    version="1.0.0",
+                    enable_memory=True
+                )
+
+                # Create agent
+                self.agent = BaseAgent(
+                    memory_system=memory_system,
+                    llm_client=llm_client,
+                    config=agent_config
+                )
+
+                # Register skills
+                self.agent.register_skill(SearchMemorySkill())
+                self.agent.register_skill(SummarySkill())
+
+                print("[ChatPresenter] Agent system initialized")
+            except Exception as e:
+                print(f"[ChatPresenter] Agent initialization failed: {e}")
+                self.agent = None
 
     def initialize(self):
         """Initialize presenter and load models"""
@@ -119,12 +197,105 @@ class ChatPresenter(BasePresenter):
             return True
         return False
 
-    def send_message(self, user_message: str) -> bool:
+    def set_agent_mode(self, enabled: bool) -> bool:
+        """
+        Enable or disable Agent mode for complex tasks.
+
+        Args:
+            enabled: Whether to enable Agent mode
+
+        Returns:
+            True if Agent is available and mode was set
+        """
+        if not AGENT_AVAILABLE or not self.agent:
+            return False
+
+        self.use_agent_mode = enabled
+        mode_str = "enabled" if enabled else "disabled"
+        print(f"[ChatPresenter] Agent mode {mode_str}")
+        return True
+
+    def is_agent_available(self) -> bool:
+        """Check if Agent system is available"""
+        return AGENT_AVAILABLE and self.agent is not None
+
+    def _should_use_agent(self, user_message: str) -> bool:
+        """
+        Detect if user message requires Agent capabilities.
+
+        Args:
+            user_message: The user's message
+
+        Returns:
+            True if Agent should be used for this task
+        """
+        if not self.agent or not AGENT_AVAILABLE:
+            return False
+
+        user_msg_lower = user_message.lower()
+
+        # Complex task patterns (action + context combinations)
+        complex_patterns = [
+            # Report/Summary patterns
+            (r"(生成|创建|形成).{0,5}(报告|报表|总结|汇总)", "Report generation"),
+            (r"(总结|汇总|分析).{0,10}(过去|最近|本周|上周|今天|昨天|几天)", "Temporal summary"),
+            (r"(分析|研究|梳理).{0,10}(流程|模式|习惯|工作)", "Workflow analysis"),
+
+            # Multi-step patterns
+            (r"(搜索|查找|找).{0,10}(并|并且|然后|接着).{0,10}(总结|汇总|分析)", "Search + process"),
+            (r"(帮我|help).{0,20}(生成|创建|分析|总结)", "Complex help request"),
+
+            # Comprehensive queries
+            (r"找出所有|find all", "Comprehensive search"),
+            (r"全部|所有|everything", "All items query"),
+
+            # Workflow analysis
+            (r"工作流程|workflow|操作模式|习惯分析", "Workflow analysis"),
+        ]
+
+        # Check complex patterns first
+        import re
+        for pattern, description in complex_patterns:
+            if re.search(pattern, user_msg_lower, re.IGNORECASE):
+                print(f"[ChatPresenter] ✅ Detected Agent task: {description}")
+                print(f"[ChatPresenter]    Message: {user_message[:50]}...")
+                return True
+
+        # Simple keywords that MUST be combined with task verbs
+        temporal_keywords = ["昨天", "今天", "过去", "最近", "本周", "上周", "yesterday", "today", "past", "recent"]
+        task_verbs = ["总结", "分析", "汇总", "报告", "生成", "summary", "analyze", "report", "generate"]
+
+        has_temporal = any(kw in user_msg_lower for kw in temporal_keywords)
+        has_task_verb = any(verb in user_msg_lower for verb in task_verbs)
+
+        if has_temporal and has_task_verb:
+            print(f"[ChatPresenter] ✅ Detected Agent task: Temporal + Task verb")
+            print(f"[ChatPresenter]    Message: {user_message[:50]}...")
+            return True
+
+        # "帮我" alone is not enough - need additional complexity indicators
+        if "帮我" in user_msg_lower or "help me" in user_msg_lower:
+            # Only trigger if it's clearly a complex task
+            complex_indicators = ["分析", "总结", "报告", "生成", "查找所有", "流程", "模式",
+                                   "analyze", "summary", "report", "generate", "find all", "workflow"]
+            if any(ind in user_msg_lower for ind in complex_indicators):
+                print(f"[ChatPresenter] ✅ Detected Agent task: Complex help request")
+                print(f"[ChatPresenter]    Message: {user_message[:50]}...")
+                return True
+            else:
+                print(f"[ChatPresenter] ℹ️  Simple help request, using standard chat")
+                return False
+
+        print(f"[ChatPresenter] ℹ️  Using standard chat for: {user_message[:50]}...")
+        return False
+
+    def send_message(self, user_message: str, use_agent: bool = None) -> bool:
         """
         Send a user message and get AI response.
 
         Args:
             user_message: The user's message
+            use_agent: Whether to use Agent system (None = auto-detect)
 
         Returns:
             True if message was sent successfully
@@ -142,6 +313,19 @@ class ChatPresenter(BasePresenter):
             if self.view:
                 self.view.on_message_added("user", user_message)
 
+            # Auto-detect if Agent should be used
+            should_use_agent = use_agent
+            if should_use_agent is None:
+                should_use_agent = self._should_use_agent(user_message)
+
+            # Use Agent for complex tasks if enabled (using agent_executor)
+            if should_use_agent and self.agent_executor:
+                print(f"[ChatPresenter] 🤖 Using Agent mode for: {user_message[:50]}...")
+                return self._execute_with_agent(user_message)
+
+            # Standard chat flow
+            print(f"[ChatPresenter] Using standard chat for: {user_message[:50]}...")
+
             # Search memory for context
             context = self._search_memory(user_message)
 
@@ -155,6 +339,77 @@ class ChatPresenter(BasePresenter):
 
         except Exception as e:
             self.handle_error(e, "Failed to send message")
+            return False
+
+    def _execute_with_agent(self, user_message: str) -> bool:
+        """
+        Execute a complex task using the rule-based Agent Executor.
+
+        This is more reliable than LLM-based planning.
+
+        Args:
+            user_message: The user's goal/task
+
+        Returns:
+            True if execution was successful
+        """
+        try:
+            # Notify view that we're using Agent mode
+            if self.view:
+                self.view.on_response_started()
+
+            print(f"[ChatPresenter] 🤖 Agent executing: {user_message}")
+
+            # Execute using AgentExecutor
+            result = self.agent_executor.execute_task(user_message)
+
+            if result.get("success"):
+                full_response = result.get("response", "")
+                print(f"[ChatPresenter] 🤖 Agent completed in {result.get('execution_time', 0):.2f}s")
+
+                # Stream the response
+                if self.view:
+                    self.view.on_response_chunk(full_response)
+                    self.view.on_response_completed(full_response)
+
+                # Add to history
+                assistant_msg = ChatMessage("assistant", full_response)
+                self.conversation_history.append(assistant_msg)
+
+                return True
+            else:
+                error_msg = result.get("error", "Agent execution failed")
+                print(f"[ChatPresenter] 🤖 Agent error: {error_msg}")
+
+                full_error = f"❌ **Agent 执行失败**\n\n{error_msg}\n\n💡 提示: 请尝试录制一些屏幕内容后再查询。"
+
+                if self.view:
+                    self.view.on_response_completed(full_error)
+
+                # Add error to history
+                error_msg_obj = ChatMessage("assistant", full_error)
+                self.conversation_history.append(error_msg_obj)
+
+                return False
+
+        except Exception as e:
+            import traceback
+            error_msg = f"Agent execution error: {str(e)}"
+            error_trace = traceback.format_exc()
+
+            print(f"[ChatPresenter] 🤖 Agent exception:\n{error_trace}")
+
+            self.handle_error(e, "Failed to execute with agent")
+
+            full_error = f"❌ **Agent 执行异常**\n\n{str(e)}\n\n💡 这可能是一个临时问题。请重试或使用标准聊天模式。"
+
+            if self.view:
+                self.view.on_response_completed(full_error)
+
+            # Add error to history
+            error_msg_obj = ChatMessage("assistant", full_error)
+            self.conversation_history.append(error_msg_obj)
+
             return False
 
     def clear_history(self):
@@ -226,23 +481,69 @@ class ChatPresenter(BasePresenter):
             if not results or 'results' not in results or not results['results']:
                 return ""
 
-            # Prioritize screen recordings
+            # Prioritize different types of memories
             recording_memories = [
                 r for r in results['results']
                 if 'metadata' in r and r['metadata'].get('type') == 'screen_recording'
             ]
 
-            # Build context
+            ocr_memories = [
+                r for r in results['results']
+                if 'metadata' in r and r['metadata'].get('type') == 'ocr_text'
+            ]
+
+            chat_memories = [
+                r for r in results['results']
+                if 'metadata' in r and r['metadata'].get('type') == 'chat'
+            ]
+
+            # Build rich context
             context_parts = []
 
+            # Add screen recording context
             if recording_memories:
-                metadata = recording_memories[0].get('metadata', {})
-                context_parts.append(f"Relevant Screen Recording Found:")
-                context_parts.append(f"- Video File: {metadata['filename']}")
-                context_parts.append(f"- Duration: {metadata.get('duration', 0):.1f} seconds")
+                context_parts.append("📹 **Screen Recording Context:**")
+                for i, mem in enumerate(recording_memories[:3], 1):  # Top 3 recordings
+                    metadata = mem.get('metadata', {})
+                    timestamp = metadata.get('timestamp', 'Unknown time')
+                    duration = metadata.get('duration', 0)
 
-                if 'content_description' in metadata:
-                    context_parts.append(f"- Content: {metadata['content_description']}")
+                    context_parts.append(f"\n{i}. Recording from {timestamp}")
+                    context_parts.append(f"   - Duration: {duration:.1f} seconds")
+                    context_parts.append(f"   - File: {metadata.get('filename', 'Unknown')}")
+
+                    if 'content_description' in metadata:
+                        context_parts.append(f"   - Summary: {metadata['content_description']}")
+
+                    if 'ocr_text' in metadata and metadata['ocr_text']:
+                        # Include OCR text preview (first 200 chars)
+                        ocr_preview = metadata['ocr_text'][:200]
+                        if len(metadata['ocr_text']) > 200:
+                            ocr_preview += "..."
+                        context_parts.append(f"   - Text on screen: \"{ocr_preview}\"")
+
+            # Add OCR context if available
+            if ocr_memories:
+                context_parts.append("\n📄 **Related Text Content:**")
+                for i, mem in enumerate(ocr_memories[:2], 1):  # Top 2 OCR results
+                    metadata = mem.get('metadata', {})
+                    if 'ocr_text' in metadata and metadata['ocr_text']:
+                        text = metadata['ocr_text'][:300]  # First 300 chars
+                        if len(metadata['ocr_text']) > 300:
+                            text += "..."
+                        context_parts.append(f"\n{i}. {text}")
+
+            # Add chat context if relevant
+            if chat_memories:
+                context_parts.append("\n💬 **Previous Conversations:**")
+                for i, mem in enumerate(chat_memories[:2], 1):  # Top 2 chats
+                    metadata = mem.get('metadata', {})
+                    timestamp = metadata.get('timestamp', 'Unknown time')
+                    content = metadata.get('content', '')[:200]
+                    if len(metadata.get('content', '')) > 200:
+                        content += "..."
+                    context_parts.append(f"\n{i}. From {timestamp}:")
+                    context_parts.append(f"   {content}")
 
             return "\n".join(context_parts)
 
@@ -265,17 +566,61 @@ class ChatPresenter(BasePresenter):
 
         # Add system prompt with context if available
         if context:
-            system_prompt = f"""You are a helpful AI assistant that answers questions about the user's screen recordings and activity.
+            system_prompt = f"""你是 MemScreen，一个有屏幕记忆的 AI 助手。你的回答必须严格基于提供的记忆数据，但要用温暖、自然的语气表达。
 
-Relevant Context:
+## ⚠️ 核心原则 - 严格记忆 + 温暖表达
+
+### 记忆约束（不可违背）
+- **严格只使用** "屏幕上下文" 中提供的信息
+- **绝不使用** 外部知识、一般知识或推测
+- **绝不猜测** 或用常识填充空白
+
+### 表达风格（温暖自然）
+当**找到**相关信息时：
+- 用自然的过渡："我注意到..."、"我看到..."、"从屏幕录制来看..."
+- 添加有帮助的上下文和见解
+- 表现出参与感："这个问题很好！从你的屏幕记录我发现..."
+- 对话式但保持准确
+
+当**找不到**信息时：
+- 温暖有帮助，不冷淡："我仔细查看了你的屏幕历史，但没有找到相关记录"
+- 建设性建议："可能当时没有录制到这部分内容"
+- 显示你尝试过："我看了那个时间段的录制，但..."
+
+## 屏幕上下文
+
 {context}
 
-When answering:
-- Reference the screen recordings and content found
-- Be specific about what was on the screen
-- If you don't know something, say so
-- Keep answers concise and helpful"""
-            messages.append({"role": "system", "content": system_prompt})
+## 回答指南
+
+1. **只用上面的上下文**：只基于提供的屏幕录制和内容回答
+2. **具体明确**：引用具体的录制、文件或内容
+3. **温暖自然**：用中文对话 - "我注意到你在..."、"从录制来看..."
+4. **保持诚实**：如果上下文没有答案，温暖地说没找到
+5. **简洁明了**：通常 2-4 句话，复杂话题可以更多
+
+记住：你的知识**仅限于**上面 "屏幕上下文" 中显示的内容。但要用温暖、理解的方式表达！"""
+        else:
+            system_prompt = """你是 MemScreen，一个有屏幕记忆的 AI 助手。
+
+## ⚠️ 没有找到相关记忆
+
+**重要说明**：我仔细查找了，但没有找到与这个问题相关的屏幕录制或上下文。
+
+**你应该这样回应（选择一个，保持温暖）**：
+- "我仔细查看了你的屏幕历史，但没有找到相关记录。可能当时没有录制到这部分内容。"
+- "我在你的录制中没有找到关于这个的信息。要不要试试重新描述一下？"
+- "我查找了你的屏幕记录，但没找到相关内容。如果是最近的活动，可能需要重新录制一下。"
+
+**绝对不要**：
+- 使用外部知识来回答
+- 编造或猜测信息
+- 提供屏幕录制之外的信息
+- 假装知道
+
+保持温暖和诚实，告诉用户你真的找不到这个信息。"""
+
+        messages.append({"role": "system", "content": system_prompt})
 
         # Add conversation history (last 10 messages for context)
         recent_history = self.conversation_history[-10:]
@@ -324,14 +669,34 @@ When answering:
             messages: Messages to send
         """
         try:
+            # Import here to avoid circular dependency
+            from ..llm.performance_config import get_optimizer
+
+            # Get optimized parameters for chat
+            optimizer = get_optimizer()
+            optimized_params = optimizer.get_optimized_params("chat")
+
+            # Build request with optimized parameters
+            request_data = {
+                "model": optimized_params["model"],
+                "prompt": messages[-1]["content"],
+                "messages": [msg.to_dict() for msg in self.conversation_history[-10:]],
+                "stream": True,
+                "options": {
+                    "temperature": optimized_params["temperature"],
+                    "top_p": optimized_params["top_p"],
+                    "top_k": optimized_params["top_k"],
+                    "num_predict": optimized_params["num_predict"],
+                    "num_ctx": optimized_params["num_ctx"],
+                    "repeat_penalty": optimized_params.get("repeat_penalty", 1.15),
+                }
+            }
+
+            print(f"[ChatPresenter] Using optimized parameters: temperature={optimized_params['temperature']}, top_p={optimized_params['top_p']}")
+
             response = requests.post(
                 f"{self.ollama_base_url}/api/generate",
-                json={
-                    "model": self.current_model,
-                    "prompt": messages[-1]["content"],
-                    "messages": [msg.to_dict() for msg in self.conversation_history[-10:]],
-                    "stream": True
-                },
+                json=request_data,
                 stream=True,
                 timeout=120
             )

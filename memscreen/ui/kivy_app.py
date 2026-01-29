@@ -27,7 +27,13 @@ import threading
 
 Config.set('graphics', 'width', '1200')
 Config.set('graphics', 'height', '800')
-Window.title = "MemScreen v0.3.5"
+
+# Performance optimizations for smoother text input
+Config.set('kivy', 'keyboard_mode', 'system')
+Config.set('kivy', 'keyboard_layout', 'qwerty')
+Config.set('input', 'mouse', 'mouse,disable_multitouch')
+
+Window.title = "MemScreen v0.4.0"
 
 # Register Chinese fonts
 mac_fonts = [
@@ -304,14 +310,18 @@ class ChatScreen(BaseScreen):
             text='',
             multiline=False,
             hint_text='Type your message...',
+            hint_text_color=(0.5, 0.5, 0.5, 0.6),
             font_name='chinese',
-            font_size=22,
-            padding=[20, 20, 20, 20],
+            font_size=20,
+            padding=[15, 12, 15, 12],
             foreground_color=(0, 0, 0, 1),
             background_color=(1, 1, 1, 1),
-            cursor_color=(0, 0, 0, 1),
+            cursor_color=(0.4, 0.3, 0.6, 1),
             use_bubble=False,
             write_tab=False,
+            allow_copy=True,
+            input_type='text',
+            auto_indent=False,
             size_hint_x=0.85  # Take up 85% of the space
         )
         send_btn = Button(
@@ -524,6 +534,17 @@ Respond naturally without mentioning your model provider or technical details.""
         import threading
         thread = threading.Thread(target=get_ai_response, daemon=True)
         thread.start()
+
+    def on_enter(self):
+        """Called when screen is displayed - automatically focus input"""
+        # Schedule focus after a short delay to ensure UI is ready
+        Clock.schedule_once(lambda dt: self._focus_input(), 0.1)
+
+    def _focus_input(self):
+        """Focus the chat input field"""
+        if self.chat_input:
+            self.chat_input.focus = True
+            self.chat_input.cursor = (0, len(self.chat_input.text))
 
 
 # Timeline marker class (defined at module level for visibility)
@@ -1607,7 +1628,7 @@ class AboutScreen(BaseScreen):
         author_box = self._create_section_box("About MemScreen", [
             ("Developer", "Jixiang Luo"),
             ("Email", "jixiangluo85@gmail.com"),
-            ("Version", "v0.3"),
+            ("Version", "v0.4.0"),
             ("License", "MIT License - Copyright 2025")
         ])
         main_layout.add_widget(author_box)
@@ -1701,7 +1722,7 @@ class MemScreenApp(App):
     def build(self):
         # Set window title
         from kivy.core.window import Window
-        Window.title = "MemScreen v0.3.5"
+        Window.title = "MemScreen v0.4.0"
 
         # Memory
         try:

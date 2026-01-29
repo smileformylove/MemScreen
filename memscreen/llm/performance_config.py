@@ -19,18 +19,19 @@ class ModelPerformanceConfig:
     model_embedding: str = "nomic-embed-text"
 
     # Performance parameters
-    max_tokens_chat: int = 512  # Reduced from 2000
+    max_tokens_chat: int = 1024  # Increased for more detailed responses
     max_tokens_vision: int = 256  # For image analysis
     max_tokens_summary: int = 128  # For quick summaries
 
-    # Sampling parameters
-    temperature_chat: float = 0.7  # Increased for faster convergence
-    temperature_fast: float = 0.5  # Balanced
-    top_p: float = 0.9  # Increased for diversity
-    top_k: int = 20  # Increased from 1
+    # Sampling parameters - balanced accuracy and naturalness
+    temperature_chat: float = 0.6  # Balanced: accurate + warm and natural
+    temperature_fast: float = 0.5  # Slightly higher for fast mode
+    top_p: float = 0.88  # Slightly higher for more natural expression
+    top_k: int = 30  # Slightly higher for variety while staying accurate
+    repeat_penalty: float = 1.15  # Reduce repetitive phrases
 
     # Context optimization
-    num_ctx: int = 2048  # Context window size
+    num_ctx: int = 4096  # Increased context window for better understanding
     num_batch: int = 512  # Batch size for processing
     num_gpu: int = 1  # Number of GPU layers (0 = CPU only)
     num_thread: int = 4  # Number of CPU threads
@@ -82,42 +83,50 @@ class PerformanceOptimizer:
                 "temperature": self.config.temperature_chat,
                 "top_p": self.config.top_p,
                 "top_k": self.config.top_k,
+                "repeat_penalty": self.config.repeat_penalty,
                 "num_ctx": self.config.num_ctx,
                 "num_gpu": self.config.num_gpu,
                 "num_thread": self.config.num_thread,
             },
             "chat_fast": {
                 "model": self.config.model_chat_fast,
-                "num_predict": self.config.max_tokens_summary,
+                "num_predict": 256,
                 "temperature": self.config.temperature_fast,
-                "top_p": 0.8,
-                "top_k": 10,
-                "num_ctx": 1024,
+                "top_p": 0.85,
+                "top_k": 25,
+                "repeat_penalty": 1.1,
+                "num_ctx": 2048,
                 "num_gpu": self.config.num_gpu,
                 "num_thread": self.config.num_thread,
             },
             "vision": {
                 "model": self.config.model_vision,
                 "num_predict": self.config.max_tokens_vision,
-                "temperature": 0.3,
-                "top_p": 0.8,
-                "num_ctx": 1024,
+                "temperature": 0.5,  # Slightly higher for natural descriptions
+                "top_p": 0.85,
+                "top_k": 25,
+                "repeat_penalty": 1.1,
+                "num_ctx": 2048,
                 "num_gpu": self.config.num_gpu,
             },
             "summary": {
                 "model": self.config.model_chat_fast,
                 "num_predict": self.config.max_tokens_summary,
-                "temperature": 0.5,
-                "top_p": 0.9,
-                "num_ctx": 512,
-                "num_gpu": 0,  # CPU is fine for summaries
+                "temperature": 0.5,  # Balanced for summaries
+                "top_p": 0.85,
+                "top_k": 22,
+                "repeat_penalty": 1.1,
+                "num_ctx": 1024,
+                "num_gpu": 0,
             },
             "search": {
                 "model": self.config.model_chat_fast,
-                "num_predict": 64,  # Very short responses
-                "temperature": 0.3,
-                "top_p": 0.7,
-                "num_ctx": 512,
+                "num_predict": 128,
+                "temperature": 0.4,  # Still low but not too cold
+                "top_p": 0.8,
+                "top_k": 20,
+                "repeat_penalty": 1.1,
+                "num_ctx": 1024,
                 "num_gpu": 0,
             },
         }
