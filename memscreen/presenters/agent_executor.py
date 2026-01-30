@@ -399,28 +399,28 @@ class AgentExecutor:
                     result_type = result.get("type", "unknown")
 
                     if result_type == "screen_capture":
-                        parts.append(f"✅ 完成\n")
-                        parts.append(f"👁️ **屏幕视觉分析**:\n{analysis}\n")
+                        parts.append(f"[OK] 完成\n")
+                        parts.append(f"[Eye] **屏幕视觉分析**:\n{analysis}\n")
                     elif result_type == "ocr_fallback":
-                        parts.append(f"✅ 完成（OCR模式）\n")
-                        parts.append(f"📄 **文本提取**:\n{analysis}\n")
+                        parts.append(f"[OK] 完成（OCR模式）\n")
+                        parts.append(f"[Doc] **文本提取**:\n{analysis}\n")
                     else:
-                        parts.append(f"✅ 完成\n")
-                        parts.append(f"📊 **分析结果**:\n{analysis}\n")
+                        parts.append(f"[OK] 完成\n")
+                        parts.append(f"[Chart] **分析结果**:\n{analysis}\n")
 
                 elif "summary" in result:
                     summary = result["summary"]
-                    parts.append(f"✅ 完成\n")
-                    parts.append(f"📝 **摘要**:\n{summary}\n")
+                    parts.append(f"[OK] 完成\n")
+                    parts.append(f"[Note] **摘要**:\n{summary}\n")
                 else:
-                    parts.append("✅ 完成\n")
+                    parts.append("[OK] 完成\n")
             else:
                 error = result.get("error", "Unknown error")
-                parts.append(f"❌ 失败: {error}\n")
+                parts.append(f"✗ 失败: {error}\n")
 
         # Execution time
         exec_time = time.time() - start_time
-        parts.append(f"\n⏱️ 执行时间: {exec_time:.2f} 秒")
+        parts.append(f"\n[Time] 执行时间: {exec_time:.2f} 秒")
 
         return "\n".join(parts)
 

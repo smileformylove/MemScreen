@@ -381,7 +381,7 @@ class ChatPresenter(BasePresenter):
                 error_msg = result.get("error", "Agent execution failed")
                 print(f"[ChatPresenter] 🤖 Agent error: {error_msg}")
 
-                full_error = f"❌ **Agent 执行失败**\n\n{error_msg}\n\n💡 提示: 请尝试录制一些屏幕内容后再查询。"
+                full_error = f"[!] **Agent 执行失败**\n\n{error_msg}\n\n[i] 提示: 请尝试录制一些屏幕内容后再查询。"
 
                 if self.view:
                     self.view.on_response_completed(full_error)
@@ -401,7 +401,7 @@ class ChatPresenter(BasePresenter):
 
             self.handle_error(e, "Failed to execute with agent")
 
-            full_error = f"❌ **Agent 执行异常**\n\n{str(e)}\n\n💡 这可能是一个临时问题。请重试或使用标准聊天模式。"
+            full_error = f"[!] **Agent 执行异常**\n\n{str(e)}\n\n[i] 这可能是一个临时问题。请重试或使用标准聊天模式。"
 
             if self.view:
                 self.view.on_response_completed(full_error)
@@ -518,7 +518,7 @@ class ChatPresenter(BasePresenter):
 
             # Add screen recording context
             if recording_memories:
-                context_parts.append("📹 **Screen Recording Context:**")
+                context_parts.append("[Video] **Screen Recording Context:**")
                 for i, mem in enumerate(recording_memories[:3], 1):  # Top 3 recordings
                     metadata = mem.get('metadata', {})
                     timestamp = metadata.get('timestamp', 'Unknown time')
@@ -540,7 +540,7 @@ class ChatPresenter(BasePresenter):
 
             # Add OCR context if available
             if ocr_memories:
-                context_parts.append("\n📄 **Related Text Content:**")
+                context_parts.append("\n[Doc] **Related Text Content:**")
                 for i, mem in enumerate(ocr_memories[:2], 1):  # Top 2 OCR results
                     metadata = mem.get('metadata', {})
                     if 'ocr_text' in metadata and metadata['ocr_text']:
@@ -551,7 +551,7 @@ class ChatPresenter(BasePresenter):
 
             # Add chat context if relevant
             if chat_memories:
-                context_parts.append("\n💬 **Previous Conversations:**")
+                context_parts.append("\n[Chat] **Previous Conversations:**")
                 for i, mem in enumerate(chat_memories[:2], 1):  # Top 2 chats
                     metadata = mem.get('metadata', {})
                     timestamp = metadata.get('timestamp', 'Unknown time')

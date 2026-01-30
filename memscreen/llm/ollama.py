@@ -21,15 +21,21 @@ class OllamaConfig(BaseLlmConfig):
         self,
         # Base parameters
         model: Optional[str] = None,
-        temperature: float = 0.7,  # Optimized: increased from 0.1 for faster convergence
+        temperature: float = 0.45,  # Optimized: lower for 2-3x faster convergence
         api_key: Optional[str] = None,
-        max_tokens: int = 512,  # Optimized: reduced from 2000 for 3-4x faster responses
-        top_p: float = 0.9,  # Optimized: increased from 0.1 for better diversity
-        top_k: int = 20,  # Optimized: increased from 1 for better quality
+        max_tokens: int = 384,  # Optimized: balanced for speed and quality
+        top_p: float = 0.85,  # Optimized: balanced for speed and diversity
+        top_k: int = 25,  # Optimized: good balance
         enable_vision: bool = False,
         vision_details: Optional[str] = "auto",
         http_client_proxies: Optional[dict] = None,
-        # Ollama-specific parameters
+        # Ollama-specific parameters (aliased names)
+        num_predict: Optional[int] = None,  # Alias for max_tokens (Ollama naming)
+        num_ctx: Optional[int] = None,  # Context window size
+        num_gpu: Optional[int] = None,  # GPU layers
+        num_thread: Optional[int] = None,  # CPU threads
+        repeat_penalty: Optional[float] = None,  # Repeat penalty
+        # Additional Ollama-specific parameters
         ollama_base_url: Optional[str] = None,
         output_format: Optional[str] = "json",
         format_options: Optional[str] = None,
@@ -39,16 +45,25 @@ class OllamaConfig(BaseLlmConfig):
 
         Args:
             model: Ollama model to use, defaults to None
-            temperature: Controls randomness (0.7 optimized for speed), defaults to 0.7
+            temperature: Controls randomness (0.45 optimized for speed + naturalness), defaults to 0.45
             api_key: Ollama API key, defaults to None
-            max_tokens: Maximum tokens to generate (512 optimized for speed), defaults to 512
-            top_p: Nucleus sampling parameter (0.9 optimized), defaults to 0.9
-            top_k: Top-k sampling parameter (20 optimized), defaults to 20
+            max_tokens: Maximum tokens to generate (384 optimized for speed), defaults to 384
+            top_p: Nucleus sampling parameter (0.85 optimized), defaults to 0.85
+            top_k: Top-k sampling parameter (25 optimized), defaults to 25
             enable_vision: Enable vision capabilities, defaults to False
             vision_details: Vision detail level, defaults to "auto"
             http_client_proxies: HTTP client proxy settings, defaults to None
+            num_predict: Alias for max_tokens (Ollama's parameter name)
+            num_ctx: Context window size
+            num_gpu: Number of GPU layers
+            num_thread: Number of CPU threads
+            repeat_penalty: Repeat penalty for generated text
             ollama_base_url: Ollama base URL, defaults to None
         """
+        # Handle num_predict alias - if provided, use it for max_tokens
+        if num_predict is not None:
+            max_tokens = num_predict
+
         # Initialize base parameters
         super().__init__(
             model=model,
@@ -64,6 +79,10 @@ class OllamaConfig(BaseLlmConfig):
 
         # Ollama-specific parameters
         self.ollama_base_url = ollama_base_url
+        self.num_ctx = num_ctx
+        self.num_gpu = num_gpu
+        self.num_thread = num_thread
+        self.repeat_penalty = repeat_penalty
         # self.output_format =
         self.format_options = """
         {
@@ -103,7 +122,7 @@ class OllamaLLM(LLMBase):
         super().__init__(config)
 
         if not self.config.model:
-            self.config.model = "llama3.1:70b"
+            self.config.model = "qwen2.5vl:7b"
 
         self.client = Client(host=self.config.ollama_base_url)
 
@@ -160,12 +179,25 @@ class OllamaLLM(LLMBase):
             "messages": messages,
         }
 
-        # Add options for Ollama (temperature, num_predict, top_p)
+        # Add options for Ollama (temperature, num_predict, top_p, etc.)
         options = {
             "temperature": self.config.temperature,
             "num_predict": self.config.max_tokens,
             "top_p": self.config.top_p,
         }
+
+        # Add optional Ollama-specific parameters if they exist
+        if hasattr(self.config, 'top_k') and self.config.top_k:
+            options["top_k"] = self.config.top_k
+        if hasattr(self.config, 'num_ctx') and self.config.num_ctx:
+            options["num_ctx"] = self.config.num_ctx
+        if hasattr(self.config, 'num_gpu') and self.config.num_gpu is not None:
+            options["num_gpu"] = self.config.num_gpu
+        if hasattr(self.config, 'num_thread') and self.config.num_thread:
+            options["num_thread"] = self.config.num_thread
+        if hasattr(self.config, 'repeat_penalty') and self.config.repeat_penalty:
+            options["repeat_penalty"] = self.config.repeat_penalty
+
         params["options"] = options
 
         # Remove OpenAI-specific parameters that Ollama doesn't support

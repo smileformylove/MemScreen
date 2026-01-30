@@ -49,10 +49,10 @@ class LocalModelExecutor:
         self.current_model = current_model
         self.vision_model = "qwen2.5vl:3b"
 
-        # Model-specific constraints (conservative estimates for 3B models)
-        self.max_tokens = 512  # Conservative limit for output
+        # Model-specific constraints (optimized for speed and quality)
+        self.max_tokens = 384  # Optimized for faster responses
         self.context_window = 4096  # Conservative context window
-        self.temperature = 0.6  # Lower temperature for more focused responses
+        self.temperature = 0.4  # Lower temperature for faster, focused responses
 
         # Create temp directory
         self.temp_dir = "./db/temp"

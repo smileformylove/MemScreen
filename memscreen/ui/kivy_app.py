@@ -16,7 +16,9 @@ from kivy.uix.image import Image
 from kivy.uix.slider import Slider
 from kivy.uix.relativelayout import RelativeLayout
 from kivy.uix.widget import Widget
+from kivy.uix.popup import Popup
 from kivy.clock import Clock
+from kivy.properties import NumericProperty
 from kivy.graphics import Color, Rectangle, Line, Instruction
 from kivy.core.window import Window
 from kivy.config import Config
@@ -24,6 +26,7 @@ from kivy.core.text import LabelBase
 from kivy.graphics.texture import Texture
 import os
 import cv2
+import sys
 import threading
 
 Config.set('graphics', 'width', '1200')
@@ -285,18 +288,17 @@ class ChatScreen(BaseScreen):
 
         layout = BoxLayout(orientation='vertical', spacing=15, padding=25)
 
-        # Model selector - larger
-        model_box = BoxLayout(size_hint_y=None, height=70, spacing=10)
-        model_box.add_widget(Label(text='Model:', font_name='chinese', font_size='20', color=(0, 0, 0, 1), size_hint_x=0.2))
-        self.model_spinner = Spinner(
-            text='qwen2.5vl:3b',
-            values=['qwen2.5vl:3b', 'llama2', 'mistral'],
+        # Title
+        title_label = Label(
+            text='MemScreen',
             font_name='chinese',
-            font_size='20',
-            size_hint_x=0.8
+            font_size='32',
+            bold=True,
+            size_hint_y=None,
+            height=60,
+            color=(0.6, 0.4, 0.75, 1)  # Purple theme
         )
-        model_box.add_widget(self.model_spinner)
-        layout.add_widget(model_box)
+        layout.add_widget(title_label)
 
         # Chat history
         scroll = ScrollView(size_hint_y=0.65)
@@ -305,7 +307,7 @@ class ChatScreen(BaseScreen):
         scroll.add_widget(self.chat_history)
         layout.add_widget(scroll)
 
-        # Input
+        # Input box with Send button
         input_box = BoxLayout(size_hint_y=None, height=80, spacing=12)
 
         self.chat_input = TextInput(
@@ -326,6 +328,7 @@ class ChatScreen(BaseScreen):
             auto_indent=False,
             size_hint_x=0.85  # Take up 85% of the space
         )
+
         send_btn = Button(
             text='Send',
             font_name='chinese',
@@ -391,10 +394,12 @@ class ChatScreen(BaseScreen):
             error_msg_text = None
             try:
                 from memscreen.llm import OllamaLLM
-                llm = OllamaLLM(config={"model": self.model_spinner.text})
 
                 # Try to use Memory system to search for relevant context
                 context = ""
+                has_relevant_memory = False
+                memory_count = 0
+
                 if self.memory_system:
                     try:
                         # Search memories for relevant context
@@ -409,7 +414,10 @@ class ChatScreen(BaseScreen):
                         # Extract context from search results
                         if search_result and "results" in search_result:
                             memories = search_result["results"]
+                            memory_count = len(memories) if memories else 0
+
                             if memories and len(memories) > 0:
+                                has_relevant_memory = True
                                 # Build context from memory items
                                 context_parts = []
                                 for mem in memories[:3]:  # Use top 3 memories
@@ -427,6 +435,18 @@ class ChatScreen(BaseScreen):
                     except Exception as mem_err:
                         print(f"[Chat] Memory search failed: {mem_err}")
                         # Continue without memory context
+
+                # Smart model selection: Use small model if we have relevant memory
+                if has_relevant_memory and memory_count >= 2:
+                    # Use small model for faster response when we have good context
+                    selected_model = "gemma3:270m"  # Ultra-fast small model
+                    print(f"[Chat] Using small model (gemma3:270m) - {memory_count} memories found")
+                else:
+                    # Use large model for better reasoning when no/little memory
+                    selected_model = "qwen2.5vl:3b"
+                    print(f"[Chat] Using large model (qwen2.5vl:3b) - {memory_count} memories found")
+
+                llm = OllamaLLM(config={"model": selected_model})
 
                 # Prepare messages with context and system prompt
                 messages = []
@@ -468,7 +488,9 @@ Respond naturally without mentioning your model provider or technical details.""
                                 metadata={
                                     "source": "ai_chat",
                                     "timestamp": __import__('datetime').datetime.now().isoformat(),
-                                    "model": self.model_spinner.text
+                                    "model": selected_model,
+                                    "memory_count": memory_count,
+                                    "used_context": has_relevant_memory
                                 },
                                 infer=True  # Let LLM extract key facts
                             )
@@ -548,16 +570,33 @@ Respond naturally without mentioning your model provider or technical details.""
             self.chat_input.focus = True
             self.chat_input.cursor = (0, len(self.chat_input.text))
 
+    def _fix_filesystem_encoding(self, path):
+        """修复 macOS 文件系统编码问题（已弃用 - tkinter 已处理）
 
-# Timeline marker class (defined at module level for visibility)
-from kivy.graphics import Color, Ellipse, Line
-from kivy.uix.button import Button
-from kivy.uix.label import Label
-from kivy.uix.relativelayout import RelativeLayout
-from datetime import datetime
+        保留此方法以兼容旧代码
+        """
+        return path
 
-class TimelineMarker(RelativeLayout):
-    """Video marker on timeline with tech styling"""
+    def _show_error_message(self, error_text):
+        """显示错误消息"""
+        error_label = Label(
+            text=f'❌ {error_text}',
+            font_name='chinese',
+            font_size='16',
+            size_hint_y=None,
+            height=60,
+            halign='left',
+            valign='top',
+            text_size=(420, None),
+            color=(0.8, 0.2, 0.2, 1)
+        )
+        error_label.bind(texture_size=error_label.setter('size'))
+        self.chat_history.add_widget(error_label)
+
+
+class TimelineMarker(BoxLayout):
+    """Timeline marker widget for displaying video positions on timeline"""
+
     def __init__(self, video, **kwargs):
         self.video = video
         # Initialize size_hint before calling super().__init__
@@ -567,6 +606,7 @@ class TimelineMarker(RelativeLayout):
 
         # Extract time from timestamp
         try:
+            from datetime import datetime
             dt = datetime.strptime(video.timestamp.split('.')[0], '%Y-%m-%d %H:%M:%S')
             time_str = dt.strftime('%H:%M')
         except:
@@ -605,6 +645,7 @@ class TimelineMarker(RelativeLayout):
 
     def _setup_canvas(self):
         """Setup canvas drawing"""
+        from kivy.graphics import Color, Ellipse, Line
         with self.canvas.before:
             # Outer glow
             Color(0.6, 0.4, 0.75, 0.2)
@@ -616,11 +657,8 @@ class TimelineMarker(RelativeLayout):
 
     def on_press(self, instance):
         """Handle press event"""
-        if self.parent and hasattr(self.parent, 'parent'):
-            # Find the VideoScreen and trigger play_video
-            from kivy.utils import get_color_from_hex
-            # This will be handled by the parent's binding
-            pass
+        # Event will be handled by parent's binding
+        pass
 
     def update_styling(self, instance, value):
         """Update visual styling"""
@@ -628,8 +666,6 @@ class TimelineMarker(RelativeLayout):
         circle_size = min(self.width, self.height) * 0.6
 
         # Position circle centered ON the timeline line (y=45)
-        # Timeline line is at y=45 in the timeline_content coordinate system
-        # We need to position relative to parent (marker_container which is at y=0)
         circle_x = self.x + (self.width - circle_size) / 2
         circle_y = 45 - circle_size / 2  # Center on timeline line (y=45)
 
@@ -2498,49 +2534,58 @@ class MemScreenApp(App):
             print(f"[App] Failed to initialize VideoPresenter: {e}")
             self.video_presenter = None
 
-        # Root layout
-        root = BoxLayout(orientation='horizontal', spacing=0)
+        # Root layout - vertical with top navigation bar
+        root = BoxLayout(orientation='vertical', spacing=0)
 
-        # Sidebar with light purple - wider for larger buttons
-        sidebar = BoxLayout(
-            orientation='vertical',
-            size_hint_x=None,
-            width=200,
-            spacing=12,
+        # Top navigation bar - horizontal layout
+        nav_bar = BoxLayout(
+            orientation='horizontal',
+            size_hint_y=None,
+            height=80,
+            spacing=10,
             padding=15
         )
-        with sidebar.canvas.before:
-            Color(0.35, 0.3, 0.4, 1)  # Light purple sidebar
-            self.sidebar_bg = Rectangle(pos=sidebar.pos, size=sidebar.size)
-        sidebar.bind(pos=lambda i,v: setattr(self.sidebar_bg, 'pos', i.pos),
-                     size=lambda i,v: setattr(self.sidebar_bg, 'size', i.size))
+        with nav_bar.canvas.before:
+            Color(0.35, 0.3, 0.4, 1)  # Light purple navigation bar
+            self.nav_bg = Rectangle(pos=nav_bar.pos, size=nav_bar.size)
+        nav_bar.bind(pos=lambda i,v: setattr(self.nav_bg, 'pos', i.pos),
+                    size=lambda i,v: setattr(self.nav_bg, 'size', i.size))
 
-        # Title
+        # Title on the left
         app_title = Label(
             text='MemScreen',
             font_name='chinese',
-            font_size=26,
+            font_size='28',
             bold=True,
             color=(1, 1, 1, 1),
-            size_hint_y=None,
-            height=60
+            size_hint_x=None,
+            width=150,
+            halign='left',
+            valign='middle'
         )
-        sidebar.add_widget(app_title)
+        nav_bar.add_widget(app_title)
 
         # Separator
-        sep = BoxLayout(size_hint_y=None, height=2)
+        sep = BoxLayout(size_hint_x=None, width=2)
         with sep.canvas.before:
             Color(0.5, 0.45, 0.55, 1)
             sep_bg = Rectangle(pos=sep.pos, size=sep.size)
         sep.bind(pos=lambda i,v: setattr(sep_bg, 'pos', i.pos),
                  size=lambda i,v: setattr(sep_bg, 'size', i.size))
-        sidebar.add_widget(sep)
+        nav_bar.add_widget(sep)
 
-        # Nav buttons - larger and more readable
+        # Navigation buttons container
+        nav_buttons = BoxLayout(
+            orientation='horizontal',
+            spacing=8,
+            size_hint_x=1  # Take remaining space
+        )
+
+        # Nav buttons - horizontal layout
         self.nav_btns = {}
         for name, label in [
             ('recording', 'Recording'),
-            ('chat', 'AI Chat'),
+            ('chat', 'Chat'),
             ('video', 'Videos'),
             ('process', 'Process'),
             ('settings', 'About'),
@@ -2548,22 +2593,23 @@ class MemScreenApp(App):
             btn = ToggleButton(
                 text=label,
                 font_name='chinese',
-                font_size=20,
-                size_hint_y=None,
-                height=75,
+                font_size='16',
+                size_hint_x=None,  # Auto width based on text
+                width=110,
+                height=60,
                 group='nav',
                 background_color=(0.3, 0.28, 0.35, 1),
                 color=(0.9, 0.9, 0.9, 1),
                 halign='center',
                 valign='middle',
-                padding=(10, 10)
+                padding=(8, 8)
             )
             btn.bind(on_press=lambda instance, n=name: self._switch(n))
             self.nav_btns[name] = btn
-            sidebar.add_widget(btn)
+            nav_buttons.add_widget(btn)
 
-        self.nav_btns['recording'].state = 'down'
-        root.add_widget(sidebar)
+        nav_bar.add_widget(nav_buttons)
+        root.add_widget(nav_bar)
 
         # Screen manager
         self.sm = ScreenManager()
@@ -2614,6 +2660,21 @@ class MemScreenApp(App):
 
     def on_start(self):
         print("[App] Started - Light purple theme, all black text")
+
+        # Ensure Ollama service is running
+        print("[App] Checking Ollama service...")
+        try:
+            from memscreen.utils import ensure_ollama_running
+            if ensure_ollama_running():
+                print("[App] ✓ Ollama service is running")
+            else:
+                print("[App] ⚠ Ollama service check failed")
+                print("[App]   Please install Ollama from https://ollama.com/download")
+                print("[App]   Then run: ollama serve")
+        except Exception as e:
+            print(f"[App] ⚠ Failed to check Ollama service: {e}")
+            print("[App]   AI features may not work properly")
+
 
 
 if __name__ == '__main__':

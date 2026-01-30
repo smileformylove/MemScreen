@@ -322,7 +322,23 @@ def ensure_ollama_running():
 
     logger.debug(f"Found Ollama at: {ollama_path}")
 
-    # Check if ollama process is already running
+    # First, try to verify Ollama is responsive by checking if it can list models
+    # This is more reliable than just checking for the process
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            check=True,
+            timeout=3
+        )
+        # If we got here, Ollama is running and responsive
+        logger.debug("Ollama service is already running and responsive")
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        # Ollama might not be running, check for process
+        pass
+
+    # Check if ollama process is already running (fallback)
     try:
         for proc in psutil.process_iter(['name', 'cmdline']):
             try:

@@ -528,6 +528,8 @@ class RecordingPresenter(BasePresenter):
 
 {frame_summary}
 
+Content Description: {content_description}
+
 This video screen recording shows what was displayed on screen during the recording period.
 When users ask about what was on their screen or what they were doing, reference this recording."""
 
@@ -540,7 +542,7 @@ When users ask about what was on their screen or what they were doing, reference
 
             result = self.memory_system.add(
                 [{"role": "user", "content": memory_text}],
-                user_id="screenshot",
+                user_id="default_user",  # Use consistent user_id for chat and recordings
                 metadata={
                     "type": "screen_recording",
                     "filename": filename,
@@ -550,7 +552,7 @@ When users ask about what was on their screen or what they were doing, reference
                     "timestamp": timestamp,
                     "content_description": content_description,
                     "frame_details": frame_details,  # Store structured frame information
-                    "ocr_text": combined_text  # Add OCR text for easier search
+                    "ocr_text": content_description  # Use content_description for search
                 },
                 infer=True  # Enable fact extraction and indexing
             )
@@ -606,7 +608,7 @@ When users ask about what was on their screen or what they were doing, reference
             return "Screen recording (content analysis unavailable)", []
 
     def _extract_text_from_frame(self, frame):
-        """Extract text from a single frame using OCR - OPTIMIZED for speed"""
+        """Extract text and understand scene context from frame"""
         try:
             import requests
             import base64
@@ -615,47 +617,71 @@ When users ask about what was on their screen or what they were doing, reference
             _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             img_str = base64.b64encode(buffer).decode('utf-8')
 
-            # Send to Ollama vision API - OPTIMIZED with faster model
+            # Enhanced prompt: OCR + Scene Understanding
+            enhanced_prompt = """Analyze this screen capture and provide:
+1. All visible text (OCR)
+2. Application type (VSCode, browser, terminal, etc.)
+3. Activity type (programming, browsing, design, etc.)
+4. Key UI elements visible
+
+Format: Scene: [app] - [activity]. Text: [extracted text]"""
+
+            # Send to Ollama vision API
             response = requests.post(
                 "http://127.0.0.1:11434/api/generate",
                 json={
-                    "model": "qwen3:1.7b",  # OPTIMIZED: 2x faster than qwen2.5vl:3b
-                    "prompt": "Extract and list all visible text from this image. Return only the text, nothing else.",
+                    "model": "qwen2.5vl:3b",  # Use vision model for better understanding
+                    "prompt": enhanced_prompt,
                     "images": [img_str],
                     "stream": False,
                     "options": {
-                        "num_predict": 256,  # OPTIMIZED: Limit output length for speed
-                        "temperature": 0.3,    # OPTIMIZED: Faster convergence
-                        "top_p": 0.8,           # OPTIMIZED: Faster sampling
+                        "num_predict": 384,  # Increased for more detailed analysis
+                        "temperature": 0.4,
+                        "top_p": 0.85,
                     }
                 },
-                timeout=30  # OPTIMIZED: Reduced from 60s to 30s
+                timeout=30
             )
 
             if response.status_code == 200:
                 result = response.json()
-                text = result.get("response", "").strip()
-                if text and text.lower() not in ["no text", "none", "no text found", "no text in image"]:
-                    return f"Detected text on screen: {text}"
+                content = result.get("response", "").strip()
+                if content and content.lower() not in ["no text", "none", "no text found"]:
+                    # Parse and format the response
+                    return content
 
         except requests.exceptions.Timeout:
-            # Ollama vision API timed out, using fallback
-            pass
+            print("[Recording] Vision API timeout, using fallback")
         except Exception as e:
-            # OCR failed, using fallback analysis
-            pass
+            print(f"[Recording] Vision API error: {e}")
 
-        # Fallback to basic analysis
+        # Enhanced fallback analysis
         try:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            text_density = np.sum(gray > 200) / gray.size
 
-            if text_density > 0.3:
-                return "Screen contains light colored content (possibly text or UI elements)"
+            # Analyze image characteristics
+            text_density = np.sum(gray > 200) / gray.size
+            brightness = np.mean(gray)
+
+            # Determine content type
+            if brightness > 200:
+                lighting = "light theme"
+            elif brightness < 80:
+                lighting = "dark theme"
             else:
-                return "Screen captured (dark or graphical content)"
-        except:
-            return "Screen content captured (text extraction failed)"
+                lighting = "mixed theme"
+
+            if text_density > 0.4:
+                content = "text-heavy content (code, document, or terminal)"
+            elif text_density > 0.2:
+                content = "mixed content (text and graphics)"
+            else:
+                content = "graphical content (images, video, or design)"
+
+            return f"Screen capture showing {content} with {lighting}"
+
+        except Exception as e:
+            return f"Screen captured (analysis unavailable: {str(e)[:30]})"
 
     def delete_recording(self, filename):
         """Delete a recording file and database entry"""

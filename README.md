@@ -357,6 +357,130 @@ python start.py
     No data sent to cloud. No API keys. No privacy concerns.
 ```
 
+### 🧠 Three Memory Sources
+
+MemScreen builds a comprehensive memory of your digital activities through **three integrated sources**:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    MemScreen 记忆系统                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  1️⃣  屏幕录制 (最大来源)                                      │
+│     ├─ OCR 文字识别          提取屏幕文字                     │
+│     ├─ Caption 视觉理解       识别应用和活动类型               │
+│     └─ 保存到记忆系统         带时间戳的帧级分析               │
+│                                                               │
+│  2️⃣  Process Mining (第二来源)                               │
+│     ├─ 键盘输入追踪         记录击键和快捷键                  │
+│     ├─ 鼠标点击追踪         记录点击模式                      │
+│     ├─ 活动模式分析         自动识别编程、浏览等活动           │
+│     └─ 保存到记忆系统         会话级别的活动统计               │
+│                                                               │
+│  3️⃣  用户对话 (第三来源)                                       │
+│     ├─ 对话历史保存         记录所有对话                      │
+│     ├─ 用户表达信息         捕获用户主动表达的信息             │
+│     └─ 保存到记忆系统         完整的对话上下文                 │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### 1️⃣ Screen Recording (Primary Source)
+
+**What it captures:**
+- Visual content from your screen at regular intervals
+- OCR-extracted text using vision models (qwen2.5vl)
+- Scene understanding (application type, activity type, UI elements)
+- Frame-by-frame analysis with timestamps
+
+**Memory structure:**
+```json
+{
+  "type": "screen_recording",
+  "content": "Screen Recording captured at 2026-01-30 14:30:15\n- Duration: 45.2 seconds\n- Frames: 23\n\nFrame-by-Frame Analysis:\n- Frame #0: Scene: VSCode - Python programming. Text: import cv2\ndef process_image():\n...",
+  "metadata": {
+    "filename": "recording_20260130_143015.mp4",
+    "duration": 45.2,
+    "frame_count": 23,
+    "ocr_text": "extracted text content",
+    "content_description": "Scene: VSCode - Python programming"
+  }
+}
+```
+
+#### 2️⃣ Process Mining (Secondary Source)
+
+**What it captures:**
+- Keyboard events (keystrokes, shortcuts)
+- Mouse click events
+- Activity categorization (programming, browsing, design, etc.)
+- Session duration and intensity
+
+**Memory structure:**
+```json
+{
+  "type": "process_mining",
+  "content": "Process Mining Session (14:30 → 15:45)\n\nPrimary Activity: Programming\n\nActivity Breakdown:\n- Typing: 65%\n- Programming: 78%\n- Browsing: 12%\n\nStatistics:\n- Total Events: 1247\n- Keystrokes: 982\n- Mouse Clicks: 265",
+  "metadata": {
+    "categories": {
+      "primary": "Programming",
+      "typing": {"percentage": 65},
+      "programming": {"percentage": 78}
+    },
+    "patterns": {
+      "duration_minutes": 75.5,
+      "avg_events_per_minute": 16.4,
+      "top_keys": ["cmd", "ctrl+c", "ctrl+v"]
+    }
+  }
+}
+```
+
+#### 3️⃣ User Chat (Tertiary Source)
+
+**What it captures:**
+- User questions and AI responses
+- User-expressed information and preferences
+- Conversation context and topics discussed
+
+**Memory structure:**
+```json
+{
+  "type": "ai_chat",
+  "content": "[User] 我今天下午在写 Python 代码\n[Assistant] 我看到你今天下午在写 Python 代码...",
+  "metadata": {
+    "source": "ai_chat",
+    "model": "qwen2.5vl:3b",
+    "timestamp": "2026-01-30 14:35:22"
+  }
+}
+```
+
+#### Memory Integration
+
+All three sources use the **same user_id** (`default_user`), enabling **cross-source retrieval**:
+
+```python
+# When you ask "我今天做了什么?", MemScreen searches ALL sources:
+result = memory.search(
+    query="我今天做了什么",
+    user_id="default_user",
+    limit=5,
+    threshold=0.3
+)
+
+# Returns integrated results from:
+# 1. Screen recordings showing what was on screen
+# 2. Process mining showing activity patterns
+# 3. Chat history showing what you discussed
+```
+
+**Example integrated response:**
+> "根据记录，你今天下午：
+> 1. **主要在编程** (Process Mining: 78% 编程活动，982 次击键)
+> 2. **在 VSCode 中编写 Python 代码** (屏幕录制显示 OpenCV 图像处理代码)
+> 3. **询问了图像处理相关的问题** (对话历史)"
+
 ---
 
 ## 🆚 Why MemScreen?
