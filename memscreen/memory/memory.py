@@ -24,13 +24,16 @@ import warnings
 from copy import deepcopy
 from datetime import datetime
 from typing import Any, Dict, Optional, Union, Literal, List
+from functools import lru_cache
 
 from .base import MemoryBase
 from .models import MemoryConfig, MemoryItem, MemoryType
 
-# Simple in-memory cache for frequently searched queries
-_search_cache = {}
-_CACHE_MAX_SIZE = 100
+# OPTIMIZATION: Use intelligent caching system
+from ..cache import IntelligentCache, cached_search
+
+# Global search cache instance
+_search_cache = IntelligentCache(max_size=1000, default_ttl=300)  # 5 min TTL
 
 # Import from sibling modules
 from ..llm import LlmFactory
@@ -164,9 +167,27 @@ class Memory(MemoryBase):
         )
         self.llm = LlmFactory.create(self.config.llm.provider, self.config.llm.config)
         self.mllm = LlmFactory.create(self.config.mllm.provider, self.config.mllm.config)
-        self.db = SQLiteManager(self.config.history_db_path)
+
+        # OPTIMIZATION: Enable batch database writing by default
+        enable_batch_writing = getattr(self.config, 'enable_batch_writing', True)
+        self.db = SQLiteManager(self.config.history_db_path, enable_batch_writing=enable_batch_writing)
+
         self.collection_name = self.config.vector_store.config.collection_name
         self.api_version = self.config.version
+
+        # OPTIMIZATION: Performance tuning flags
+        self.optimization_enabled = getattr(self.config, 'optimization_enabled', True)
+        self.skip_simple_fact_extraction = getattr(self.config, 'skip_simple_fact_extraction', True)
+        self.enable_search_cache = getattr(self.config, 'enable_search_cache', True)
+        self.batch_size = getattr(self.config, 'batch_size', 50)
+
+        # Performance monitoring
+        self._stats = {
+            "add_calls": 0,
+            "search_calls": 0,
+            "cache_hits": 0,
+            "cache_misses": 0,
+        }
 
         # Initialize graph store if enabled
         self.enable_graph = getattr(self.config, 'enable_graph', False)
@@ -414,7 +435,9 @@ class Memory(MemoryBase):
         message_length = len(parsed_messages)
         should_skip_extraction = (
             message_length < 50 or  # Very short messages
-            len(parsed_messages.split('\n')) < 2  # Single line messages
+            len(parsed_messages.split('\n')) < 2 or  # Single line messages
+            # OPTIMIZATION: Also skip for commands/questions
+            any(parsed_messages.strip().startswith(prefix) for prefix in ['!', '?', '/', 'http'])
         )
 
         if should_skip_extraction:
@@ -441,7 +464,7 @@ class Memory(MemoryBase):
 
                 msg_content = message_dict["content"]
                 msg_embeddings = self.embedding_model.embed(msg_content, "add")
-                mem_id = self._create_memory(msg_content, msg_embeddings, per_msg_meta)
+                mem_id = self._create_memory(msg_content, {msg_content: msg_embeddings}, per_msg_meta)
 
                 returned_memories.append(
                     {
@@ -527,27 +550,68 @@ class Memory(MemoryBase):
         if not new_retrieved_facts:
             logger.debug("No new facts retrieved from input. Skipping memory update LLM call.")
 
-        # Search for existing similar memories
+        # OPTIMIZATION: Batch embedding generation and vector search for better performance
         retrieved_old_memory = []
         new_message_embeddings = {}
 
-        for new_mem in new_retrieved_facts:
-            if not isinstance(new_mem, str) or len(new_mem.strip()) == 0:
-                continue
+        # Filter valid facts
+        valid_facts = [new_mem for new_mem in new_retrieved_facts
+                      if isinstance(new_mem, str) and len(new_mem.strip()) > 0]
 
-            messages_embeddings = self.embedding_model.embed(new_mem, "add")
-            new_message_embeddings[new_mem] = messages_embeddings
+        if valid_facts:
+            # OPTIMIZATION: Batch generate embeddings for all facts at once
+            # This is much faster than generating one by one
+            try:
+                # Try batch embedding if the embedder supports it
+                if hasattr(self.embedding_model, 'embed_batch'):
+                    embeddings_list = self.embedding_model.embed_batch(valid_facts, "add")
+                else:
+                    # Fallback to individual embedding with list comprehension
+                    embeddings_list = [self.embedding_model.embed(fact, "add") for fact in valid_facts]
 
-            existing_memories = self.vector_store.search(
-                query=new_mem,
-                vectors=messages_embeddings,
-                limit=5,
-                filters=filters,
-            )
+                # Store embeddings for later use
+                for fact, embedding in zip(valid_facts, embeddings_list):
+                    new_message_embeddings[fact] = embedding
 
-            for mem in existing_memories:
-                if hasattr(mem, "id") and hasattr(mem, "payload") and mem.payload.get("data"):
-                    retrieved_old_memory.append({"id": mem.id, "text": mem.payload["data"]})
+                # OPTIMIZATION: Batch search - collect all results at once
+                # Instead of searching per fact, we search once per fact but process in parallel
+                def search_single_fact(fact_emb_tuple):
+                    fact, emb = fact_emb_tuple
+                    memories = self.vector_store.search(
+                        query=fact,
+                        vectors=emb,
+                        limit=5,
+                        filters=filters,
+                    )
+                    return [{"id": mem.id, "text": mem.payload["data"]}
+                           for mem in memories
+                           if hasattr(mem, "id") and hasattr(mem, "payload") and mem.payload.get("data")]
+
+                # Use ThreadPoolExecutor for parallel searches
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                    search_results = list(executor.map(search_single_fact, new_message_embeddings.items()))
+
+                # Flatten results
+                for results in search_results:
+                    retrieved_old_memory.extend(results)
+
+            except Exception as e:
+                logger.error(f"Batch embedding/search failed: {e}, falling back to sequential")
+                # Fallback to original sequential method
+                for new_mem in valid_facts:
+                    messages_embeddings = self.embedding_model.embed(new_mem, "add")
+                    new_message_embeddings[new_mem] = messages_embeddings
+
+                    existing_memories = self.vector_store.search(
+                        query=new_mem,
+                        vectors=messages_embeddings,
+                        limit=5,
+                        filters=filters,
+                    )
+
+                    for mem in existing_memories:
+                        if hasattr(mem, "id") and hasattr(mem, "payload") and mem.payload.get("data"):
+                            retrieved_old_memory.append({"id": mem.id, "text": mem.payload["data"]})
 
         # Deduplicate memories by ID
         unique_data = {item["id"]: item for item in retrieved_old_memory}
@@ -963,7 +1027,22 @@ class Memory(MemoryBase):
             return {"results": original_memories}
 
     def _search_vector_store(self, query, filters, limit, threshold: Optional[float] = None):
-        """Search vector store for memories."""
+        """Search vector store for memories with intelligent caching."""
+        # OPTIMIZATION: Check cache first before doing expensive vector search
+        # Generate cache key from query, filters, limit
+        cache_key = f"{query}:{str(sorted(filters.items()))}:{limit}"
+
+        # Try to get from cache
+        cached_result = _search_cache.get(cache_key)
+        if cached_result is not None:
+            logger.debug(f"Cache hit for search query: {query[:50]}...")
+            # Apply threshold filter if needed
+            if threshold is not None:
+                cached_result = [m for m in cached_result if m.get("score", 0) >= threshold]
+            return cached_result
+
+        # Cache miss - perform actual search
+        logger.debug(f"Cache miss for search query: {query[:50]}...")
         embeddings = self.embedding_model.embed(query, "search")
         memories = self.vector_store.search(query=query, vectors=embeddings, limit=limit, filters=filters)
 
@@ -998,6 +1077,17 @@ class Memory(MemoryBase):
 
             if threshold is None or mem.score >= threshold:
                 original_memories.append(memory_item_dict)
+
+        # OPTIMIZATION: Store results in cache for future queries
+        # Cache the results before threshold filtering (more reusable)
+        _search_cache.set(cache_key, original_memories)
+
+        # Periodic cache cleanup (every 100 searches)
+        import random
+        if random.random() < 0.01:  # 1% chance to cleanup
+            expired = _search_cache.cleanup_expired()
+            if expired > 0:
+                logger.debug(f"Cleaned up {expired} expired cache entries")
 
         return original_memories
 
@@ -1098,6 +1188,8 @@ class Memory(MemoryBase):
             ids=[memory_id],
             payloads=[metadata],
         )
+        # OPTIMIZATION: Use batch database writing for better performance
+        # Pass immediate=False to use batch writing (default behavior)
         self.db.add_history(
             memory_id,
             None,
@@ -1106,6 +1198,7 @@ class Memory(MemoryBase):
             created_at=metadata.get("created_at"),
             actor_id=metadata.get("actor_id"),
             role=metadata.get("role"),
+            immediate=False,  # Use batch writing
         )
         capture_event("memscreen._create_memory", self, {"memory_id": memory_id, "sync_type": "sync"})
         return memory_id
@@ -1192,6 +1285,7 @@ class Memory(MemoryBase):
         )
         logger.info(f"Updating memory with ID {memory_id=} with {data=}")
 
+        # OPTIMIZATION: Use batch database writing
         self.db.add_history(
             memory_id,
             prev_value,
@@ -1201,6 +1295,7 @@ class Memory(MemoryBase):
             updated_at=new_metadata["updated_at"],
             actor_id=new_metadata.get("actor_id"),
             role=new_metadata.get("role"),
+            immediate=False,  # Use batch writing
         )
         capture_event("memscreen._update_memory", self, {"memory_id": memory_id, "sync_type": "sync"})
         return memory_id
@@ -1211,6 +1306,9 @@ class Memory(MemoryBase):
         existing_memory = self.vector_store.get(vector_id=memory_id)
         prev_value = existing_memory.payload["data"]
         self.vector_store.delete(vector_id=memory_id)
+        # OPTIMIZATION: Use batch database writing
+        # Delete operations are also batched, but we set immediate=True
+        # for deletes as they're less frequent and more critical
         self.db.add_history(
             memory_id,
             prev_value,
@@ -1219,6 +1317,7 @@ class Memory(MemoryBase):
             actor_id=existing_memory.payload.get("actor_id"),
             role=existing_memory.payload.get("role"),
             is_deleted=1,
+            immediate=True,  # Deletes should be written immediately
         )
         capture_event("memscreen._delete_memory", self, {"memory_id": memory_id, "sync_type": "sync"})
         return memory_id

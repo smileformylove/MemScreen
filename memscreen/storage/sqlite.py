@@ -9,8 +9,75 @@ import sqlite3
 import threading
 import uuid
 from typing import Any, Dict, List, Optional
+from collections import deque
+import time
 
 logger = logging.getLogger(__name__)
+
+
+class BatchWriter:
+    """Batch writer for SQLite operations to improve performance."""
+
+    def __init__(self, db_manager, batch_size=50, flush_interval=1.0):
+        """
+        Initialize batch writer.
+
+        Args:
+            db_manager: SQLiteManager instance
+            batch_size: Number of operations to batch before auto-flush
+            flush_interval: Maximum time in seconds before auto-flush
+        """
+        self.db_manager = db_manager
+        self.batch_size = batch_size
+        self.flush_interval = flush_interval
+        self.queue = deque()
+        self.last_flush = time.time()
+        self._lock = threading.Lock()
+
+    def add(self, operation, *args, **kwargs):
+        """Add operation to batch queue."""
+        with self._lock:
+            self.queue.append((operation, args, kwargs))
+            # Auto-flush if batch size reached
+            if len(self.queue) >= self.batch_size:
+                self.flush()
+
+    def flush(self):
+        """Flush all queued operations to database."""
+        if not self.queue:
+            return
+
+        with self._lock:
+            with self.db_manager._lock:
+                try:
+                    self.db_manager.connection.execute("BEGIN")
+                    cur = self.db_manager.connection.cursor()
+
+                    for operation, args, kwargs in self.queue:
+                        if operation == "add_history":
+                            cur.execute(
+                                """
+                                INSERT INTO history (
+                                    id, memory_id, old_memory, new_memory, event,
+                                    created_at, updated_at, is_deleted, actor_id, role
+                                )
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """,
+                                args
+                            )
+
+                    self.db_manager.connection.execute("COMMIT")
+                    self.queue.clear()
+                    self.last_flush = time.time()
+
+                except Exception as e:
+                    self.db_manager.connection.execute("ROLLBACK")
+                    logger.error(f"Batch flush failed: {e}")
+                    raise
+
+    def __del__(self):
+        """Ensure pending operations are flushed."""
+        self.flush()
 
 
 class SQLiteManager:
@@ -32,18 +99,29 @@ class SQLiteManager:
         >>> history = manager.get_history("mem_id")
     """
 
-    def __init__(self, db_path: str = ":memory:"):
+    def __init__(self, db_path: str = ":memory:", enable_batch_writing=True):
         """
         Initialize the SQLite manager.
 
         Args:
             db_path: Path to the SQLite database file. Defaults to ":memory:" for an in-memory database.
+            enable_batch_writing: Enable batch writing for better performance.
         """
         self.db_path = db_path
         self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
         self._lock = threading.Lock()
+        # OPTIMIZATION: Enable WAL mode for better concurrent performance
+        self.connection.execute("PRAGMA journal_mode=WAL")
+        self.connection.execute("PRAGMA synchronous=NORMAL")
+        self.connection.execute("PRAGMA cache_size=10000")
+        self.connection.execute("PRAGMA temp_store=MEMORY")
         self._migrate_history_table()
         self._create_history_table()
+
+        # Enable batch writing for improved performance
+        self.enable_batch_writing = enable_batch_writing
+        if enable_batch_writing:
+            self.batch_writer = BatchWriter(self, batch_size=50, flush_interval=1.0)
 
     def _migrate_history_table(self) -> None:
         """
@@ -166,6 +244,7 @@ class SQLiteManager:
         is_deleted: int = 0,
         actor_id: Optional[str] = None,
         role: Optional[str] = None,
+        immediate: bool = False,
     ) -> None:
         """
         Add a history record to the database.
@@ -180,7 +259,27 @@ class SQLiteManager:
             is_deleted: Whether the memory is deleted (0 or 1)
             actor_id: ID of the actor making the change (optional)
             role: Role of the actor (optional)
+            immediate: If True, write immediately instead of batching
         """
+        # OPTIMIZATION: Use batch writing for better performance
+        # Only write immediately if explicitly requested or batch writing disabled
+        if self.enable_batch_writing and not immediate:
+            self.batch_writer.add(
+                "add_history",
+                str(uuid.uuid4()),
+                memory_id,
+                old_memory,
+                new_memory,
+                event,
+                created_at,
+                updated_at,
+                is_deleted,
+                actor_id,
+                role,
+            )
+            return
+
+        # Original synchronous code for immediate writes
         with self._lock:
             try:
                 self.connection.execute("BEGIN")
@@ -265,6 +364,10 @@ class SQLiteManager:
 
     def close(self) -> None:
         """Close the database connection."""
+        # OPTIMIZATION: Flush any pending batch operations before closing
+        if self.enable_batch_writing and hasattr(self, 'batch_writer'):
+            self.batch_writer.flush()
+
         if self.connection:
             self.connection.close()
             self.connection = None

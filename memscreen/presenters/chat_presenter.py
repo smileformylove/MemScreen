@@ -381,7 +381,7 @@ class ChatPresenter(BasePresenter):
                 error_msg = result.get("error", "Agent execution failed")
                 print(f"[ChatPresenter] 🤖 Agent error: {error_msg}")
 
-                full_error = f"[!] **Agent 执行失败**\n\n{error_msg}\n\n[i] 提示: 请尝试录制一些屏幕内容后再查询。"
+                full_error = f"[!] **Agent execution failed**\n\n{error_msg}\n\n[i] Tip: Try recording some screen content before querying."
 
                 if self.view:
                     self.view.on_response_completed(full_error)
@@ -401,7 +401,7 @@ class ChatPresenter(BasePresenter):
 
             self.handle_error(e, "Failed to execute with agent")
 
-            full_error = f"[!] **Agent 执行异常**\n\n{str(e)}\n\n[i] 这可能是一个临时问题。请重试或使用标准聊天模式。"
+            full_error = f"[!] **Agent execution exception**\n\n{str(e)}\n\n[i] This may be a temporary issue. Please retry or use standard chat mode."
 
             if self.view:
                 self.view.on_response_completed(full_error)
@@ -569,7 +569,7 @@ class ChatPresenter(BasePresenter):
 
     def _build_messages(self, user_message: str, context: str) -> List[Dict[str, str]]:
         """
-        Build messages list for Ollama API.
+        Build messages list for Ollama API with humanized prompts.
 
         Args:
             user_message: User's message
@@ -580,61 +580,17 @@ class ChatPresenter(BasePresenter):
         """
         messages = []
 
-        # Add system prompt with context if available
+        # Import humanized prompt builder
+        from ..prompts.chat_prompts import ChatPromptBuilder
+
+        # Detect query type
+        query_type = ChatPromptBuilder.detect_query_type(user_message)
+
+        # Build system prompt with appropriate template
         if context:
-            system_prompt = f"""你是 MemScreen，一个有屏幕记忆的 AI 助手。你的回答必须严格基于提供的记忆数据，但要用温暖、自然的语气表达。
-
-## ⚠️ 核心原则 - 严格记忆 + 温暖表达
-
-### 记忆约束（不可违背）
-- **严格只使用** "屏幕上下文" 中提供的信息
-- **绝不使用** 外部知识、一般知识或推测
-- **绝不猜测** 或用常识填充空白
-
-### 表达风格（温暖自然）
-当**找到**相关信息时：
-- 用自然的过渡："我注意到..."、"我看到..."、"从屏幕录制来看..."
-- 添加有帮助的上下文和见解
-- 表现出参与感："这个问题很好！从你的屏幕记录我发现..."
-- 对话式但保持准确
-
-当**找不到**信息时：
-- 温暖有帮助，不冷淡："我仔细查看了你的屏幕历史，但没有找到相关记录"
-- 建设性建议："可能当时没有录制到这部分内容"
-- 显示你尝试过："我看了那个时间段的录制，但..."
-
-## 屏幕上下文
-
-{context}
-
-## 回答指南
-
-1. **只用上面的上下文**：只基于提供的屏幕录制和内容回答
-2. **具体明确**：引用具体的录制、文件或内容
-3. **温暖自然**：用中文对话 - "我注意到你在..."、"从录制来看..."
-4. **保持诚实**：如果上下文没有答案，温暖地说没找到
-5. **简洁明了**：通常 2-4 句话，复杂话题可以更多
-
-记住：你的知识**仅限于**上面 "屏幕上下文" 中显示的内容。但要用温暖、理解的方式表达！"""
+            system_prompt = ChatPromptBuilder.build_with_context(context, user_message, query_type)
         else:
-            system_prompt = """你是 MemScreen，一个有屏幕记忆的 AI 助手。
-
-## ⚠️ 没有找到相关记忆
-
-**重要说明**：我仔细查找了，但没有找到与这个问题相关的屏幕录制或上下文。
-
-**你应该这样回应（选择一个，保持温暖）**：
-- "我仔细查看了你的屏幕历史，但没有找到相关记录。可能当时没有录制到这部分内容。"
-- "我在你的录制中没有找到关于这个的信息。要不要试试重新描述一下？"
-- "我查找了你的屏幕记录，但没找到相关内容。如果是最近的活动，可能需要重新录制一下。"
-
-**绝对不要**：
-- 使用外部知识来回答
-- 编造或猜测信息
-- 提供屏幕录制之外的信息
-- 假装知道
-
-保持温暖和诚实，告诉用户你真的找不到这个信息。"""
+            system_prompt = ChatPromptBuilder.build_without_context(user_message, query_type)
 
         messages.append({"role": "system", "content": system_prompt})
 
@@ -679,22 +635,32 @@ class ChatPresenter(BasePresenter):
 
     def _stream_response(self, messages: List[Dict[str, str]]):
         """
-        Stream response from Ollama API (runs in background thread).
+        Stream response from Ollama API with intelligent model routing (runs in background thread).
 
         Args:
             messages: Messages to send
         """
         try:
-            # Import here to avoid circular dependency
-            from ..llm.performance_config import get_optimizer
+            # Import intelligent model router
+            from ..llm.model_router import get_router
 
-            # Get optimized parameters for chat
-            optimizer = get_optimizer()
-            optimized_params = optimizer.get_optimized_params("chat")
+            # Get last user message for routing decision
+            user_message = ""
+            for msg in reversed(messages):
+                if msg.get("role") == "user":
+                    user_message = msg.get("content", "")
+                    break
 
-            # Build request with optimized parameters
+            # Get router and route to optimal model
+            router = get_router(self.available_models)
+            selected_model, model_config = router.route(user_message)
+
+            # Get optimized parameters for this query
+            optimized_params = router.get_optimized_parameters(user_message, model_config)
+
+            # Build request with intelligent routing
             request_data = {
-                "model": optimized_params["model"],
+                "model": selected_model,
                 "prompt": messages[-1]["content"],
                 "messages": [msg.to_dict() for msg in self.conversation_history[-10:]],
                 "stream": True,
@@ -708,7 +674,11 @@ class ChatPresenter(BasePresenter):
                 }
             }
 
-            print(f"[ChatPresenter] Using optimized parameters: temperature={optimized_params['temperature']}, top_p={optimized_params['top_p']}")
+            print(f"[ChatPresenter] 🧠 Intelligent routing:")
+            print(f"  - Model: {selected_model} ({model_config.tier.value} tier)")
+            print(f"  - Quality score: {model_config.quality_score:.2f}")
+            print(f"  - Est. latency: {model_config.avg_latency_ms}ms")
+            print(f"  - Temperature: {optimized_params['temperature']}")
 
             response = requests.post(
                 f"{self.ollama_base_url}/api/generate",

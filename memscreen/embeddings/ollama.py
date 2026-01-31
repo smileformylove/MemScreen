@@ -6,9 +6,11 @@
 
 from typing import Optional, Literal
 from ollama import Client
+import logging
 
 from .base import BaseEmbedderConfig, EmbeddingBase
 
+logger = logging.getLogger(__name__)
 
 __all__ = ["OllamaEmbedding"]
 
@@ -43,3 +45,36 @@ class OllamaEmbedding(EmbeddingBase):
         """
         response = self.client.embeddings(model=self.config.model, prompt=text)
         return response["embedding"]
+
+    def embed_batch(self, texts: list, memory_action: Optional[Literal["add", "search", "update"]] = None):
+        """
+        OPTIMIZATION: Get embeddings for multiple texts at once using Ollama batch API.
+        This is much faster than calling embed() for each text individually.
+
+        Args:
+            texts (list): List of texts to embed.
+            memory_action (optional): The type of embedding to use. Must be one of "add", "search", or "update". Defaults to None.
+
+        Returns:
+            list: List of embedding vectors.
+        """
+        try:
+            # Try to use Ollama's batch embedding endpoint if available
+            # Note: Ollama doesn't have a native batch API yet, so we optimize by using
+            # concurrent requests with thread pooling
+            import concurrent.futures
+
+            # Use ThreadPoolExecutor for parallel embedding generation
+            # This significantly speeds up embedding multiple texts
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                embeddings = list(executor.map(
+                    lambda text: self.embed(text, memory_action),
+                    texts
+                ))
+
+            return embeddings
+
+        except Exception as e:
+            logger.warning(f"Batch embedding failed, falling back to sequential: {e}")
+            # Fallback to sequential processing
+            return [self.embed(text, memory_action) for text in texts]

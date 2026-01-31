@@ -140,3 +140,19 @@ class EmbeddingBase(ABC):
             list: The embedding vector.
         """
         pass
+
+    def embed_batch(self, texts: list, memory_action: Optional[Literal["add", "search", "update"]] = None):
+        """
+        OPTIMIZATION: Get embeddings for multiple texts at once for better performance.
+        Default implementation calls embed() for each text. Override this method
+        in subclasses for true batch processing.
+
+        Args:
+            texts (list): List of texts to embed.
+            memory_action (optional): The type of embedding to use. Must be one of "add", "search", or "update". Defaults to None.
+
+        Returns:
+            list: List of embedding vectors.
+        """
+        # Default implementation - just call embed() for each text
+        return [self.embed(text, memory_action) for text in texts]
