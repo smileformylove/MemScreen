@@ -177,7 +177,7 @@ class RecordingScreen(BaseScreen):
             values=['Full Screen', 'Custom Region'],
             font_name='chinese',
             font_size='22',
-            size_hint_x=0.6,
+            size_hint_x=0.4,
             size_hint_y=None,
             height=85,
             background_color=(0.6, 0.4, 0.75, 1),
@@ -186,13 +186,13 @@ class RecordingScreen(BaseScreen):
         self.mode_spinner.bind(text=self.on_mode_change)
         control_layout.add_widget(self.mode_spinner)
 
-        # Right side: Start Recording button (same size and style as mode spinner)
+        # Right side: Start Recording button (larger and more prominent)
         self.record_btn = Button(
             text='Start Recording',
             font_name='chinese',
             font_size='22',
             bold=True,
-            size_hint_x=0.4,
+            size_hint_x=0.6,
             size_hint_y=None,
             height=85,
             background_color=(0.6, 0.4, 0.75, 1),
@@ -2657,16 +2657,16 @@ class MemScreenApp(App):
             print(f"[App] Failed to initialize VideoPresenter: {e}")
             self.video_presenter = None
 
-        # Root layout - vertical with top navigation bar
-        root = BoxLayout(orientation='vertical', spacing=0)
+        # Root layout - horizontal with left sidebar navigation
+        root = BoxLayout(orientation='horizontal', spacing=0)
 
-        # Top navigation bar - horizontal layout
+        # Left sidebar navigation - vertical layout
         nav_bar = BoxLayout(
-            orientation='horizontal',
-            size_hint_y=None,
-            height=80,
-            spacing=10,
-            padding=15
+            orientation='vertical',
+            size_hint_x=None,
+            width=200,
+            spacing=5,
+            padding=(10, 5, 10, 10)
         )
         with nav_bar.canvas.before:
             Color(0.35, 0.3, 0.4, 1)  # Light purple navigation bar
@@ -2674,22 +2674,23 @@ class MemScreenApp(App):
         nav_bar.bind(pos=lambda i,v: setattr(self.nav_bg, 'pos', i.pos),
                     size=lambda i,v: setattr(self.nav_bg, 'size', i.size))
 
-        # Title on the left
+        # Title at the top-left
         app_title = Label(
             text='MemScreen',
             font_name='chinese',
             font_size='28',
             bold=True,
             color=(1, 1, 1, 1),
-            size_hint_x=None,
-            width=150,
+            size_hint_y=None,
+            height=50,
             halign='left',
-            valign='middle'
+            valign='top',
+            text_size=(190, None)
         )
         nav_bar.add_widget(app_title)
 
         # Separator
-        sep = BoxLayout(size_hint_x=None, width=2)
+        sep = BoxLayout(size_hint_y=None, height=1)
         with sep.canvas.before:
             Color(0.5, 0.45, 0.55, 1)
             sep_bg = Rectangle(pos=sep.pos, size=sep.size)
@@ -2697,14 +2698,7 @@ class MemScreenApp(App):
                  size=lambda i,v: setattr(sep_bg, 'size', i.size))
         nav_bar.add_widget(sep)
 
-        # Navigation buttons container
-        nav_buttons = BoxLayout(
-            orientation='horizontal',
-            spacing=8,
-            size_hint_x=1  # Take remaining space
-        )
-
-        # Nav buttons - horizontal layout
+        # Navigation buttons - vertical layout
         self.nav_btns = {}
         for name, label in [
             ('recording', 'Recording'),
@@ -2716,22 +2710,24 @@ class MemScreenApp(App):
             btn = ToggleButton(
                 text=label,
                 font_name='chinese',
-                font_size='16',
-                size_hint_x=None,  # Auto width based on text
-                width=110,
-                height=60,
+                font_size='20',
+                size_hint_y=None,  # Auto height based on text
+                height=55,
                 group='nav',
                 background_color=(0.3, 0.28, 0.35, 1),
                 color=(0.9, 0.9, 0.9, 1),
                 halign='center',
                 valign='middle',
-                padding=(8, 8)
+                padding=(8, 5)
             )
             btn.bind(on_press=lambda instance, n=name: self._switch(n))
             self.nav_btns[name] = btn
-            nav_buttons.add_widget(btn)
+            nav_bar.add_widget(btn)
 
-        nav_bar.add_widget(nav_buttons)
+        # Add spacer to push all content to the top
+        spacer = Widget(size_hint_y=1)
+        nav_bar.add_widget(spacer)
+
         root.add_widget(nav_bar)
 
         # Screen manager
