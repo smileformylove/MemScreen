@@ -1,10 +1,13 @@
 <div align="center">
 
-  <img src="assets/logo.png" alt="MemScreen Logo" width="250"/>
+  <!-- Main Logo -->
+  <img src="assets/logo.png" alt="MemScreen Logo" width="280"/>
 
-  # 🖥️ MemScreen
+  # 🦉 MemScreen
 
   ### **AI-Powered Visual Memory. 100% Private.**
+
+  <br/>
 
   [![100% Local](https://img.shields.io/badge/AI-100%25%20Local-success?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMjJyczMtOSA5LTktOS05IDkgOS05IDkgOS05IDkgOSA5LTkgOSA5IDkgOX0iLz48cGF0aCBkPSJNMTIgOHY4Ii8+PHBhdGggZD0iTTEyIDE2aDgiLz48L3N2Zz4=&logoColor=white&labelColor=06D6A0)](https://github.com/smileformylove/MemScreen)
   [![No Cloud](https://img.shields.io/badge/Privacy-No%20Cloud-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTggMTB2LTRINnY0bTQgNmgtNHY0aDZhMiAyIDAgMCAwIDItMlYyYTIgMiAwIDAgMC0yLTJoLTJ6TDMgMTFWNGEyIDIgMCAwIDEgMi0yaDJIOUkiLz48L3N2Zz4=&logoColor=white&labelColor=457B9D)](https://github.com/smileformylove/MemScreen)
@@ -23,6 +26,12 @@
 ---
 
 ## ✨ What is MemScreen?
+
+<div align="center">
+
+  <img src="assets/logo_medium.png" alt="MemScreen" width="120"/>
+
+</div>
 
 **MemScreen** is your personal AI-powered visual memory system that captures, understands, and remembers everything on your screen — **100% locally, 100% privately**.
 
@@ -60,6 +69,14 @@
 
 ## ⚡ Quick Start
 
+<div align="center">
+
+  <img src="assets/logo_medium.png" alt="Quick Start" width="100"/>
+
+  **Get Started in 3 Minutes**
+
+</div>
+
 Get up and running in **3 minutes** — **no API keys, no cloud, no signup!**
 
 ```bash
@@ -84,6 +101,14 @@ python start.py
 ---
 
 ## ✨ Features
+
+<div align="center">
+
+  <img src="assets/logo_small.png" alt="Features" width="50"/>
+
+  **Comprehensive Screen Memory System**
+
+</div>
 
 ### 🎯 Screen Recording
 
@@ -128,6 +153,14 @@ MemScreen builds comprehensive memory through **three integrated sources**:
 
 ## 🎬 Interface Preview
 
+<div align="center">
+
+  <img src="assets/logo_small.png" alt="MemScreen Icon" width="60"/>
+
+  **Your AI-Powered Visual Memory**
+
+</div>
+
 ### 🔴 Recording Tab
 
 Choose your recording mode and start capturing:
@@ -161,6 +194,14 @@ Browse your recordings with intuitive timeline navigation:
 ---
 
 ## 📦 Installation
+
+<div align="center">
+
+  <img src="assets/logo_medium.png" alt="Install" width="100"/>
+
+  **Get Started in Minutes**
+
+</div>
 
 ### 🍎 macOS (Recommended)
 
@@ -215,10 +256,19 @@ For detailed documentation, see:
 - [Architecture Overview](docs/ARCHITECTURE.md) — System design and components
 - [Testing Guide](docs/TESTING_GUIDE.md) — How to test the system
 - [Quick Start Guide](docs/QUICK_START_GUIDE.py) — Interactive setup tutorial
+- [Logo & Brand Guidelines](docs/LOGO_GUIDELINES.md) — Logo usage and branding
 
 ---
 
 ## 🆚 Why MemScreen?
+
+<div align="center">
+
+  <img src="assets/logo_small.png" alt="Why MemScreen" width="60"/>
+
+  **See Why Users Choose MemScreen**
+
+</div>
 
 | Feature | MemScreen | OBS | Loom | CleanShot X |
 |---------|-----------|-----|------|-------------|
@@ -246,6 +296,14 @@ For detailed documentation, see:
 ---
 
 ## 🛠️ Tech Stack
+
+<div align="center">
+
+  <img src="assets/logo_small.png" alt="Tech Stack" width="50"/>
+
+  **Built with Privacy-First Technologies**
+
+</div>
 
 | Component | Technology | Privacy |
 |-----------|------------|----------|
@@ -318,14 +376,20 @@ This project is released under the **MIT License** — free to use, modify, and 
 
 <div align="center">
 
+  <img src="assets/logo_small.png" alt="MemScreen" width="80"/>
+
   **⭐ Star us on GitHub — it helps the project grow!**
 
   [![Star](https://img.shields.io/github/stars/smileformylove/MemScreen?style=social)](https://github.com/smileformylove/MemScreen/stargazers)
 
-  Made with ❤️ by [Jixiang Luo](https://github.com/smileformylove)
+  Made with ❤️ and 🦉 by [Jixiang Luo](https://github.com/smileformylove)
 
   **v0.5.0** — Enhanced Custom Region Recording & Code Cleanup (January 2026)
 
   [📧 Email](mailto:jixiangluo85@gmail.com) • [🐛 Report Bug](https://github.com/smileformylove/MemScreen/issues) • [💬 Discussion](https://github.com/smileformylove/MemScreen/discussions)
+
+  ---
+
+  **[🔝 Back to Top](#-memscreen)**
 
 </div>
