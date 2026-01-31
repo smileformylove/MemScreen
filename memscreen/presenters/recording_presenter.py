@@ -64,6 +64,13 @@ class RecordingPresenter(BasePresenter):
         self.frame_count = 0
         self.current_file = None
 
+        # Recording mode support
+        self.recording_mode = 'fullscreen'  # fullscreen, region
+        self.region_bbox = None  # (left, top, right, bottom) or None
+
+        # Services (lazy loaded)
+        self.region_config = None
+
         self._is_initialized = False
 
     def initialize(self):
@@ -99,6 +106,7 @@ class RecordingPresenter(BasePresenter):
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
+            # Create recordings table with new columns for region/window support
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS recordings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,9 +115,42 @@ class RecordingPresenter(BasePresenter):
                     frame_count INTEGER,
                     fps REAL,
                     duration REAL,
-                    file_size INTEGER
+                    file_size INTEGER,
+                    recording_mode TEXT DEFAULT 'fullscreen',
+                    region_bbox TEXT,
+                    window_title TEXT
                 )
             ''')
+
+            # Create saved_regions table for storing custom regions and windows
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS saved_regions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    region_type TEXT NOT NULL,
+                    bbox TEXT NOT NULL,
+                    window_title TEXT,
+                    window_app TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    last_used DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Try to add new columns to existing recordings table (for backwards compatibility)
+            try:
+                cursor.execute('ALTER TABLE recordings ADD COLUMN recording_mode TEXT DEFAULT \'fullscreen\'')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute('ALTER TABLE recordings ADD COLUMN region_bbox TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute('ALTER TABLE recordings ADD COLUMN window_title TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
             conn.commit()
             conn.close()
@@ -229,6 +270,55 @@ class RecordingPresenter(BasePresenter):
         # Create output directory if it doesn't exist
         os.makedirs(self.output_dir, exist_ok=True)
 
+    def set_recording_mode(self, mode: str, **kwargs) -> bool:
+        """
+        Set recording mode (fullscreen or region).
+
+        Args:
+            mode: 'fullscreen' or 'region'
+            **kwargs:
+                - bbox: region bbox tuple (for 'region' mode)
+
+        Returns:
+            True if mode set successfully
+        """
+        try:
+            self.recording_mode = mode
+
+            if mode == 'fullscreen':
+                self.region_bbox = None
+                print("[RecordingPresenter] Mode set to: Full Screen")
+
+            elif mode == 'region':
+                bbox = kwargs.get('bbox')
+                if bbox and len(bbox) == 4:
+                    self.region_bbox = tuple(bbox)
+                    print(f"[RecordingPresenter] Mode set to: Custom Region {bbox}")
+                else:
+                    raise ValueError("Invalid bbox for region mode")
+
+            else:
+                raise ValueError(f"Invalid recording mode: {mode}")
+
+            return True
+
+        except Exception as e:
+            self.handle_error(e, f"Failed to set recording mode to {mode}")
+            return False
+
+    def get_recording_mode(self) -> Dict[str, Any]:
+        """
+        Get current recording mode information.
+
+        Returns:
+            Dict with mode and bbox
+        """
+        return {
+            'mode': self.recording_mode,
+            'bbox': self.region_bbox
+        }
+
+
     def get_preview_frame(self) -> Optional[np.ndarray]:
         """
         Capture a single frame for preview.
@@ -239,8 +329,12 @@ class RecordingPresenter(BasePresenter):
         try:
             from PIL import ImageGrab
 
-            # Capture screen
-            screenshot = ImageGrab.grab()
+            # Capture screen with region support
+            if self.region_bbox:
+                screenshot = ImageGrab.grab(bbox=self.region_bbox)
+            else:
+                screenshot = ImageGrab.grab()  # Full screen
+
             # Convert to numpy array and ensure proper format
             frame_array = np.array(screenshot)
             # Ensure uint8 format
@@ -328,8 +422,11 @@ class RecordingPresenter(BasePresenter):
                 time_since_last_shot = current_time - last_screenshot_time
                 if time_since_last_shot >= self.interval:
                     try:
-                        # Capture screen
-                        screenshot = ImageGrab.grab()
+                        # Capture screen with region support
+                        if self.region_bbox:
+                            screenshot = ImageGrab.grab(bbox=self.region_bbox)
+                        else:
+                            screenshot = ImageGrab.grab()  # Full screen
 
                         # Convert to numpy array
                         frame_array = np.array(screenshot)
@@ -478,16 +575,22 @@ class RecordingPresenter(BasePresenter):
     def _save_to_database(self, filename, frame_count, fps, duration, file_size):
         """Save recording metadata to database"""
         try:
+            import json
+
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
             # Get current timestamp
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+            # Prepare metadata
+            recording_mode = getattr(self, 'recording_mode', 'fullscreen')
+            region_bbox = json.dumps(self.region_bbox) if getattr(self, 'region_bbox', None) else None
+
             cursor.execute('''
-                INSERT INTO recordings (filename, timestamp, frame_count, fps, duration, file_size)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (filename, timestamp, frame_count, fps, duration, file_size))
+                INSERT INTO recordings (filename, timestamp, frame_count, fps, duration, file_size, recording_mode, region_bbox, window_title)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (filename, timestamp, frame_count, fps, duration, file_size, recording_mode, region_bbox, None))
 
             conn.commit()
             conn.close()

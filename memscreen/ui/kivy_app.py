@@ -89,6 +89,7 @@ class RecordingScreen(BaseScreen):
         self.is_recording = False
         self.presenter = None
         self.preview_update_event = None
+        self.region_selector_overlay = None  # Track current overlay
 
         layout = BoxLayout(orientation='vertical', spacing=15, padding=25)
 
@@ -115,54 +116,32 @@ class RecordingScreen(BaseScreen):
         )
         layout.add_widget(self.status_label)
 
-        # Settings
-        settings = BoxLayout(size_hint_y=None, height=100, spacing=15)
+        # Recording Mode Selection
+        mode_layout = BoxLayout(size_hint_y=None, height=80, spacing=15)
 
-        # Duration
-        duration_container = BoxLayout(orientation='vertical', spacing=5)
-        duration_label = Label(
-            text='Duration (seconds)',
+        mode_container = BoxLayout(orientation='vertical', spacing=5)
+        mode_label = Label(
+            text='Recording Mode',
             font_name='chinese',
             font_size='18',
             size_hint_y=None,
             height=30,
             color=(0, 0, 0, 1)
         )
-        duration_container.add_widget(duration_label)
-        self.duration_spinner = Spinner(
-            text='60',
-            values=['30', '60', '120', '300'],
+        mode_container.add_widget(mode_label)
+        self.mode_spinner = Spinner(
+            text='Full Screen',
+            values=['Full Screen', 'Custom Region'],
             font_name='chinese',
             font_size='22',
             size_hint_y=None,
             height=55
         )
-        duration_container.add_widget(self.duration_spinner)
-        settings.add_widget(duration_container)
+        self.mode_spinner.bind(text=self.on_mode_change)
+        mode_container.add_widget(self.mode_spinner)
+        mode_layout.add_widget(mode_container)
 
-        # Interval
-        interval_container = BoxLayout(orientation='vertical', spacing=5)
-        interval_label = Label(
-            text='Interval (seconds)',
-            font_name='chinese',
-            font_size='18',
-            size_hint_y=None,
-            height=30,
-            color=(0, 0, 0, 1)
-        )
-        interval_container.add_widget(interval_label)
-        self.interval_spinner = Spinner(
-            text='2.0',
-            values=['0.5', '1.0', '1.5', '2.0', '3.0', '5.0'],
-            font_name='chinese',
-            font_size='22',
-            size_hint_y=None,
-            height=55
-        )
-        interval_container.add_widget(self.interval_spinner)
-        settings.add_widget(interval_container)
-
-        layout.add_widget(settings)
+        layout.add_widget(mode_layout)
 
         # Preview area with image widget - larger
         self.preview_box = BoxLayout(size_hint_y=0.6)
@@ -180,7 +159,7 @@ class RecordingScreen(BaseScreen):
         self.preview_box.add_widget(self.preview_image)
         layout.add_widget(self.preview_box)
 
-        # Record button
+        # Start Recording button
         self.record_btn = Button(
             text='Start Recording',
             font_name='chinese',
@@ -272,14 +251,129 @@ class RecordingScreen(BaseScreen):
         pass  # Could update UI here if needed
 
     def toggle_recording(self, instance):
+        """Toggle recording - close overlay when starting"""
         if not self.is_recording:
+            # Close region selector overlay if open
+            if self.region_selector_overlay is not None:
+                print("[RecordingScreen] Closing region selector to start recording")
+                self.region_selector_overlay.close_for_recording()
+                self.region_selector_overlay = None
+
             if self.presenter:
-                duration = int(self.duration_spinner.text)
-                interval = float(self.interval_spinner.text)
-                self.presenter.start_recording(duration, interval)
+                # Use default values: 60 seconds duration, 2.0 seconds interval
+                self.presenter.start_recording(duration=60, interval=2.0)
         else:
             if self.presenter:
                 self.presenter.stop_recording()
+
+    def on_mode_change(self, spinner, text):
+        """Handle recording mode change - auto-trigger actions"""
+        # Close overlay if switching away from Custom Region
+        if text != 'Custom Region' and self.region_selector_overlay is not None:
+            print("[RecordingScreen] Switching mode, closing region selector")
+            self.region_selector_overlay.close_for_recording()
+            self.region_selector_overlay = None
+
+        if text == 'Full Screen':
+            # Set presenter to fullscreen mode
+            if self.presenter:
+                self.presenter.set_recording_mode('fullscreen')
+            self.status_label.text = "Status: Full Screen mode"
+
+        elif text == 'Custom Region':
+            # Auto-open region selector
+            self.open_region_selector(None)
+
+    def switch_to_fullscreen(self, instance):
+        """Switch to Full Screen mode when button is clicked"""
+        # Update dropdown to show Full Screen
+        self.mode_spinner.text = 'Full Screen'
+
+        # Set presenter to fullscreen mode
+        if self.presenter:
+            self.presenter.set_recording_mode('fullscreen')
+
+        self.status_label.text = "Status: Full Screen mode"
+        print("[RecordingScreen] Switched to Full Screen mode")
+
+    def open_region_selector(self, instance):
+        """Open full-screen overlay for region selection"""
+        from memscreen.ui.region_selector import RegionSelector
+
+        print("[RecordingScreen] Opening region selector...")
+
+        # Check if presenter exists
+        if not self.presenter:
+            self.status_label.text = "Status: Presenter not initialized"
+            print("[RecordingScreen] ERROR: Presenter not initialized when opening region selector")
+            return
+
+        # If overlay exists, close it first to allow reopening
+        if self.region_selector_overlay is not None:
+            print("[RecordingScreen] Closing existing overlay to reopen")
+            self.region_selector_overlay.close_for_recording()
+            self.region_selector_overlay = None
+
+        # Show loading status
+        self.status_label.text = "Status: Opening region selector..."
+
+        # Create overlay widget in next frame to avoid blocking
+        def create_overlay(dt):
+            try:
+                overlay = RegionSelector(on_selection_callback=self._on_region_selected)
+
+                # Add overlay to window
+                Window.add_widget(overlay)
+                self.region_selector_overlay = overlay
+
+                self.status_label.text = "Status: Drag to select region (press ESC to exit)..."
+                print("[RecordingScreen] Region selector opened")
+            except Exception as e:
+                self.status_label.text = f"Status: Error - {str(e)}"
+                print(f"[RecordingScreen] ERROR opening region selector: {e}")
+                import traceback
+                traceback.print_exc()
+                self.region_selector_overlay = None
+
+        # Schedule overlay creation to avoid blocking UI
+        Clock.schedule_once(create_overlay)
+
+    def _on_region_selected(self, bbox):
+        """
+        Callback when region is selected.
+
+        IMPORTANT: Does NOT set region_selector_overlay = None when valid selection.
+        This keeps overlay open for re-selection until recording starts.
+        """
+        if bbox is None:
+            # User cancelled the selection (ESC pressed)
+            print("[RecordingScreen] Region selection cancelled")
+
+            # Clear overlay tracking only on cancellation
+            self.region_selector_overlay = None
+
+            # Reset to Full Screen mode
+            if self.presenter:
+                self.presenter.set_recording_mode('fullscreen')
+                self.status_label.text = "Status: Full Screen mode (cancelled)"
+
+                # Update mode spinner to reflect change
+                self.mode_spinner.text = 'Full Screen'
+
+            return
+
+        if bbox and self.presenter:
+            # Set presenter to region mode
+            self.presenter.set_recording_mode('region', bbox=bbox)
+
+            # Update status to show current selection
+            width = bbox[2] - bbox[0]
+            height = bbox[3] - bbox[1]
+            self.status_label.text = f"Status: Region {width}×{height}px - Ready to record"
+
+            print(f"[RecordingScreen] Region updated: {bbox}")
+            # NOTE: Don't set region_selector_overlay = None - keep overlay open!
+
 
 
 class ChatScreen(BaseScreen):
@@ -2050,7 +2144,6 @@ class ProcessScreen(BaseScreen):
         Note: This feature is temporarily disabled. Will be re-enabled in future versions.
         """
         try:
-            # TODO: Implement session detail popup with event timeline and pattern analysis
             pass
         except Exception as e:
             import logging

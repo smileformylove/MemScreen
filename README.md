@@ -2,21 +2,19 @@
 
   # 🖥️ MemScreen
 
-  ### **Your Local AI-Powered Visual Memory**
+  ### **Transform Your Screen into Intelligent, Searchable Memory**
 
-  [![100% Local](https://img.shields.io/badge/AI-100%25%20Local-success?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMjJyczMtOSA5LTkgLTktOS05LTktLTktOS05IDktOSA5LTkgOSA5IDkgOX0iLz48cGF0aCBkPSJNMTIgOHY4Ii8+PHBhdGggZD0iTTEyIDE2aDgiLz48L3N2Zz4=&logoColor=white&labelColor=06D6A0)](https://github.com/smileformylove/MemScreen)
-  [![No Cloud](https://img.shields.io/badge/Privacy-No%20Cloud-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTggMTB2LTRINnY0bTQgNmgtNHY0aDZhMiAyIDAgMDAgMi0ydjJhMiAyIDAgMDAtMi0yaC0yek0zIDExVjRhMiAyIDAgMCAxIDItMmgydiE5Ii8+PC9zdmc+&logoColor=white&labelColor=457B9D)](https://github.com/smileformylove/MemScreen)
+  [![100% Local](https://img.shields.io/badge/AI-100%25%20Local-success?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMjJyczMtOSA5LTktOS05IDkgOS05IDkgOS05IDkgOSA5LTkgOSA5IDkgOX0iLz48cGF0aCBkPSJNMTIgOHY4Ii8+PHBhdGggZD0iTTEyIDE2aDgiLz48L3N2Zz4=&logoColor=white&labelColor=06D6A0)](https://github.com/smileformylove/MemScreen)
+  [![No Cloud](https://img.shields.io/badge/Privacy-No%20Cloud-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTggMTB2LTRINnY0bTQgNmgtNHY0aDZhMiAyIDAgMCAwIDItMlYyYTIgMiAwIDAgMC0yLTJoLTJ6TDMgMTFWNGEyIDIgMCAwIDEgMi0yaDJIOUkiLz48L3N2Zz4=&logoColor=white&labelColor=457B9D)](https://github.com/smileformylove/MemScreen)
   [![GitHub Stars](https://img.shields.io/github/stars/smileformylove/MemScreen?style=for-the-badge&logo=github&logoColor=white&labelColor=333&color=blue)](https://github.com/smileformylove/MemScreen/stargazers)
   [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0xMCAyMEgyMm0tOCAwaDgiLz48cGF0aCBkPSJNOSAxOWg2Ii8+PHBhdGggZD0iTTEwIDVoNG0tMiAwaDQiLz48L3N2Zz4=)](LICENSE)
   [![Python](https://img.shields.io/badge/python-3.8+-green?style=for-the-badge&logo=python&logoColor=white&labelColor=333)](https://www.python.org/downloads/)
   [![Ollama](https://img.shields.io/badge/ollama-supported-orange?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMmwwIDdjMi42NyAwIDguMTYgMS4zNCA4IDl2MmMwIDUuNjItNS4zMyA4LTggOGwwLTd6Ii8+PC9zdmc+)](https://ollama.com)
-  [![Version](https://img.shields.io/badge/version-v0.4.0-brightgreen?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMCIvPjxwYXRoIGQ9Ik0xMiA2djZsNCAzIi8+PC9zdmc+&labelColor=333)](https://github.com/smileformylove/MemScreen/releases/tag/v0.4.0)
+  [![Version](https://img.shields.io/badge/version-v0.5.0-brightgreen?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMCIvPjxwYXRoIGQ9Ik0xMiA2djZsNCAzIi8+PC9zdmc+&labelColor=333)](https://github.com/smileformylove/MemScreen/releases/tag/v0.5.0)
 
-  **Transform your screen into an intelligent memory — 100% locally, 100% privately**
+  **100% Local • 100% Private • AI-Powered Visual Memory System**
 
-  [⚡ Quick Start](#-quick-start) • [🎨 Features](#-features) • [🤖 AI Agent](#-meet-your-local-ai-agent) • [🆚 Why MemScreen](#-why-memscreen)
-
-  [![Demo](https://img.shields.io/badge/🎬-See%20Demo-purple?style=for-the-badge)](#features)
+  [⚡ Quick Start](#-quick-start) • [✨ Features](#-features) • [🎬 Demo](#interface-preview) • [📖 Documentation](#-documentation)
 
 </div>
 
@@ -24,29 +22,35 @@
 
 ## ✨ What is MemScreen?
 
-**MemScreen** is your personal AI-powered visual memory system — **100% local, 100% private**.
+**MemScreen** is your personal AI-powered visual memory system that captures, understands, and remembers everything on your screen — **100% locally, 100% privately**.
 
-It captures, understands, and remembers everything on your screen using **local AI models only**. No cloud, no data collection, no privacy concerns. Everything runs on your machine.
+### 🚀 The Problem
 
-> **🚀 Imagine having a photographic memory for your digital life.**
-> - 🔍 "Show me that article about Python decorators from yesterday"
-> - 💻 "What was that function I wrote last Tuesday?"
-> - 🎨 "Find the UI mockup with the dark blue button"
-> - 📊 "Summarize my coding sessions from this week"
-> - 🤖 "Analyze my workflow and suggest optimizations"
-> - **Just ask MemScreen — it's all there, locally.**
+> Ever forgotten something you saw on your screen?
+> - "What was that article about Python decorators I read yesterday?"
+> - "Where did I see that UI mockup with the dark blue button?"
+> - "What was that function I wrote last Tuesday?"
+
+### 💡 The Solution
+
+**MemScreen** gives you a **photographic memory for your digital life**:
+- 📸 **Record** your screen continuously or on-demand
+- 🤖 **AI-powered understanding** with local vision models
+- 🔍 **Instant semantic search** across all your recordings
+- 💬 **Natural language queries** — just ask like you would a human
+- 🔒 **Zero privacy concerns** — everything runs locally on your machine
 
 <div align="center">
 
-  **🎉 v0.4.0 Released — 100% Local AI Agent System!**
+  **🎉 v0.5.0 Released — Enhanced Custom Region Recording!**
 
-  - 🤖 **Local AI Agent** — Task planning & skills running **entirely on your machine**
-  - 🔒 **Zero Cloud Dependencies** — No API keys, no data ever leaves your device
-  - 🧠 **Smart Memory** — Agent learns from your screen history locally
-  - 💬 **Humanized Chat** — Warm, natural AI responses
-  - ⚡ **One-Command Setup** — Ready in 3 minutes, no configuration needed
+  - 🎯 **Custom Region Selection** — Select any area of your screen to record
+  - 📐 **Visual Crosshair Guides** — Precise region selection with guide lines
+  - 🔄 **Re-selectable** — Change your selection as many times as needed
+  - ✨ **Sleek Interface** — Clean, focused user experience
+  - 🚫 **Removed Clutter** — Streamlined feature set for better usability
 
-  [View Changelog](https://github.com/smileformylove/MemScreen/compare/v0.3.5...v0.4.0)
+  [View Changelog](https://github.com/smileformylove/MemScreen/compare/v0.4.0...v0.5.0)
 
 </div>
 
@@ -54,7 +58,7 @@ It captures, understands, and remembers everything on your screen using **local 
 
 ## ⚡ Quick Start
 
-Get up and running in **3 minutes** — **no API keys needed!**
+Get up and running in **3 minutes** — **no API keys, no cloud, no signup!**
 
 ```bash
 # 1️⃣ Clone the repository
@@ -71,70 +75,52 @@ ollama pull mxbai-embed-large     # Text embeddings (~470MB)
 python start.py
 ```
 
-**That's it!** No API keys, no cloud signup, no configuration. Just start recording and chatting with your local AI Agent.
+**That's it!** Start recording and searching your screen memory immediately.
 
-> **💡 Pro Tip:** Ollama keeps all AI models on your machine. Once downloaded, MemScreen works **completely offline**.
+> **💡 Pro Tip:** Once models are downloaded, MemScreen works **completely offline**. No internet needed.
 
 ---
 
-## 🎨 Features
+## ✨ Features
 
-### 📱 Modern Kivy Interface
+### 🎯 Screen Recording
 
-Experience a sleek, light-purple themed UI built with Kivy framework
+- **🖥️ Full Screen Recording** — Capture everything on your screen
+- **📐 Custom Region Recording** — Select specific areas to record
+  - Drag-to-select with visual crosshair guides
+  - Re-selectable until you start recording
+  - Perfect for recording specific windows or areas
+- **⏱️ Flexible Intervals** — Set capture frequency (0.5s - 5s)
+- **👁️ Live Preview** — See exactly what's being captured
 
-<div align="center">
+### 🤖 AI-Powered Understanding
 
-  **🔴 Recording**  •  **💬 AI Chat**  •  **🎬 Videos**  •  **📊 Process Mining**  •  **⚙️ About**
+- **🧠 Vision Intelligence** — Local MLLM (qwen2.5vl) understands your screen visually
+- **📝 OCR Text Extraction** — Extract text from any screen content
+- **🎨 Scene Recognition** — Identifies applications, activities, and UI elements
+- **🔍 Semantic Search** — Find anything by meaning, not just keywords
 
-</div>
+### 💬 Natural Language Chat
 
-### 🚀 Core Capabilities
+- **❓ Ask Questions** — "What was that article about Python I read yesterday?"
+- **📊 Summarize** — "Summarize all documentation I viewed this week"
+- **🔎 Search** — "Find the UI mockup with the dark blue button"
+- **💡 Smart Responses** — AI uses your screen memory to answer accurately
 
-| Feature | Description |
-|---------|-------------|
-| 🤖 **Local AI Agent** | **100% local** task planning & skill execution — no cloud, ever |
-| 🧠 **Smart Understanding** | Local MLLM (qwen2.5vl) understands your screen visually |
-| 🔍 **Semantic Search** | Vector-powered search finds anything in seconds |
-| 💬 **Natural Chat** | Ask questions, get answers — warm, humanized AI responses |
-| 📸 **Screen Recording** | Continuous capture with real-time preview |
-| 🎬 **Video Player** | Timeline navigation with smart video markers |
-| 📊 **Process Mining** | Discover your workflow patterns automatically |
-| 🛠️ **Custom Skills** | Extend Agent with your own specialized skills |
-| 🎯 **Memory Integration** | Agent learns from your screen history locally |
-| 🔒 **Privacy First** | **Zero data leaves your device** — guaranteed |
+### 🔒 Privacy First
 
-### 🤖 Meet Your Local AI Agent
+- **✅ 100% Local** — All AI processing happens on your machine
+- **🚫 No Cloud** — No data sent to external servers
+- **🔐 No API Keys** — Works out of the box
+- **📖 Open Source** — Verify the code yourself
 
-**Unlike other "AI" tools that send your data to the cloud**, MemScreen's Agent runs **100% locally**:
+### 📊 Memory Sources
 
-```bash
-# Agent Capabilities (All Local!):
-✅ Search Memory        — Find anything across your screen history
-✅ Summarize Content    — AI-powered summaries, no cloud needed
-✅ Plan Tasks          — Break down complex goals into steps
-✅ Execute Skills      — Run multi-step workflows automatically
-✅ Learn & Adapt       — Gets smarter about your work patterns
-```
+MemScreen builds comprehensive memory through **three integrated sources**:
 
-**How it works:**
-1. You ask: *"Summarize all Python tutorials I viewed this week"*
-2. Agent **locally** searches memory → finds tutorials → extracts content
-3. Agent **locally** summarizes using qwen2.5vl → generates concise summary
-4. Result: Beautiful summary, **zero data sent to cloud** ✅
-
-### 💡 What Can It Do?
-
-**Try asking:**
-- 📖 "Show me the article about Python decorators I read yesterday"
-- 💻 "What was that function I wrote last Tuesday?"
-- 🎨 "Find the UI mockup with the dark blue button"
-- 📅 "When did I last work on the payment feature?"
-- 📊 "Summarize all documentation I viewed this week"
-- 🤖 "Search my recordings for 'asyncio' and summarize the findings"
-- ⚡ "Analyze my workflow patterns from the past 3 days"
-
-**All processed locally by the AI Agent — your data never leaves your machine.** 🔒
+1. **📸 Screen Recordings** — Primary source with OCR and scene understanding
+2. **⌨️ Process Mining** — Keyboard/mouse tracking and activity patterns
+3. **💬 Chat History** — Your conversations and queries
 
 ---
 
@@ -142,365 +128,108 @@ Experience a sleek, light-purple themed UI built with Kivy framework
 
 ### 🔴 Recording Tab
 
-- **Live Screen Preview**: See exactly what's being captured
-- **Flexible Recording**: Set duration (30s - 5min) and interval (0.5s - 5s)
-- **Real-time Stats**: Track frame count and elapsed time
-- **Auto-save**: Videos automatically saved and indexed
+Choose your recording mode and start capturing:
+
+- **🖥️ Full Screen** — Record everything on your display
+- **📐 Custom Region** — Select specific areas to record
+  - Drag to select with visual crosshair guides
+  - Press **ESC** to cancel, or reselect as needed
+  - Click **"Start Recording"** when ready
+- **👁️ Live Preview** — See what's being captured in real-time
+- **📈 Real-time Stats** — Frame count and elapsed time
 
 ### 💬 AI Chat Tab
 
-- **🤖 Local AI Agent**: Toggle Agent mode for complex multi-step tasks
-- **💬 Smart Chat**: Natural questions, humanized responses
-- **🔍 Memory Search**: Automatically searches your screen history
-- **🎯 Context-Aware**: Uses recordings and OCR to provide accurate answers
-- **⚙️ Model Switching**: Choose from multiple local AI models
-- **🔒 100% Private**: All processing happens on your machine
+Ask questions and get intelligent answers:
+
+- **💭 Natural Questions** — Just type like you're asking a person
+- **🔍 Memory Search** — AI searches all your recordings automatically
+- **🎯 Context-Aware** — Uses OCR and scene understanding for accuracy
+- **📊 Rich Responses** — Detailed answers with specific references
 
 ### 🎬 Videos Tab
 
-- **Timeline Navigation**: Visual timeline with clickable video markers
-- **Smart Markers**: Purple dots show when videos were recorded
-- **Play Position**: Orange indicator shows current playback position
-- **Video Controls**: Play/pause, seek, progress bar with time display
-- **Management**: View details and delete unwanted recordings
+Browse your recordings with intuitive timeline navigation:
 
-### 📊 Process Mining Tab
-
-- **Live Event Feed**: Real-time display of keyboard/mouse events
-- **Pattern Analysis**: Discover frequent actions and workflows
-- **Training Recommendations**: Get AI-powered suggestions
-- **Export**: Save event data to JSON for further analysis
+- **📅 Visual Timeline** — See all your recordings at a glance
+- **🎯 Video Markers** — Purple dots show when recordings were made
+- **▶️ Playback Controls** — Play, pause, seek through videos
+- **📊 Frame Navigation** — Jump to any moment instantly
 
 ---
 
 ## 📦 Installation
 
-### 🚀 Quick Install (macOS)
+### 🍎 macOS (Recommended)
 
-**Pre-built application available!** Download the DMG installer from [Releases](https://github.com/smileformylove/MemScreen/releases) and double-click to install.
-
-Or install from source (below) for full control.
-
-### 🍎 macOS (From Source)
-
-#### Prerequisites Check
+**Prerequisites:**
+- macOS 11+ (Big Sur or later)
+- Python 3.8 or higher
+- 5GB free disk space
 
 ```bash
-# Check Python version (requires 3.8+)
-python3 --version
-
-# Check if Homebrew is installed
-brew --version
-```
-
-#### Step 1: Install Ollama
-
-```bash
-# Install Ollama using Homebrew
+# Step 1: Install Ollama
 brew install ollama
 
-# Start Ollama service (if not running automatically)
+# Step 2: Start Ollama service
 ollama serve
-# Keep this terminal open, or press Ctrl+Z and type 'bg' to run in background
-```
+# Keep this terminal open, or press Ctrl+Z and type 'bg'
 
-#### Step 2: Download AI Models
+# Step 3: Pull AI Models (one-time)
+ollama pull qwen2.5vl:3b          # Vision model (~2GB)
+ollama pull mxbai-embed-large     # Embeddings (~470MB)
 
-```bash
-# Pull vision-language model (~2GB)
-ollama pull qwen2.5vl:3b
-
-# Pull text embedding model (~470MB)
-ollama pull mxbai-embed-large
-
-# Verify models are installed
-ollama list
-```
-
-#### Step 3: Install MemScreen
-
-```bash
-# Clone the repository
+# Step 4: Install MemScreen
 git clone https://github.com/smileformylove/MemScreen.git
 cd MemScreen
-
-# (Optional) Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install Python dependencies
-pip install --upgrade pip
 pip install -r requirements.txt
-```
 
-#### Step 4: Launch MemScreen
-
-```bash
-# Start the application
-python start.py
-```
-
-#### (Optional) Verify Installation
-
-```bash
-# Run the installation test script to verify everything is set up correctly
-./test_installation.sh
-```
-
-This script checks:
-- ✅ Python version (3.8+)
-- ✅ Homebrew installation
-- ✅ Ollama service and models
-- ✅ Python dependencies
-- ✅ MemScreen directory structure
-
-#### Troubleshooting
-
-**Problem**: `command not found: brew`
-```bash
-# Install Homebrew first
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-
-**Problem**: Ollama models download fails
-```bash
-# Try pulling models again with verbose output
-ollama pull qwen2.5vl:3b --verbose
-```
-
-**Problem**: Kivy window doesn't appear
-```bash
-# Ensure Ollama is running
-ollama serve
-
-# Check if models are available
-ollama list
-
-# Try running with debug output
+# Step 5: Launch
 python start.py
 ```
 
 ### 🐧 Linux / 🪟 Windows
 
 ```bash
-# Install Ollama from https://ollama.com
+# Install Ollama from https://ollama.com/download
 # Pull AI models
 ollama pull qwen2.5vl:3b
 ollama pull mxbai-embed-large
 
-# Install Python dependencies
+# Install MemScreen
+git clone https://github.com/smileformylove/MemScreen.git
+cd MemScreen
 pip install -r requirements.txt
 
 # Launch
 python start.py
 ```
 
-### 🔧 Requirements
-
-- **Python**: 3.8 or higher
-- **Ollama**: For local AI models
-- **OS**: macOS, Linux, or Windows
-- **Disk**: ~5GB for models + recordings
-
 ---
 
-## 📊 Architecture
+## 📖 Documentation
 
-```
-┌─────────────────────────────────────────────────┐
-│                 Your Screen                     │
-└──────────────────┬──────────────────────────────┘
-                   │ Screen Capture
-                   ▼
-┌─────────────────────────────────────────────────┐
-│            MemScreen Core (100% Local)          │
-│                                                 │
-│  ┌──────────────────────────────────────────┐  │
-│  │  🎥 Recording Module                     │  │
-│  │  - Real-time screen capture              │  │
-│  │  - Video encoding (OpenCV)               │  │
-│  │  - Configurable intervals                │  │
-│  └──────────────────────────────────────────┘  │
-│                                                 │
-│  ┌──────────────────────────────────────────┐  │
-│  │  🤖 AI Agent System (100% Local!)        │  │
-│  │  - Task Planning (Local LLM)             │  │
-│  │  - Skill Execution                       │  │
-│  │  - Memory Learning                       │  │
-│  │  - No Cloud Dependencies                 │  │
-│  └──────────────────────────────────────────┘  │
-│                                                 │
-│  ┌──────────────────────────────────────────┐  │
-│  │  🧠 AI & Memory Module                   │  │
-│  │  - Ollama MLLM (qwen2.5vl) Local         │  │
-│  │  - Text Embeddings (mxbai-embed-large) Local   │  │
-│  │  - ChromaDB Vector Store (Local DB)      │  │
-│  │  - SQLite Metadata DB                    │  │
-│  └──────────────────────────────────────────┘  │
-│                                                 │
-│  ┌──────────────────────────────────────────┐  │
-│  │  📊 Process Mining Module                │  │
-│  │  - Keyboard/Mouse tracking               │  │
-│  │  - Pattern analysis                      │  │
-│  │  - Workflow discovery                    │  │
-│  └──────────────────────────────────────────┘  │
-└──────────────────┬──────────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────────┐
-│            Kivy UI Layer                        │
-│  🔴 Recording  •  💬 AI Chat  •  🎬 Videos     │
-│  📊 Process Mining  •  ⚙️ Settings             │
-└─────────────────────────────────────────────────┘
-
-🔒 Key Point: ALL AI processing happens locally on your machine.
-    No data sent to cloud. No API keys. No privacy concerns.
-```
-
-### 🧠 Three Memory Sources
-
-MemScreen builds a comprehensive memory of your digital activities through **three integrated sources**:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    MemScreen 记忆系统                         │
-├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  1️⃣  屏幕录制 (最大来源)                                      │
-│     ├─ OCR 文字识别          提取屏幕文字                     │
-│     ├─ Caption 视觉理解       识别应用和活动类型               │
-│     └─ 保存到记忆系统         带时间戳的帧级分析               │
-│                                                               │
-│  2️⃣  Process Mining (第二来源)                               │
-│     ├─ 键盘输入追踪         记录击键和快捷键                  │
-│     ├─ 鼠标点击追踪         记录点击模式                      │
-│     ├─ 活动模式分析         自动识别编程、浏览等活动           │
-│     └─ 保存到记忆系统         会话级别的活动统计               │
-│                                                               │
-│  3️⃣  用户对话 (第三来源)                                       │
-│     ├─ 对话历史保存         记录所有对话                      │
-│     ├─ 用户表达信息         捕获用户主动表达的信息             │
-│     └─ 保存到记忆系统         完整的对话上下文                 │
-│                                                               │
-└─────────────────────────────────────────────────────────────┘
-```
-
-#### 1️⃣ Screen Recording (Primary Source)
-
-**What it captures:**
-- Visual content from your screen at regular intervals
-- OCR-extracted text using vision models (qwen2.5vl)
-- Scene understanding (application type, activity type, UI elements)
-- Frame-by-frame analysis with timestamps
-
-**Memory structure:**
-```json
-{
-  "type": "screen_recording",
-  "content": "Screen Recording captured at 2026-01-30 14:30:15\n- Duration: 45.2 seconds\n- Frames: 23\n\nFrame-by-Frame Analysis:\n- Frame #0: Scene: VSCode - Python programming. Text: import cv2\ndef process_image():\n...",
-  "metadata": {
-    "filename": "recording_20260130_143015.mp4",
-    "duration": 45.2,
-    "frame_count": 23,
-    "ocr_text": "extracted text content",
-    "content_description": "Scene: VSCode - Python programming"
-  }
-}
-```
-
-#### 2️⃣ Process Mining (Secondary Source)
-
-**What it captures:**
-- Keyboard events (keystrokes, shortcuts)
-- Mouse click events
-- Activity categorization (programming, browsing, design, etc.)
-- Session duration and intensity
-
-**Memory structure:**
-```json
-{
-  "type": "process_mining",
-  "content": "Process Mining Session (14:30 → 15:45)\n\nPrimary Activity: Programming\n\nActivity Breakdown:\n- Typing: 65%\n- Programming: 78%\n- Browsing: 12%\n\nStatistics:\n- Total Events: 1247\n- Keystrokes: 982\n- Mouse Clicks: 265",
-  "metadata": {
-    "categories": {
-      "primary": "Programming",
-      "typing": {"percentage": 65},
-      "programming": {"percentage": 78}
-    },
-    "patterns": {
-      "duration_minutes": 75.5,
-      "avg_events_per_minute": 16.4,
-      "top_keys": ["cmd", "ctrl+c", "ctrl+v"]
-    }
-  }
-}
-```
-
-#### 3️⃣ User Chat (Tertiary Source)
-
-**What it captures:**
-- User questions and AI responses
-- User-expressed information and preferences
-- Conversation context and topics discussed
-
-**Memory structure:**
-```json
-{
-  "type": "ai_chat",
-  "content": "[User] 我今天下午在写 Python 代码\n[Assistant] 我看到你今天下午在写 Python 代码...",
-  "metadata": {
-    "source": "ai_chat",
-    "model": "qwen2.5vl:3b",
-    "timestamp": "2026-01-30 14:35:22"
-  }
-}
-```
-
-#### Memory Integration
-
-All three sources use the **same user_id** (`default_user`), enabling **cross-source retrieval**:
-
-```python
-# When you ask "我今天做了什么?", MemScreen searches ALL sources:
-result = memory.search(
-    query="我今天做了什么",
-    user_id="default_user",
-    limit=5,
-    threshold=0.3
-)
-
-# Returns integrated results from:
-# 1. Screen recordings showing what was on screen
-# 2. Process mining showing activity patterns
-# 3. Chat history showing what you discussed
-```
-
-**Example integrated response:**
-> "根据记录，你今天下午：
-> 1. **主要在编程** (Process Mining: 78% 编程活动，982 次击键)
-> 2. **在 VSCode 中编写 Python 代码** (屏幕录制显示 OpenCV 图像处理代码)
-> 3. **询问了图像处理相关的问题** (对话历史)"
+For detailed documentation, see:
+- [Architecture Overview](docs/ARCHITECTURE.md) — System design and components
+- [Testing Guide](docs/TESTING_GUIDE.md) — How to test the system
+- [Quick Start Guide](docs/QUICK_START_GUIDE.py) — Interactive setup tutorial
 
 ---
 
 ## 🆚 Why MemScreen?
 
-### Compared to Screen Recorders
-
 | Feature | MemScreen | OBS | Loom | CleanShot X |
 |---------|-----------|-----|------|-------------|
 | **Privacy** | ✅ **100% Local** | ✅ Local | ❌ Cloud | ✅ Local |
-| **AI Agent** | ✅ **Local Agent** | ❌ No | ❌ Cloud AI | ❌ No |
-| **AI Understanding** | ✅ **MLLM + OCR** | ❌ No | ✅ Cloud AI | ❌ OCR only |
-| **Process Mining** | ✅ **Yes** | ❌ No | ❌ No | ❌ No |
+| **AI Understanding** | ✅ **Local MLLM** | ❌ No | ✅ Cloud AI | ❌ OCR only |
+| **Semantic Search** | ✅ **Yes** | ❌ No | ❌ No | ❌ No |
 | **Natural Language** | ✅ **Yes** | ❌ No | ❌ No | ❌ No |
+| **Custom Region** | ✅ **Yes** | ✅ Yes | ❌ No | ✅ Yes |
+| **Process Mining** | ✅ **Yes** | ❌ No | ❌ No | ❌ No |
 | **Open Source** | ✅ **MIT** | ✅ GPL | ❌ No | ❌ No |
 | **Cost** | **Free Forever** | Free | $15-30/mo | Paid |
-| **API Keys** | ✅ **Not Needed** | N/A | ❌ Required | N/A |
 
 ### 🔒 Privacy Guarantee
-
-**Most "AI tools" send your screenshots to the cloud.** MemScreen doesn't.
 
 ```
 ❌ Other AI Tools:
@@ -512,85 +241,45 @@ result = memory.search(
    🔒 Your data stays with you 🔒
 ```
 
-**What makes MemScreen different:**
-
-- 🚫 **No cloud API keys** required — ever
-- 🚫 **No data collection** or telemetry
-- 🚫 **No internet connection** needed after initial setup
-- ✅ **Offline-first** design — works without internet
-- ✅ **Open source** — verify the code yourself
-- ✅ **Auditable** — every AI decision happens locally
-
-### Unique Advantages
-
-- 🤖 **Local AI Agent** — The only screen recorder with a **local** AI agent
-- 🧠 **True Understanding** — Not just recording, but **comprehending** your screen
-- 🔒 **Uncompromising Privacy** — All AI runs locally, **zero data leaves your machine**
-- 💬 **Natural Conversations** — Ask questions in plain language
-- 📊 **Workflow Analytics** — Discover patterns (unique feature!)
-- 🎯 **Visual Timeline** — Intuitive video browsing
-- 💰 **Zero Cost Forever** — No subscriptions, no hidden fees, no API bills
-- 🛠️ **Extensible** — Create custom skills for your needs
-- 📖 **Open Source** — Study, modify, and verify the code
-
 ---
 
 ## 🛠️ Tech Stack
 
 | Component | Technology | Privacy |
 |-----------|------------|----------|
-| **GUI Framework** | Kivy (cross-platform, modern UI) | ✅ Local |
+| **GUI Framework** | Kivy | ✅ Local |
 | **Screen Capture** | PIL ImageGrab | ✅ Local |
 | **Video Processing** | OpenCV | ✅ Local |
-| **Databases** | SQLite (metadata) + ChromaDB (vectors) | ✅ Local |
-| **AI Models** | Ollama (qwen2.5vl:3b, mxbai-embed-large) | ✅ **100% Local** |
-| **Agent System** | Custom Framework with Planner & Skills | ✅ **100% Local** |
-| **Input Tracking** | pynput | ✅ Local |
+| **Databases** | SQLite + ChromaDB | ✅ Local |
+| **AI Models** | Ollama (qwen2.5vl:3b) | ✅ **100% Local** |
 | **Language** | Python 3.8+ | ✅ Local |
-
-**🔒 Privacy Note:** Every component runs locally. No cloud services, no API calls, no data transmission.
 
 ---
 
 ## 📝 What's New
 
+### ✨ v0.5.0 — Enhanced Custom Region Recording
+
+**🎯 New Features:**
+- **Custom Region Selection** — Select specific screen areas to record
+- **Visual Crosshair Guides** — Guide lines extend to screen edges for precision
+- **Re-selectable Regions** — Change selection as many times as needed
+- **Click-Through Support** — Click buttons even when overlay is active
+- **Streamlined Interface** — Removed Track Window mode for simplicity
+
+**🔧 Improvements:**
+- Smoother drag-to-select experience
+- Better visual feedback during selection
+- Cleaner, more focused UI
+
+**📉 Removed:**
+- Track Window recording mode (use Custom Region instead)
+
 ### ✨ v0.4.0 — Local AI Agent & Privacy-First Design
 
-**🚀 Major Feature: 100% Local AI Agent System**
-- 🤖 **Task Planning** — Agent breaks down complex goals into steps (locally!)
-- 🛠️ **Skill System** — Extensible architecture with built-in skills:
-  - 🔍 **SearchMemorySkill** — Find anything in your screen history
-  - 📝 **SummarySkill** — AI-powered content summarization
-  - ➕ **Easy Extension** — Create custom skills in minutes
-- 🧠 **Memory Learning** — Agent learns from your screen history over time
-- 🔒 **Zero Cloud** — All Agent capabilities run entirely on your machine
-
-**💬 Enhanced AI Chat**
-- Humanized, warm responses (temperature tuned to 0.6)
-- Strict memory-only mode (no hallucinations!)
-- Empathetic refusals when no memory found
-- Multi-turn conversations with context awareness
-
-**🔒 Privacy Guarantees**
-- No API keys required — ever
-- Works completely offline after initial setup
-- All AI models stored locally
-- No telemetry or data collection
-- Open source and auditable
-
-### ✨ v0.3.5 — Timeline UI Improvements
-
-- 🎯 **Fixed Timeline Alignment**: Video markers now perfectly align with timeline
-- 📍 **Play Position Indicator**: Accurate position tracking with proper padding
-- 🎨 **Visual Improvements**: Better spacing and layout
-- 🐛 **Bug Fixes**: Resolved text overlap issues
-
-### 🎉 v0.3 — Process Mining & Major Features
-
-- 📊 Process Mining tab with workflow analysis
-- 🎬 Video player with timeline navigation
-- 💬 Enhanced AI chat with memory integration
-- 🎨 Modern Kivy UI with light purple theme
+- 🤖 **Local AI Agent System** — Task planning & skill execution
+- 💬 **Enhanced AI Chat** — Humanized, warm responses
+- 🔒 **Zero Cloud Dependencies** — No API keys, no data transmission
 
 ---
 
@@ -603,29 +292,21 @@ Contributions welcome! Here's how to help:
 - 📝 Improve documentation
 - 🔧 Submit pull requests
 
-**Development Setup:**
-```bash
-git clone https://github.com/smileformylove/MemScreen.git
-cd MemScreen
-pip install -r requirements.txt
-python start.py
-```
-
 ---
 
 ## 📜 License
 
-This project is released under the **MIT License** — feel free to use, modify, and distribute!
+This project is released under the **MIT License** — free to use, modify, and distribute!
 
 <div align="center">
 
   **⭐ Star us on GitHub — it helps the project grow!**
 
-  [![Star](https://img.shields.io/github/stars/smileformylove/MemScreen?style=social)](https://github.com/smileformylove/MemScreen)
+  [![Star](https://img.shields.io/github/stars/smileformylove/MemScreen?style=social)](https://github.com/smileformylove/MemScreen/stargazers)
 
   Made with ❤️ by [Jixiang Luo](https://github.com/smileformylove)
 
-  **v0.4.0** — AI Agent System & Humanized Memory
+  **v0.5.0** — Enhanced Custom Region Recording
 
   [📧 Email](mailto:jixiangluo85@gmail.com) • [🐛 Report Bug](https://github.com/smileformylove/MemScreen/issues) • [💬 Discussion](https://github.com/smileformylove/MemScreen/discussions)
 

@@ -13,9 +13,6 @@ import uuid
 
 from posthog import Posthog
 
-# import memscreen
-# from memscreen.memory.setup import get_or_create_user_id
-
 # Set up the directory path
 VECTOR_ID = str(uuid.uuid4())
 home_dir = os.path.expanduser("~")
