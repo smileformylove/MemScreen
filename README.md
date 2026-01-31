@@ -1,8 +1,10 @@
 <div align="center">
 
+  <img src="assets/logo.png" alt="MemScreen Logo" width="250"/>
+
   # 🖥️ MemScreen
 
-  ### **Transform Your Screen into Intelligent, Searchable Memory**
+  ### **AI-Powered Visual Memory. 100% Private.**
 
   [![100% Local](https://img.shields.io/badge/AI-100%25%20Local-success?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMjJyczMtOSA5LTktOS05IDkgOS05IDkgOS05IDkgOSA5LTkgOSA5IDkgOX0iLz48cGF0aCBkPSJNMTIgOHY4Ii8+PHBhdGggZD0iTTEyIDE2aDgiLz48L3N2Zz4=&logoColor=white&labelColor=06D6A0)](https://github.com/smileformylove/MemScreen)
   [![No Cloud](https://img.shields.io/badge/Privacy-No%20Cloud-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTggMTB2LTRINnY0bTQgNmgtNHY0aDZhMiAyIDAgMCAwIDItMlYyYTIgMiAwIDAgMC0yLTJoLTJ6TDMgMTFWNGEyIDIgMCAwIDEgMi0yaDJIOUkiLz48L3N2Zz4=&logoColor=white&labelColor=457B9D)](https://github.com/smileformylove/MemScreen)
