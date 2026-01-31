@@ -116,35 +116,8 @@ class RecordingScreen(BaseScreen):
         )
         layout.add_widget(self.status_label)
 
-        # Recording Mode Selection
-        mode_layout = BoxLayout(size_hint_y=None, height=80, spacing=15)
-
-        mode_container = BoxLayout(orientation='vertical', spacing=5)
-        mode_label = Label(
-            text='Recording Mode',
-            font_name='chinese',
-            font_size='18',
-            size_hint_y=None,
-            height=30,
-            color=(0, 0, 0, 1)
-        )
-        mode_container.add_widget(mode_label)
-        self.mode_spinner = Spinner(
-            text='Full Screen',
-            values=['Full Screen', 'Custom Region'],
-            font_name='chinese',
-            font_size='22',
-            size_hint_y=None,
-            height=55
-        )
-        self.mode_spinner.bind(text=self.on_mode_change)
-        mode_container.add_widget(self.mode_spinner)
-        mode_layout.add_widget(mode_container)
-
-        layout.add_widget(mode_layout)
-
-        # Preview area with image widget - larger
-        self.preview_box = BoxLayout(size_hint_y=0.6)
+        # Preview area with image widget - larger (moved up, increased from 0.6 to 0.65)
+        self.preview_box = BoxLayout(size_hint_y=0.65)
         with self.preview_box.canvas.before:
             Color(0.88, 0.85, 0.92, 1)  # Light purple gray
             self.preview_bg = Rectangle(pos=self.preview_box.pos, size=self.preview_box.size)
@@ -159,19 +132,46 @@ class RecordingScreen(BaseScreen):
         self.preview_box.add_widget(self.preview_image)
         layout.add_widget(self.preview_box)
 
-        # Start Recording button
+        # Control Layout: Mode Selection + Record Button (horizontal)
+        control_layout = BoxLayout(
+            orientation='horizontal',
+            size_hint_y=None,
+            height=85,
+            spacing=15,
+            padding=(0, 0, 0, 0)
+        )
+
+        # Left side: Recording Mode (same size and style as record button)
+        self.mode_spinner = Spinner(
+            text='Full Screen',
+            values=['Full Screen', 'Custom Region'],
+            font_name='chinese',
+            font_size='22',
+            size_hint_x=0.6,
+            size_hint_y=None,
+            height=85,
+            background_color=(0.6, 0.4, 0.75, 1),
+            color=(1, 1, 1, 1)
+        )
+        self.mode_spinner.bind(text=self.on_mode_change)
+        control_layout.add_widget(self.mode_spinner)
+
+        # Right side: Start Recording button (same size and style as mode spinner)
         self.record_btn = Button(
             text='Start Recording',
             font_name='chinese',
-            font_size='24',
+            font_size='22',
             bold=True,
+            size_hint_x=0.4,
             size_hint_y=None,
-            height=75,
+            height=85,
             background_color=(0.6, 0.4, 0.75, 1),
             color=(1, 1, 1, 1)
         )
         self.record_btn.bind(on_press=self.toggle_recording)
-        layout.add_widget(self.record_btn)
+        control_layout.add_widget(self.record_btn)
+
+        layout.add_widget(control_layout)
 
         # Info
         info = BoxLayout(size_hint_y=None, height=50, spacing=25)
