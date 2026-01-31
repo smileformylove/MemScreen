@@ -42,13 +42,13 @@
 
 <div align="center">
 
-  **🎉 v0.5.0 Released — Enhanced Custom Region Recording!**
+  **🎉 v0.5.0 — Enhanced Custom Region Recording & Clean UI!**
 
   - 🎯 **Custom Region Selection** — Select any area of your screen to record
   - 📐 **Visual Crosshair Guides** — Precise region selection with guide lines
   - 🔄 **Re-selectable** — Change your selection as many times as needed
-  - ✨ **Sleek Interface** — Clean, focused user experience
-  - 🚫 **Removed Clutter** — Streamlined feature set for better usability
+  - ✨ **Sleek Interface** — Clean, focused user experience with modern sidebar
+  - 🧹 **Code Cleanup** — Removed unused files for better maintainability
 
   [View Changelog](https://github.com/smileformylove/MemScreen/compare/v0.4.0...v0.5.0)
 
@@ -258,7 +258,23 @@ For detailed documentation, see:
 
 ## 📝 What's New
 
-### ✨ v0.5.0 — Enhanced Custom Region Recording
+### ✨ v0.5.0 — Enhanced Custom Region Recording & Code Cleanup (January 2026)
+
+**🎯 New Features:**
+- **Custom Region Selection** — Select specific screen areas to record
+- **Visual Crosshair Guides** — Guide lines extend to screen edges for precision
+- **Re-selectable Regions** — Change selection as many times as needed
+- **Left Sidebar Navigation** — Modern, accessible UI design
+- **Streamlined Interface** — Removed unused files and features
+
+**🔧 Code Improvements:**
+- Removed unused assets and backup files
+- Better button sizing and layout optimization
+- Cleaner project structure
+
+**📉 Removed:**
+- Track Window recording mode (use Custom Region instead)
+- Example folders and unused assets
 
 **🎯 New Features:**
 - **Custom Region Selection** — Select specific screen areas to record
@@ -306,7 +322,7 @@ This project is released under the **MIT License** — free to use, modify, and 
 
   Made with ❤️ by [Jixiang Luo](https://github.com/smileformylove)
 
-  **v0.5.0** — Enhanced Custom Region Recording
+  **v0.5.0** — Enhanced Custom Region Recording & Code Cleanup (January 2026)
 
   [📧 Email](mailto:jixiangluo85@gmail.com) • [🐛 Report Bug](https://github.com/smileformylove/MemScreen/issues) • [💬 Discussion](https://github.com/smileformylove/MemScreen/discussions)
 

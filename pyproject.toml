@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memscreen"
-version = "0.4.0"
+version = "0.5.0"
 description = "Ask Screen Anything - Your AI-Powered Visual Memory System"
 readme = "README.md"
 requires-python = ">=3.8"
