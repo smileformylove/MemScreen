@@ -33,5 +33,24 @@ fi
 echo "🖼️  Launching MemScreen UI..."
 echo ""
 
-python3 start.py "$@"
+# Function to filter stderr in real-time
+filter_stderr() {
+    while IFS= read -r line; do
+        # Skip all objc SDL2 duplicate warnings
+        # These warnings don't affect functionality
+        if echo "$line" | grep -q "objc\[.*\]:.*SDL.*is implemented in both"; then
+            continue
+        fi
+        if echo "$line" | grep -q "objc\[.*\]:.*Cocoa_WindowListener.*is implemented in both"; then
+            continue
+        fi
+        if echo "$line" | grep -q "objc\[.*\]:.*METAL_.*is implemented in both"; then
+            continue
+        fi
+        echo "$line" >&2
+    done
+}
+
+# Run with stderr filtering
+python3 start.py "$@" 2> >(filter_stderr)
 

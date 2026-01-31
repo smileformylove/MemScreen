@@ -3,6 +3,36 @@
 MemScreen Kivy UI - Clean Modern Design with Light Purple Theme
 """
 
+import os
+import sys
+import warnings
+
+# Suppress SDL2 duplicate symbol warnings from OpenCV/Kivy conflict
+# These warnings don't affect functionality, only occur during library loading
+if sys.platform == 'darwin':  # macOS
+    # Filter out SDL2-related warnings
+    warnings.filterwarnings('ignore', category=RuntimeWarning,
+                          message='.*SDL.*is implemented in both.*')
+
+# Suppress objc warnings about duplicate SDL2 classes
+class SDLSilencer:
+    def __init__(self):
+        self.original_stderr = sys.stderr
+
+    def write(self, text):
+        # Filter out SDL2 duplicate warnings
+        if 'SDL' in text and 'implemented in both' in text:
+            return
+        self.original_stderr.write(text)
+
+    def flush(self):
+        self.original_stderr.flush()
+
+# Apply stderr filter only if not already applied
+if not hasattr(sys, 'SDL_silenced'):
+    sys.stderr = SDLSilencer()
+    sys.SDL_silenced = True
+
 from kivy.app import App
 from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.uix.boxlayout import BoxLayout
