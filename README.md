@@ -9,7 +9,8 @@
 
   <br/>
 
-  [![100% Local](https://img.shields.io/badge/AI-100%25%20Local-success?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMjJyczMtOSA5LTktOS05IDkgOS05IDkgOS05IDkgOSA5LTkgOSA5IDkgOX0iLz48cGF0aCBkPSJNMTIgOHY4Ii8+PHBhdGggZD0iTTEyIDE2aDgiLz48L3N2Zz4=&logoColor=white&labelColor=06D6A0)](https://github.com/smileformylove/MemScreen)
+  [![Product Hunt](https://img.shields.io/badge/Product%20Hunt-Featured-orange?style=for-the-badge&logo=producthunt&logoColor=white&labelColor=FF6154)](https://www.producthunt.com/products/memscreen)
+  [![100% Local](https://img.shields.io/badge/AI-100%25%20Local-success?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMjJyczMtOSA5LTktOS05IDkgOS05IDkgOS05IDkgOS05IDkgOSA5LTkgOSA5IDkgOX0iLz48cGF0aCBkPSJNMTIgOHY4Ii8+PHBhdGggZD0iTTEyIDE2aDgiLz48L3N2Zz4=&logoColor=white&labelColor=06D6A0)](https://github.com/smileformylove/MemScreen)
   [![No Cloud](https://img.shields.io/badge/Privacy-No%20Cloud-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTggMTB2LTRINnY0bTQgNmgtNHY0aDZhMiAyIDAgMCAwIDItMlYyYTIgMiAwIDAgMC0yLTJoLTJ6TDMgMTFWNGEyIDIgMCAwIDEgMi0yaDJIOUkiLz48L3N2Zz4=&logoColor=white&labelColor=457B9D)](https://github.com/smileformylove/MemScreen)
   [![GitHub Stars](https://img.shields.io/github/stars/smileformylove/MemScreen?style=for-the-badge&logo=github&logoColor=white&labelColor=333&color=blue)](https://github.com/smileformylove/MemScreen/stargazers)
   [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0xMCAyMEgyMm0tOCAwaDgiLz48cGF0aCBkPSJNOSAxOWg2Ii8+PHBhdGggZD0iTTEwIDVoNG0tMiAwaDQiLz48L3N2Zz4=)](LICENSE)
@@ -52,6 +53,12 @@
 - 🔒 **Zero privacy concerns** — everything runs locally on your machine
 
 <div align="center">
+
+  **🎉 Featured on Product Hunt!**
+
+  **[🚀 Check out our launch on Product Hunt](https://www.producthunt.com/products/memscreen)**
+
+  — The best place to discover and launch new products
 
   **🎉 v0.5.0 — Enhanced Custom Region Recording & Clean UI!**
 
@@ -381,6 +388,8 @@ This project is released under the **MIT License** — free to use, modify, and 
   **⭐ Star us on GitHub — it helps the project grow!**
 
   [![Star](https://img.shields.io/github/stars/smileformylove/MemScreen?style=social)](https://github.com/smileformylove/MemScreen/stargazers)
+
+  **Featured on [Product Hunt](https://www.producthunt.com/products/memscreen)** — Discover and launch the best products
 
   Made with ❤️ and 🦉 by [Jixiang Luo](https://github.com/smileformylove)
 
