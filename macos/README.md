@@ -1,26 +1,14 @@
+### copyright 2026 jixiangluo    ###
+### email:jixiangluo85@gmail.com ###
+### rights reserved by author    ###
+### time: 2026-02-01             ###
+### license: MIT                ###
+
 # MemScreen macOS Installation Guide
 
 This guide will help you install MemScreen on macOS.
 
 ## Quick Installation
-
-### Automated Installation (Recommended)
-
-The easiest way to install MemScreen on macOS:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/smileformylove/MemScreen/main/macos/install.sh | bash
-```
-
-This automated script will:
-- Check your Python installation
-- Install all Python dependencies
-- Install MemScreen
-- Install Ollama (if needed)
-- Download all required AI models
-- Create command-line shortcuts
-
-## Manual Installation
 
 ### Prerequisites
 
@@ -61,46 +49,60 @@ ollama pull mxbai-embed-large:latest
 ### Step 3: Install MemScreen
 
 ```bash
-pip install git+https://github.com/smileformylove/MemScreen.git
+# Clone the repository
+git clone https://github.com/smileformylove/MemScreen.git
+cd MemScreen
+
+# Install dependencies
+pip3 install -r requirements.txt
+
+# Or install in development mode
+pip3 install -e .
 ```
 
-### Step 4: Verify Installation
+### Step 4: Run MemScreen
 
 ```bash
-# Check if commands are available
-memscreen --help
-memscreen-chat --help
-memscreen-screenshots --help
-memscreen-process-mining --help
+# Launch the GUI application
+python3 start.py
+
+# Or use command-line tools
+python3 -m memscreen.memscreen
 ```
+
+## Building a macOS Application Bundle
+
+For creating a distributable .app bundle, see the comprehensive build guide:
+
+```bash
+# Development build (unsigned, for testing)
+cd build/macos
+chmod +x build.sh
+./build.sh
+
+# Release build (signed and notarized, for distribution)
+chmod +x build_release.sh
+./build_release.sh --signing-identity "Developer ID Application: Your Name (TEAM_ID)"
+```
+
+See [docs/MACOS_BUILD_GUIDE.md](../docs/MACOS_BUILD_GUIDE.md) for complete build instructions.
 
 ## Using MemScreen
 
 ### Screen Recording
 
 ```bash
-memscreen
+python3 start.py
 
-# With custom settings
-memscreen --interval 10 --duration 60 --screenshot-interval 2.0
+# Or command-line
+python3 -m memscreen.memscreen --interval 10 --duration 60
 ```
 
 ### Chat Interface
 
 ```bash
-memscreen-chat
-```
-
-### Screenshot Browser
-
-```bash
-memscreen-screenshots
-```
-
-### Process Mining
-
-```bash
-memscreen-process-mining
+python3 start.py
+# Click on "Chat" tab in the GUI
 ```
 
 ## macOS-Specific Features
@@ -117,12 +119,16 @@ When running MemScreen for the first time, you may need to grant permissions:
    - Go to System Settings → Privacy & Security → Accessibility
    - Add Terminal or your Python interpreter
 
+3. **Microphone**: Required for audio recording (new feature)
+   - Go to System Settings → Privacy & Security → Microphone
+   - Add Terminal or your Python interpreter
+
 ### Launch from Spotlight
 
 After installation, you can use Spotlight to launch MemScreen:
 
 1. Press `Cmd + Space`
-2. Type "memscreen"
+2. Type "MemScreen"
 3. Press Enter
 
 ### Create Desktop Shortcuts
@@ -131,7 +137,8 @@ After installation, you can use Spotlight to launch MemScreen:
 # Create a shortcut on your Desktop
 cat > ~/Desktop/MemScreen.command << 'EOF'
 #!/bin/bash
-memscreen
+cd /path/to/MemScreen
+python3 start.py
 EOF
 chmod +x ~/Desktop/MemScreen.command
 ```
@@ -179,26 +186,55 @@ If you see "MemScreen cannot be opened because the developer cannot be verified"
 xattr -cr /path/to/MemScreen.app
 ```
 
+### Audio recording not working
+
+For microphone recording, ensure:
+1. Microphone is connected and working
+2. Python has microphone permissions in System Settings
+3. PyAudio is installed: `pip3 install pyaudio`
+
+For system audio recording on macOS:
+```bash
+# Install BlackHole virtual audio device
+brew install blackhole-2ch
+```
+
+See [docs/AUDIO_RECORDING.md](../docs/AUDIO_RECORDING.md) for details.
+
 ## Uninstallation
 
 To remove MemScreen from your Mac:
 
 ```bash
+# Navigate to MemScreen directory
+cd MemScreen
+
 # Uninstall the Python package
-pip uninstall memscreen
+pip3 uninstall memscreen
+
+# Remove virtual environment (if used)
+deactivate  # if in venv
+rm -rf venv
 
 # Remove data
 rm -rf ~/db/
 
-# Remove command shortcuts (if created)
-sudo rm -f /usr/local/bin/memscreen*
+# Remove the source code
+cd ..
+rm -rf MemScreen
 ```
 
 ## Updating
 
 ```bash
-# Update to the latest version
-pip install --upgrade git+https://github.com/smileformylove/MemScreen.git
+# Navigate to MemScreen directory
+cd MemScreen
+
+# Pull latest changes
+git pull origin main
+
+# Update dependencies
+pip3 install -r requirements.txt --upgrade
 ```
 
 ## Support
@@ -207,12 +243,8 @@ pip install --upgrade git+https://github.com/smileformylove/MemScreen.git
 - Issues: https://github.com/smileformylove/MemScreen/issues
 - Email: jixiangluo85@gmail.com
 
-## Homebrew Formula
+## Additional Documentation
 
-Alternatively, you can install via Homebrew (formula available in this directory):
-
-```bash
-brew install ./macos/MemScreen.rb
-```
-
-Note: The formula requires manual setup. Use the automated installer for the best experience.
+- [macOS Build Guide](../docs/MACOS_BUILD_GUIDE.md) - Complete build and distribution guide
+- [Audio Recording Guide](../docs/AUDIO_RECORDING.md) - Audio feature documentation
+- [README](../README.md) - General project documentation

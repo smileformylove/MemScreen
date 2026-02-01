@@ -18,7 +18,7 @@ Example:
     >>> memory.search("What did I just capture?")
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __author__ = "Jixiang Luo"
 __email__ = "jixiangluo85@gmail.com"
 

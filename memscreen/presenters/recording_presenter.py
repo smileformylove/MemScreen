@@ -1,7 +1,7 @@
 ### copyright 2026 jixiangluo    ###
 ### email:jixiangluo85@gmail.com ###
 ### rights reserved by author    ###
-### time: 2026-01-29             ###
+### time: 2026-02-01             ###
 ### license: MIT                ###
 
 """Presenter for Screen Recording functionality (MVP Pattern)"""
@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 
 from .base_presenter import BasePresenter
+from memscreen.audio import AudioRecorder, AudioSource
 
 
 class RecordingPresenter(BasePresenter):
@@ -60,6 +61,10 @@ class RecordingPresenter(BasePresenter):
         self.interval = 2.0  # seconds between screenshots
         self.output_dir = "./db/videos"
 
+        # Audio recording
+        self.audio_recorder = AudioRecorder(output_dir="./db/audio")
+        self.audio_source = AudioSource.NONE  # none, microphone, system_audio
+
         # Statistics
         self.frame_count = 0
         self.current_file = None
@@ -98,6 +103,10 @@ class RecordingPresenter(BasePresenter):
         if self.recording_thread and self.recording_thread.is_alive():
             self.recording_thread.join(timeout=5)
 
+        # Clean up audio recorder
+        if self.audio_recorder:
+            self.audio_recorder.cleanup()
+
         self._is_initialized = False
 
     def _init_database(self):
@@ -118,7 +127,9 @@ class RecordingPresenter(BasePresenter):
                     file_size INTEGER,
                     recording_mode TEXT DEFAULT 'fullscreen',
                     region_bbox TEXT,
-                    window_title TEXT
+                    window_title TEXT,
+                    audio_file TEXT,
+                    audio_source TEXT
                 )
             ''')
 
@@ -152,6 +163,16 @@ class RecordingPresenter(BasePresenter):
             except sqlite3.OperationalError:
                 pass  # Column already exists
 
+            try:
+                cursor.execute('ALTER TABLE recordings ADD COLUMN audio_file TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute('ALTER TABLE recordings ADD COLUMN audio_source TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
             conn.commit()
             conn.close()
         except Exception as e:
@@ -176,6 +197,26 @@ class RecordingPresenter(BasePresenter):
             "elapsed_time": time.time() - self.recording_start_time if self.recording_start_time else 0
         }
 
+    def set_audio_source(self, source: AudioSource):
+        """
+        Set the audio source for recording.
+
+        Args:
+            source: AudioSource enum (MICROPHONE, SYSTEM_AUDIO, NONE)
+        """
+        self.audio_source = source
+        self.audio_recorder.set_audio_source(source)
+        print(f"[RecordingPresenter] Audio source set to: {source.value}")
+
+    def get_audio_sources(self) -> list:
+        """
+        Get list of available audio sources.
+
+        Returns:
+            List of available AudioSource values
+        """
+        return [AudioSource.NONE, AudioSource.MICROPHONE, AudioSource.SYSTEM_AUDIO]
+
     def start_recording(self, duration: int = 60, interval: float = 2.0) -> bool:
         """
         Start screen recording.
@@ -198,6 +239,10 @@ class RecordingPresenter(BasePresenter):
             self.recording_frames = []
             self.recording_start_time = time.time()
             self.frame_count = 0
+
+            # Start audio recording if audio source is set
+            if self.audio_source != AudioSource.NONE:
+                self.audio_recorder.start_recording(self.audio_source)
 
             # Start recording in background thread
             self.recording_thread = threading.Thread(
@@ -230,16 +275,21 @@ class RecordingPresenter(BasePresenter):
         try:
             self.is_recording = False
 
+            # Stop audio recording
+            audio_file = None
+            if self.audio_source != AudioSource.NONE:
+                audio_file = self.audio_recorder.stop_recording()
+
             # Wait for recording thread to finish
             if self.recording_thread and self.recording_thread.is_alive():
                 self.recording_thread.join(timeout=10)
 
-            # Save the recording
+            # Save the recording with audio
             if self.recording_frames:
                 # Save in background thread
                 save_thread = threading.Thread(
                     target=self._save_recording,
-                    args=(self.recording_frames,),
+                    args=(self.recording_frames, audio_file),
                     daemon=True
                 )
                 save_thread.start()
@@ -527,12 +577,13 @@ class RecordingPresenter(BasePresenter):
         except Exception as e:
             self.handle_error(e, "Failed to save video segment")
 
-    def _save_recording(self, frames):
+    def _save_recording(self, frames, audio_file=None):
         """
         Save final recording when user stops recording.
 
         Args:
             frames: List of video frames
+            audio_file: Optional path to audio file to merge
         """
         try:
             if not frames:
@@ -553,11 +604,15 @@ class RecordingPresenter(BasePresenter):
 
             out.release()
 
+            # Merge audio if provided
+            if audio_file and os.path.exists(audio_file):
+                filename = self._merge_audio_video(filename, audio_file)
+
             # Get file size
             file_size = os.path.getsize(filename)
 
             # Save to database
-            self._save_to_database(filename, len(frames), fps, len(frames) / fps, file_size)
+            self._save_to_database(filename, len(frames), fps, len(frames) / fps, file_size, audio_file)
 
             # Add to memory system
             if self.memory_system:
@@ -572,7 +627,62 @@ class RecordingPresenter(BasePresenter):
         except Exception as e:
             self.handle_error(e, "Failed to save recording")
 
-    def _save_to_database(self, filename, frame_count, fps, duration, file_size):
+    def _merge_audio_video(self, video_file: str, audio_file: str) -> str:
+        """
+        Merge audio and video files using moviepy or ffmpeg.
+
+        Args:
+            video_file: Path to video file
+            audio_file: Path to audio file
+
+        Returns:
+            Path to merged video file
+        """
+        try:
+            from moviepy.editor import VideoFileClip, AudioFileClip
+
+            # Load video and audio
+            video = VideoFileClip(video_file)
+            audio = AudioFileClip(audio_file)
+
+            # Set audio to video
+            video_with_audio = video.set_audio(audio)
+
+            # Generate output filename
+            import os
+            base_dir = os.path.dirname(video_file)
+            base_name = os.path.splitext(os.path.basename(video_file))[0]
+            output_file = os.path.join(base_dir, f"{base_name}_with_audio.mp4")
+
+            # Write video with audio
+            video_with_audio.write_videofile(
+                output_file,
+                codec='libx264',
+                audio_codec='aac',
+                verbose=False,
+                logger=None
+            )
+
+            # Close clips
+            video.close()
+            audio.close()
+            video_with_audio.close()
+
+            # Remove original video file
+            os.remove(video_file)
+
+            print(f"[RecordingPresenter] Merged audio and video: {output_file}")
+            return output_file
+
+        except ImportError:
+            print("[RecordingPresenter] moviepy not installed, skipping audio merge")
+            print("[RecordingPresenter] Install with: pip install moviepy")
+            return video_file
+        except Exception as e:
+            print(f"[RecordingPresenter] Failed to merge audio/video: {e}")
+            return video_file
+
+    def _save_to_database(self, filename, frame_count, fps, duration, file_size, audio_file=None):
         """Save recording metadata to database"""
         try:
             import json
@@ -586,11 +696,12 @@ class RecordingPresenter(BasePresenter):
             # Prepare metadata
             recording_mode = getattr(self, 'recording_mode', 'fullscreen')
             region_bbox = json.dumps(self.region_bbox) if getattr(self, 'region_bbox', None) else None
+            audio_source_str = self.audio_source.value if self.audio_source != AudioSource.NONE else None
 
             cursor.execute('''
-                INSERT INTO recordings (filename, timestamp, frame_count, fps, duration, file_size, recording_mode, region_bbox, window_title)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (filename, timestamp, frame_count, fps, duration, file_size, recording_mode, region_bbox, None))
+                INSERT INTO recordings (filename, timestamp, frame_count, fps, duration, file_size, recording_mode, region_bbox, window_title, audio_file, audio_source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (filename, timestamp, frame_count, fps, duration, file_size, recording_mode, region_bbox, None, audio_file, audio_source_str))
 
             conn.commit()
             conn.close()

@@ -177,7 +177,7 @@ class RecordingScreen(BaseScreen):
             values=['Full Screen', 'Custom Region'],
             font_name='chinese',
             font_size='22',
-            size_hint_x=0.4,
+            size_hint_x=0.3,
             size_hint_y=None,
             height=85,
             background_color=(0.6, 0.4, 0.75, 1),
@@ -186,13 +186,28 @@ class RecordingScreen(BaseScreen):
         self.mode_spinner.bind(text=self.on_mode_change)
         control_layout.add_widget(self.mode_spinner)
 
+        # Middle: Audio Source Selection
+        self.audio_spinner = Spinner(
+            text='No Audio',
+            values=['No Audio', 'Microphone', 'System Audio'],
+            font_name='chinese',
+            font_size='22',
+            size_hint_x=0.3,
+            size_hint_y=None,
+            height=85,
+            background_color=(0.5, 0.35, 0.65, 1),
+            color=(1, 1, 1, 1)
+        )
+        self.audio_spinner.bind(text=self.on_audio_source_change)
+        control_layout.add_widget(self.audio_spinner)
+
         # Right side: Start Recording button (larger and more prominent)
         self.record_btn = Button(
             text='Start Recording',
             font_name='chinese',
             font_size='22',
             bold=True,
-            size_hint_x=0.6,
+            size_hint_x=0.4,
             size_hint_y=None,
             height=85,
             background_color=(0.6, 0.4, 0.75, 1),
@@ -257,7 +272,13 @@ class RecordingScreen(BaseScreen):
         self.is_recording = True
         self.record_btn.text = "Stop Recording"
         self.record_btn.background_color = (0.75, 0.3, 0.4, 1)
-        self.status_label.text = "Status: Recording..."
+
+        # Show status with audio source info
+        audio_source_text = self.audio_spinner.text
+        if audio_source_text != 'No Audio':
+            self.status_label.text = f"Status: Recording with {audio_source_text}..."
+        else:
+            self.status_label.text = "Status: Recording..."
 
     def on_recording_stopped(self):
         """Callback when recording stops"""
@@ -313,6 +334,25 @@ class RecordingScreen(BaseScreen):
         elif text == 'Custom Region':
             # Auto-open region selector
             self.open_region_selector(None)
+
+    def on_audio_source_change(self, spinner, text):
+        """Handle audio source change"""
+        from memscreen.audio import AudioSource
+
+        if not self.presenter:
+            return
+
+        if text == 'No Audio':
+            self.presenter.set_audio_source(AudioSource.NONE)
+            self.status_label.text = "Status: Audio disabled"
+        elif text == 'Microphone':
+            self.presenter.set_audio_source(AudioSource.MICROPHONE)
+            self.status_label.text = "Status: Microphone audio enabled"
+        elif text == 'System Audio':
+            self.presenter.set_audio_source(AudioSource.SYSTEM_AUDIO)
+            self.status_label.text = "Status: System audio enabled"
+
+        print(f"[RecordingScreen] Audio source changed to: {text}")
 
     def switch_to_fullscreen(self, instance):
         """Switch to Full Screen mode when button is clicked"""

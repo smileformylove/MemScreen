@@ -1,4 +1,9 @@
 #!/bin/bash
+### copyright 2026 jixiangluo    ###
+### email:jixiangluo85@gmail.com ###
+### rights reserved by author    ###
+### time: 2026-02-01             ###
+### license: MIT                ###
 
 # MemScreen macOS Installation Test Script
 # This script verifies that all dependencies are correctly installed
