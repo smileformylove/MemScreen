@@ -54,9 +54,7 @@ from kivy.core.window import Window
 from kivy.config import Config
 from kivy.core.text import LabelBase
 from kivy.graphics.texture import Texture
-import os
 import cv2
-import sys
 import threading
 
 Config.set('graphics', 'width', '1200')
@@ -67,7 +65,7 @@ Config.set('kivy', 'keyboard_mode', 'system')
 Config.set('kivy', 'keyboard_layout', 'qwerty')
 Config.set('input', 'mouse', 'mouse,disable_multitouch')
 
-Window.title = "MemScreen v0.4.0"
+Window.title = "MemScreen v0.5.0"
 
 # Register Chinese fonts
 mac_fonts = [
@@ -127,10 +125,10 @@ class RecordingScreen(BaseScreen):
         title = Label(
             text='Screen Recording',
             font_name='chinese',
-            font_size='40',
+            font_size='32',
             bold=True,
             size_hint_y=None,
-            height=70,
+            height=60,
             color=(0, 0, 0, 1)  # Black
         )
         layout.add_widget(title)
@@ -454,13 +452,13 @@ class ChatScreen(BaseScreen):
 
         # Title
         title_label = Label(
-            text='MemScreen',
+            text='AI Chat',
             font_name='chinese',
             font_size='32',
             bold=True,
             size_hint_y=None,
             height=60,
-            color=(0.6, 0.4, 0.75, 1)  # Purple theme
+            color=(0, 0, 0, 1)  # Black
         )
         layout.add_widget(title_label)
 
@@ -1755,11 +1753,11 @@ class ProcessScreen(BaseScreen):
         # Title
         title = Label(
             text='Process Mining',
-            font_name='Roboto',  # 使用Roboto字体
+            font_name='chinese',
             font_size='32',
             bold=True,
             size_hint_y=None,
-            height=55,
+            height=60,
             color=(0, 0, 0, 1)
         )
         layout.add_widget(title)
@@ -2549,7 +2547,7 @@ class AboutScreen(BaseScreen):
         author_box = self._create_section_box("About MemScreen", [
             ("Developer", "Jixiang Luo"),
             ("Email", "jixiangluo85@gmail.com"),
-            ("Version", "v0.4.0"),
+            ("Version", "v0.5.0"),
             ("License", "MIT License - Copyright 2026")
         ])
         main_layout.add_widget(author_box)
@@ -2643,7 +2641,7 @@ class MemScreenApp(App):
     def build(self):
         # Set window title
         from kivy.core.window import Window
-        Window.title = "MemScreen v0.4.0"
+        Window.title = "MemScreen v0.5.0"
 
         # Memory system - use centralized config
         try:
@@ -2706,7 +2704,7 @@ class MemScreenApp(App):
             size_hint_x=None,
             width=200,
             spacing=5,
-            padding=(10, 5, 10, 10)
+            padding=(10, 50, 10, 10)
         )
         with nav_bar.canvas.before:
             Color(0.35, 0.3, 0.4, 1)  # Light purple navigation bar
@@ -2714,20 +2712,63 @@ class MemScreenApp(App):
         nav_bar.bind(pos=lambda i,v: setattr(self.nav_bg, 'pos', i.pos),
                     size=lambda i,v: setattr(self.nav_bg, 'size', i.size))
 
-        # Title at the top-left
+        # Logo and Title container at the top-left - centered together
+        # Create a wrapper to center both logo and title
+        header_wrapper = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            height=140,
+            spacing=5,
+            padding=(0, 10, 0, 10)
+        )
+
+        # Logo container - center it horizontally
+        logo_container = BoxLayout(
+            orientation='horizontal',
+            size_hint_y=None,
+            height=100,
+            spacing=0
+        )
+
+        # Get project root directory (MemScreen folder)
+        # __file__ is memscreen/ui/kivy_app.py, need to go up 3 levels
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        logo_path = os.path.join(project_root, 'assets', 'logo.png')
+
+        if os.path.exists(logo_path):
+            logo = Image(
+                source=logo_path,
+                size_hint_x=None,
+                width=150,
+                size_hint_y=None,
+                height=150,
+                allow_stretch=True,
+                keep_ratio=True
+            )
+            logo_container.add_widget(Widget())  # Left spacer
+            logo_container.add_widget(logo)  # Logo in center
+            logo_container.add_widget(Widget())  # Right spacer
+            header_wrapper.add_widget(logo_container)
+        else:
+            # Fallback if logo not found
+            print(f"[Warning] Logo not found at: {logo_path}")
+
+        # Title
         app_title = Label(
             text='MemScreen',
             font_name='chinese',
-            font_size='28',
+            font_size='20',
             bold=True,
             color=(1, 1, 1, 1),
             size_hint_y=None,
-            height=50,
-            halign='left',
-            valign='top',
-            text_size=(190, None)
+            height=20,
+            halign='center',
+            valign='middle',
+            text_size=(None, None)
         )
-        nav_bar.add_widget(app_title)
+        header_wrapper.add_widget(app_title)
+
+        nav_bar.add_widget(header_wrapper)
 
         # Separator
         sep = BoxLayout(size_hint_y=None, height=1)
@@ -2752,17 +2793,29 @@ class MemScreenApp(App):
                 font_name='chinese',
                 font_size='20',
                 size_hint_y=None,  # Auto height based on text
+                size_hint_x=None,  # Fixed width
+                width=180,  # Match header width (nav_bar width 200 - padding 10*2)
                 height=55,
                 group='nav',
                 background_color=(0.3, 0.28, 0.35, 1),
                 color=(0.9, 0.9, 0.9, 1),
                 halign='center',
                 valign='middle',
-                padding=(8, 5)
+                padding=(8, 5),
+                text_size=(None, None)  # Required for halign/valign to work
             )
             btn.bind(on_press=lambda instance, n=name: self._switch(n))
             self.nav_btns[name] = btn
-            nav_bar.add_widget(btn)
+
+            # Wrap button in a BoxLayout to center it horizontally
+            btn_wrapper = BoxLayout(
+                orientation='horizontal',
+                size_hint_y=None,
+                height=55,
+                spacing=0
+            )
+            btn_wrapper.add_widget(btn)
+            nav_bar.add_widget(btn_wrapper)
 
         # Add spacer to push all content to the top
         spacer = Widget(size_hint_y=1)

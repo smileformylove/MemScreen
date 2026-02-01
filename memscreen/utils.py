@@ -188,7 +188,6 @@ def extract_json_from_response(response_str):
         candidate = response_str[start_index:]
 
         try:
-            # return json.loads(candidate)
             candidate = fix_and_parse_json(candidate)
         except:
             return None
