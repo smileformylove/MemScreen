@@ -39,11 +39,20 @@ class MemScreenConfig:
     # Default timezone
     DEFAULT_TIMEZONE = "US/Pacific"
 
+    # LLM backend selection
+    DEFAULT_LLM_BACKEND = "ollama"  # Options: "ollama", "vllm"
+
     # Ollama configuration
     DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
     DEFAULT_OLLAMA_LLM_MODEL = "qwen3:1.7b"
     DEFAULT_OLLAMA_VISION_MODEL = "qwen2.5vl:3b"
     DEFAULT_OLLAMA_EMBEDDING_MODEL = "mxbai-embed-large"
+
+    # vLLM configuration
+    DEFAULT_VLLM_BASE_URL = "http://localhost:8000"
+    DEFAULT_VLLM_LLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+    DEFAULT_VLLM_VISION_MODEL = "Qwen/Qwen2-VL-7B-Instruct"
+    DEFAULT_VLLM_EMBEDDING_MODEL = "intfloat/e5-mistral-7b-instruct"
 
     # Recording defaults
     DEFAULT_RECORDING_DURATION = 60  # seconds
@@ -89,12 +98,26 @@ class MemScreenConfig:
                 "videos_dir": self.DEFAULT_VIDEOS_DIR,
                 "logs_dir": self.DEFAULT_LOGS_DIR,
             },
+            # LLM backend configuration
+            "llm": {
+                "backend": self.DEFAULT_LLM_BACKEND,
+            },
             # Ollama configuration
             "ollama": {
                 "base_url": self.DEFAULT_OLLAMA_BASE_URL,
                 "llm_model": self.DEFAULT_OLLAMA_LLM_MODEL,
                 "vision_model": self.DEFAULT_OLLAMA_VISION_MODEL,
                 "embedding_model": self.DEFAULT_OLLAMA_EMBEDDING_MODEL,
+            },
+            # vLLM configuration
+            "vllm": {
+                "base_url": self.DEFAULT_VLLM_BASE_URL,
+                "llm_model": self.DEFAULT_VLLM_LLM_MODEL,
+                "vision_model": self.DEFAULT_VLLM_VISION_MODEL,
+                "embedding_model": self.DEFAULT_VLLM_EMBEDDING_MODEL,
+                "use_offline_mode": False,
+                "tensor_parallel_size": 1,
+                "gpu_memory_utilization": 0.9,
             },
             # Recording configuration
             "recording": {
@@ -159,11 +182,15 @@ class MemScreenConfig:
         if db_dir := os.getenv("MEMSCREEN_DB_DIR"):
             self._config["db"]["dir"] = db_dir
 
+        # LLM backend selection
+        if llm_backend := os.getenv("MEMSCREEN_LLM_BACKEND"):
+            self._config["llm"]["backend"] = llm_backend
+
         # Ollama URL
         if ollama_url := os.getenv("MEMSCREEN_OLLAMA_URL"):
             self._config["ollama"]["base_url"] = ollama_url
 
-        # Models
+        # Ollama models
         if llm_model := os.getenv("MEMSCREEN_LLM_MODEL"):
             self._config["ollama"]["llm_model"] = llm_model
 
@@ -172,6 +199,20 @@ class MemScreenConfig:
 
         if embedding_model := os.getenv("MEMSCREEN_EMBEDDING_MODEL"):
             self._config["ollama"]["embedding_model"] = embedding_model
+
+        # vLLM URL
+        if vllm_url := os.getenv("MEMSCREEN_VLLM_URL"):
+            self._config["vllm"]["base_url"] = vllm_url
+
+        # vLLM models
+        if vllm_llm_model := os.getenv("MEMSCREEN_VLLM_LLM_MODEL"):
+            self._config["vllm"]["llm_model"] = vllm_llm_model
+
+        if vllm_vision_model := os.getenv("MEMSCREEN_VLLM_VISION_MODEL"):
+            self._config["vllm"]["vision_model"] = vllm_vision_model
+
+        if vllm_embedding_model := os.getenv("MEMSCREEN_VLLM_EMBEDDING_MODEL"):
+            self._config["vllm"]["embedding_model"] = vllm_embedding_model
 
     def _get_defaults_dict(self) -> Dict[str, Any]:
         """Get defaults as a dictionary."""
@@ -245,6 +286,47 @@ class MemScreenConfig:
         """Get default Ollama embedding model."""
         return self._config["ollama"]["embedding_model"]
 
+    # vLLM properties
+    @property
+    def llm_backend(self) -> str:
+        """Get LLM backend (ollama or vllm)."""
+        return self._config["llm"]["backend"]
+
+    @property
+    def vllm_base_url(self) -> str:
+        """Get vLLM base URL."""
+        return self._config["vllm"]["base_url"]
+
+    @property
+    def vllm_llm_model(self) -> str:
+        """Get default vLLM LLM model."""
+        return self._config["vllm"]["llm_model"]
+
+    @property
+    def vllm_vision_model(self) -> str:
+        """Get default vLLM vision model."""
+        return self._config["vllm"]["vision_model"]
+
+    @property
+    def vllm_embedding_model(self) -> str:
+        """Get default vLLM embedding model."""
+        return self._config["vllm"]["embedding_model"]
+
+    @property
+    def vllm_use_offline_mode(self) -> bool:
+        """Get vLLM offline mode setting."""
+        return self._config["vllm"]["use_offline_mode"]
+
+    @property
+    def vllm_tensor_parallel_size(self) -> int:
+        """Get vLLM tensor parallel size."""
+        return self._config["vllm"]["tensor_parallel_size"]
+
+    @property
+    def vllm_gpu_memory_utilization(self) -> float:
+        """Get vLLM GPU memory utilization."""
+        return self._config["vllm"]["gpu_memory_utilization"]
+
     # Recording properties
     @property
     def recording_duration(self) -> int:
@@ -294,51 +376,103 @@ class MemScreenConfig:
         """Get default timezone."""
         return self._config["timezone"]["default"]
 
-    def get_llm_config(self) -> Dict[str, Any]:
+    def get_llm_config(self, backend: Optional[str] = None) -> Dict[str, Any]:
         """
         Get LLM configuration dictionary.
+
+        Args:
+            backend: Backend to use ("ollama", "vllm", or None for auto-detect from config)
 
         Returns:
             Configuration dictionary for LLM initialization.
         """
-        return {
-            "provider": "ollama",
-            "config": {
-                "model": self.ollama_llm_model,
-                "ollama_base_url": self.ollama_base_url,
-            }
-        }
+        if backend is None:
+            backend = self.llm_backend
 
-    def get_mllm_config(self) -> Dict[str, Any]:
+        if backend == "vllm":
+            return {
+                "provider": "vllm",
+                "config": {
+                    "model": self.vllm_llm_model,
+                    "vllm_base_url": self.vllm_base_url,
+                    "use_offline_mode": self.vllm_use_offline_mode,
+                    "tensor_parallel_size": self.vllm_tensor_parallel_size,
+                    "gpu_memory_utilization": self.vllm_gpu_memory_utilization,
+                }
+            }
+        else:  # Default to ollama
+            return {
+                "provider": "ollama",
+                "config": {
+                    "model": self.ollama_llm_model,
+                    "ollama_base_url": self.ollama_base_url,
+                }
+            }
+
+    def get_mllm_config(self, backend: Optional[str] = None) -> Dict[str, Any]:
         """
         Get Multimodal LLM configuration dictionary.
+
+        Args:
+            backend: Backend to use ("ollama", "vllm", or None for auto-detect from config)
 
         Returns:
             Configuration dictionary for MLLM initialization.
         """
-        return {
-            "provider": "ollama",
-            "config": {
-                "model": self.ollama_vision_model,
-                "ollama_base_url": self.ollama_base_url,
-                "enable_vision": True,
-            }
-        }
+        if backend is None:
+            backend = self.llm_backend
 
-    def get_embedder_config(self) -> Dict[str, Any]:
+        if backend == "vllm":
+            return {
+                "provider": "vllm",
+                "config": {
+                    "model": self.vllm_vision_model,
+                    "vllm_base_url": self.vllm_base_url,
+                    "enable_vision": True,
+                    "use_offline_mode": self.vllm_use_offline_mode,
+                    "tensor_parallel_size": self.vllm_tensor_parallel_size,
+                    "gpu_memory_utilization": self.vllm_gpu_memory_utilization,
+                }
+            }
+        else:  # Default to ollama
+            return {
+                "provider": "ollama",
+                "config": {
+                    "model": self.ollama_vision_model,
+                    "ollama_base_url": self.ollama_base_url,
+                    "enable_vision": True,
+                }
+            }
+
+    def get_embedder_config(self, backend: Optional[str] = None) -> Dict[str, Any]:
         """
         Get embedder configuration dictionary.
+
+        Args:
+            backend: Backend to use ("ollama", "vllm", or None for auto-detect from config)
 
         Returns:
             Configuration dictionary for embedder initialization.
         """
-        return {
-            "provider": "ollama",
-            "config": {
-                "model": self.ollama_embedding_model,
-                "ollama_base_url": self.ollama_base_url,
+        if backend is None:
+            backend = self.llm_backend
+
+        if backend == "vllm":
+            return {
+                "provider": "vllm",
+                "config": {
+                    "model": self.vllm_embedding_model,
+                    "vllm_base_url": self.vllm_base_url,
+                }
             }
-        }
+        else:  # Default to ollama
+            return {
+                "provider": "ollama",
+                "config": {
+                    "model": self.ollama_embedding_model,
+                    "ollama_base_url": self.ollama_base_url,
+                }
+            }
 
     def get_vector_store_config(self) -> Dict[str, Any]:
         """

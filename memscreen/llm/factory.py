@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Union
 
 from .base import BaseLlmConfig
 from .ollama import OllamaConfig
+from .vllm import VllmConfig
 
 
 def load_class(class_type: str):
@@ -67,6 +68,7 @@ class LlmFactory:
     # Provider mappings with their config classes
     provider_to_class = {
         "ollama": ("memscreen.llm.ollama.OllamaLLM", OllamaConfig),
+        "vllm": ("memscreen.llm.vllm.VllmLLM", VllmConfig),
         # "openai": ("memscreen.llms.openai.OpenAILLM", OpenAIConfig),
         # "groq": ("memscreen.llms.groq.GroqLLM", BaseLlmConfig),
         # "together": ("memscreen.llms.together.TogetherLLM", BaseLlmConfig),

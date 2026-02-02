@@ -60,6 +60,9 @@ dev = [
     "black>=23.0.0",
     "flake8>=6.0.0",
 ]
+vllm = [
+    "vllm>=0.6.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/smileformylove/MemScreen"
