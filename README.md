@@ -10,6 +10,7 @@
   <br/>
 
   [![Product Hunt](https://img.shields.io/badge/Product%20Hunt-Featured-orange?style=for-the-badge&logo=producthunt&logoColor=white&labelColor=FF6154)](https://www.producthunt.com/products/memscreen)
+  [![ShipIt](https://img.shields.io/badge/ShipIt-Published-purple?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMmwwIDdjMi42NyAwIDguMTYgMS4zNCA4IDl2MmMwIDUuNjItNS4zMyA4LTggOGwwLTd6Ii8+PHBhdGggZD0iTTEyIDdsNSA1djZoLTEweiIvPjwvc3ZnPg==&logoColor=white&labelColor=9B59B6)](https://www.shipit.buzz/products/memscreen)
   [![NXGenTools](https://img.shields.io/badge/NXGenTools-Published-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMmwwIDdjMi42NyAwIDguMTYgMS4zNCA4IDl2MmMwIDUuNjItNS4zMyA4LTggOGwwLTd6Ii8+PC9zdmc+&logoColor=white&labelColor=4285F4)](https://www.nxgntools.com/tools/memscreen)
   [![100% Local](https://img.shields.io/badge/AI-100%25%20Local-success?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMjJyczMtOSA5LTktOS05IDkgOS05IDkgOS05IDkgOS05IDkgOSA5LTkgOSA5IDkgOX0iLz48cGF0aCBkPSJNMTIgOHY4Ii8+PHBhdGggZD0iTTEyIDE2aDgiLz48L3N2Zz4=&logoColor=white&labelColor=06D6A0)](https://github.com/smileformylove/MemScreen)
   [![No Cloud](https://img.shields.io/badge/Privacy-No%20Cloud-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTggMTB2LTRINnY0bTQgNmgtNHY0aDZhMiAyIDAgMCAwIDItMlYyYTIgMiAwIDAgMC0yLTJoLTJ6TDMgMTFWNGEyIDIgMCAwIDEgMi0yaDJIOUkiLz48L3N2Zz4=&logoColor=white&labelColor=457B9D)](https://github.com/smileformylove/MemScreen)
@@ -55,9 +56,11 @@
 
 <div align="center">
 
-  **🎉 Featured on Product Hunt & NXGenTools!**
+  **🎉 Featured on Product Hunt, ShipIt & NXGenTools!**
 
   **[🚀 Product Hunt](https://www.producthunt.com/products/memscreen)** — The best place to discover and launch new products
+
+  **[🚢 ShipIt](https://www.shipit.buzz/products/memscreen)** — The launchpad for makers to reach early adopters
 
   **[🛠️ NXGenTools](https://www.nxgntools.com/tools/memscreen)** — Discover the best AI tools and resources
 
@@ -390,7 +393,7 @@ This project is released under the **MIT License** — free to use, modify, and 
 
   [![Star](https://img.shields.io/github/stars/smileformylove/MemScreen?style=social)](https://github.com/smileformylove/MemScreen/stargazers)
 
-  **Featured on [Product Hunt](https://www.producthunt.com/products/memscreen)** — Discover and launch the best products
+  **Featured on [Product Hunt](https://www.producthunt.com/products/memscreen), [ShipIt](https://www.shipit.buzz/products/memscreen) & [NXGenTools](https://www.nxgntools.com/tools/memscreen)** — Discover and launch the best products
 
   Made with ❤️ and 🦉 by [Jixiang Luo](https://github.com/smileformylove)
 
