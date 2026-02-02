@@ -35,6 +35,19 @@ from .memory import Memory, _build_filters_and_metadata
 # Import Memory Manager
 from .manager import MemoryManager, get_memory_manager, reset_memory_manager
 
+# Import Dynamic Memory components
+from .dynamic_models import (
+    MemoryCategory,
+    QueryIntent,
+    MemoryCategoryWeights,
+    ClassifiedInput,
+    ClassifiedQuery,
+    DynamicMemoryConfig,
+)
+from .input_classifier import InputClassifier
+from .dynamic_manager import DynamicMemoryManager
+from .context_retriever import ContextRetriever
+
 __all__ = [
     # Base classes
     "MemoryBase",
@@ -55,6 +68,16 @@ __all__ = [
     "reset_memory_manager",
     # Helper functions
     "_build_filters_and_metadata",
+    # Dynamic Memory components
+    "MemoryCategory",
+    "QueryIntent",
+    "MemoryCategoryWeights",
+    "ClassifiedInput",
+    "ClassifiedQuery",
+    "DynamicMemoryConfig",
+    "InputClassifier",
+    "DynamicMemoryManager",
+    "ContextRetriever",
 ]
 
 # Backward compatibility: re-export classes that were previously in memory.py

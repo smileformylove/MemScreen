@@ -28,6 +28,10 @@ from functools import lru_cache
 
 from .base import MemoryBase
 from .models import MemoryConfig, MemoryItem, MemoryType
+from .dynamic_models import DynamicMemoryConfig, MemoryCategory
+from .input_classifier import InputClassifier
+from .dynamic_manager import DynamicMemoryManager
+from .context_retriever import ContextRetriever
 
 # OPTIMIZATION: Use intelligent caching system
 from ..cache import IntelligentCache, cached_search
@@ -230,6 +234,44 @@ class Memory(MemoryBase):
             self.config.vector_store.provider, telemetry_config
         )
         capture_event("memscreen.init", self, {"sync_type": "sync"})
+
+        # Initialize Dynamic Memory components
+        self.enable_dynamic_memory = getattr(self.config, 'enable_dynamic_memory', True)
+        self.dynamic_manager = None
+        self.context_retriever = None
+        self.classifier = None
+
+        if self.enable_dynamic_memory:
+            try:
+                # Get dynamic config
+                dynamic_config = getattr(self.config, 'dynamic_config', DynamicMemoryConfig())
+                if isinstance(dynamic_config, dict):
+                    dynamic_config = DynamicMemoryConfig(**dynamic_config)
+
+                # Initialize classifier
+                self.classifier = InputClassifier(llm=self.llm)
+
+                # Initialize dynamic manager
+                self.dynamic_manager = DynamicMemoryManager(
+                    vector_store=self.vector_store,
+                    embedding_model=self.embedding_model,
+                    llm=self.llm,
+                    config=dynamic_config,
+                )
+
+                # Initialize context retriever
+                self.context_retriever = ContextRetriever(
+                    dynamic_manager=self.dynamic_manager,
+                    vector_store=self.vector_store,
+                    embedding_model=self.embedding_model,
+                    max_context_items=dynamic_config.default_category_weights.get(MemoryCategory.FACT, 15),
+                    context_window=5,
+                )
+
+                logger.info("Dynamic memory components initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize dynamic memory components: {e}")
+                self.enable_dynamic_memory = False
 
     @classmethod
     def from_config(cls, config_dict: Dict[str, Any]):
@@ -1346,6 +1388,261 @@ class Memory(MemoryBase):
                 self.config.vector_store.provider, self.config.vector_store.config
             )
         capture_event("memscreen.reset", self, {"sync_type": "sync"})
+
+    # ========== Dynamic Memory Methods ==========
+
+    def add_with_classification(
+        self,
+        messages,
+        *,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        use_llm_classification: bool = False,
+    ):
+        """
+        Add memory with automatic classification.
+
+        This method uses the dynamic memory system to classify the input
+        before storing it, enabling faster and more targeted retrieval.
+
+        Args:
+            messages: The message content (str, dict, or list[dict])
+            user_id (str, optional): User ID
+            agent_id (str, optional): Agent ID
+            run_id (str, optional): Run ID
+            metadata (dict, optional): Additional metadata
+            use_llm_classification (bool): Whether to use LLM for classification
+
+        Returns:
+            dict: Result with memory ID and classification info
+        """
+        if not self.enable_dynamic_memory or not self.dynamic_manager:
+            logger.warning("Dynamic memory not enabled, falling back to standard add")
+            return self.add(messages, user_id=user_id, agent_id=agent_id, run_id=run_id, metadata=metadata)
+
+        # Normalize messages to string
+        if isinstance(messages, str):
+            text = messages
+        elif isinstance(messages, dict):
+            text = messages.get("content", "")
+        elif isinstance(messages, list):
+            text = " ".join([msg.get("content", "") if isinstance(msg, dict) else str(msg) for msg in messages])
+        else:
+            text = str(messages)
+
+        # Build metadata with session info
+        processed_metadata, _ = _build_filters_and_metadata(
+            user_id=user_id,
+            agent_id=agent_id,
+            run_id=run_id,
+            input_metadata=metadata,
+        )
+
+        # Classify and add
+        result = self.dynamic_manager.classify_and_add(
+            text=text,
+            metadata=processed_metadata,
+            use_llm=use_llm_classification,
+        )
+
+        logger.info(f"Added memory with classification: {result['classification']['category']}")
+        return result
+
+    def smart_search(
+        self,
+        query: str,
+        *,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        limit: int = 20,
+    ):
+        """
+        Perform intelligent search based on query intent and category.
+
+        This method analyzes the query to determine its intent and searches
+        only the most relevant memory categories, improving speed and accuracy.
+
+        Args:
+            query (str): The search query
+            user_id (str, optional): User ID
+            agent_id (str, optional): Agent ID
+            run_id (str, optional): Run ID
+            filters (dict, optional): Additional filters
+            limit (int): Maximum results
+
+        Returns:
+            dict: Search results with classification info
+        """
+        if not self.enable_dynamic_memory or not self.dynamic_manager:
+            logger.warning("Dynamic memory not enabled, falling back to standard search")
+            return self.search(query, user_id=user_id, agent_id=agent_id, run_id=run_id, filters=filters, limit=limit)
+
+        # Build filters
+        _, effective_filters = _build_filters_and_metadata(
+            user_id=user_id,
+            agent_id=agent_id,
+            run_id=run_id,
+            input_filters=filters,
+        )
+
+        # Perform intelligent search
+        result = self.dynamic_manager.intelligent_search(
+            query=query,
+            filters=effective_filters,
+            limit=limit,
+        )
+
+        logger.info(f"Smart search completed: intent={result['query_classification']['intent']}, results={len(result['results'])}")
+        return result
+
+    def get_context_for_response(
+        self,
+        query: str,
+        *,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
+        max_context_items: int = 10,
+        format_for_llm: bool = True,
+    ):
+        """
+        Get optimized context for generating a response.
+
+        This method retrieves the most relevant memories organized by category,
+        providing comprehensive context for response generation.
+
+        Args:
+            query (str): The user's query
+            user_id (str, optional): User ID
+            agent_id (str, optional): Agent ID
+            run_id (str, optional): Run ID
+            filters (dict, optional): Additional filters
+            conversation_history (list, optional): Recent conversation history
+            max_context_items (int): Maximum context items
+            format_for_llm (bool): Whether to format for LLM input
+
+        Returns:
+            dict: Organized context with categorized memories
+        """
+        if not self.enable_dynamic_memory or not self.context_retriever:
+            logger.warning("Context retriever not enabled, using standard search")
+            standard_result = self.search(query, user_id=user_id, agent_id=agent_id, run_id=run_id, filters=filters, limit=max_context_items)
+            return {"context_items": standard_result.get("results", [])}
+
+        # Build filters
+        _, effective_filters = _build_filters_and_metadata(
+            user_id=user_id,
+            agent_id=agent_id,
+            run_id=run_id,
+            input_filters=filters,
+        )
+
+        # Get context from retriever
+        context = self.context_retriever.retrieve_context(
+            query=query,
+            filters=effective_filters,
+        )
+
+        # Add conversation history if provided
+        if conversation_history and self.context_retriever:
+            for msg in conversation_history:
+                self.context_retriever.add_to_conversation_history(
+                    role=msg.get("role", "user"),
+                    content=msg.get("content", ""),
+                )
+
+        # Format for LLM if requested
+        if format_for_llm and self.context_retriever:
+            context["formatted"] = self.context_retriever.format_context_for_llm(context, format_type="structured")
+
+        return context
+
+    def get_memories_by_category(
+        self,
+        category: str,
+        *,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        limit: int = 50,
+    ):
+        """
+        Retrieve all memories of a specific category.
+
+        Args:
+            category (str): The category to retrieve (e.g., "fact", "task", "code")
+            user_id (str, optional): User ID
+            agent_id (str, optional): Agent ID
+            run_id (str, optional): Run ID
+            filters (dict, optional): Additional filters
+            limit (int): Maximum results
+
+        Returns:
+            list: Memories in the specified category
+        """
+        if not self.enable_dynamic_memory or not self.dynamic_manager:
+            logger.warning("Dynamic memory not enabled, using standard get_all")
+            return self.get_all(user_id=user_id, agent_id=agent_id, run_id=run_id, filters=filters, limit=limit)
+
+        # Build filters
+        _, effective_filters = _build_filters_and_metadata(
+            user_id=user_id,
+            agent_id=agent_id,
+            run_id=run_id,
+            input_filters=filters,
+        )
+
+        # Validate category
+        try:
+            category_enum = MemoryCategory(category)
+        except ValueError:
+            valid_categories = [c.value for c in MemoryCategory]
+            raise ValueError(f"Invalid category '{category}'. Valid categories: {valid_categories}")
+
+        # Get memories by category
+        memories = self.dynamic_manager.get_memories_by_category(
+            category=category_enum,
+            filters=effective_filters,
+            limit=limit,
+        )
+
+        return memories
+
+    def classify_input(self, text: str, use_llm: bool = False):
+        """
+        Classify a text input into a memory category.
+
+        Args:
+            text (str): The text to classify
+            use_llm (bool): Whether to use LLM for classification
+
+        Returns:
+            dict: Classification result with category and confidence
+        """
+        if not self.enable_dynamic_memory or not self.classifier:
+            return {"category": "general", "confidence": 0.0}
+
+        classified = self.classifier.classify_input(text, use_llm=use_llm)
+        return classified.model_dump()
+
+    def get_dynamic_statistics(self):
+        """
+        Get statistics about dynamic memory usage.
+
+        Returns:
+            dict: Statistics including category distribution and intent counts
+        """
+        if not self.enable_dynamic_memory or not self.dynamic_manager:
+            return {"error": "Dynamic memory not enabled"}
+
+        return self.dynamic_manager.get_statistics()
 
 
 __all__ = ["Memory", "_build_filters_and_metadata"]

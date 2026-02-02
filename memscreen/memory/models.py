@@ -219,6 +219,16 @@ class MemoryConfig(BaseModel):
         default="US/Pacific",
     )
 
+    # Dynamic Memory configuration
+    enable_dynamic_memory: bool = Field(
+        description="Enable dynamic memory classification and intelligent search",
+        default=True,
+    )
+    dynamic_config: Optional[Dict[str, Any]] = Field(
+        description="Configuration for dynamic memory system (see DynamicMemoryConfig)",
+        default=None,
+    )
+
 
 class MemoryType(Enum):
     """Types of memory supported by the system."""

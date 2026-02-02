@@ -19,12 +19,16 @@ from .agent_executor import AgentExecutor
 # Import Agent system (kept for compatibility)
 try:
     from ..agent.base_agent import BaseAgent, AgentConfig
+    from ..agent.intelligent_agent import IntelligentAgent
     from ..skills.memory.search_skill import SearchMemorySkill
     from ..skills.analysis.summary_skill import SummarySkill
     AGENT_AVAILABLE = True
 except ImportError:
     AGENT_AVAILABLE = False
+    INTELLIGENT_AGENT_AVAILABLE = False
     print("[ChatPresenter] Agent system not available, using standard chat mode")
+else:
+    INTELLIGENT_AGENT_AVAILABLE = True
 
 
 class ChatMessage:
@@ -84,7 +88,9 @@ class ChatPresenter(BasePresenter):
 
         # Agent system (seamlessly integrated)
         self.agent = None
+        self.intelligent_agent = None  # NEW: Intelligent Agent with auto-classification
         self.use_agent_mode = False  # Can be toggled by user
+        self.use_intelligent_agent = True  # NEW: Auto-use intelligent agent
 
         # NEW: Rule-based Agent Executor (more reliable)
         self.agent_executor = AgentExecutor(
@@ -95,7 +101,7 @@ class ChatPresenter(BasePresenter):
 
         self._is_initialized = False
 
-        # Initialize legacy agent if available (kept for compatibility)
+        # Initialize agents if available
         if AGENT_AVAILABLE:
             try:
                 # Create a simple LLM client wrapper
@@ -128,13 +134,14 @@ class ChatPresenter(BasePresenter):
                         return ""
 
                 llm_client = LLMClient(ollama_base_url)
+
+                # Create legacy BaseAgent
                 agent_config = AgentConfig(
                     name="MemScreen Chat Agent",
                     version="1.0.0",
                     enable_memory=True
                 )
 
-                # Create agent
                 self.agent = BaseAgent(
                     memory_system=memory_system,
                     llm_client=llm_client,
@@ -145,10 +152,38 @@ class ChatPresenter(BasePresenter):
                 self.agent.register_skill(SearchMemorySkill())
                 self.agent.register_skill(SummarySkill())
 
-                print("[ChatPresenter] Agent system initialized")
+                print("[ChatPresenter] Base Agent initialized")
+
+                # NEW: Create Intelligent Agent with auto-classification
+                if INTELLIGENT_AGENT_AVAILABLE:
+                    try:
+                        intelligent_config = AgentConfig(
+                            name="MemScreen Intelligent Agent",
+                            version="2.0.0",
+                            enable_memory=True,
+                            max_parallel_steps=1
+                        )
+
+                        self.intelligent_agent = IntelligentAgent(
+                            memory_system=memory_system,
+                            llm_client=llm_client,
+                            config=intelligent_config,
+                            enable_classification=True
+                        )
+
+                        # Register the same skills
+                        self.intelligent_agent.register_skill(SearchMemorySkill())
+                        self.intelligent_agent.register_skill(SummarySkill())
+
+                        print("[ChatPresenter] ✅ Intelligent Agent initialized (auto-classification enabled)")
+                    except Exception as e:
+                        print(f"[ChatPresenter] Intelligent Agent initialization failed: {e}")
+                        self.intelligent_agent = None
+
             except Exception as e:
                 print(f"[ChatPresenter] Agent initialization failed: {e}")
                 self.agent = None
+                self.intelligent_agent = None
 
     def initialize(self):
         """Initialize presenter and load models"""
@@ -313,6 +348,11 @@ class ChatPresenter(BasePresenter):
             if self.view:
                 self.view.on_message_added("user", user_message)
 
+            # NEW: Try Intelligent Agent first (auto-classification)
+            if self.intelligent_agent and self.use_intelligent_agent:
+                print(f"[ChatPresenter] 🧠 Using Intelligent Agent for: {user_message[:50]}...")
+                return self._execute_with_intelligent_agent(user_message)
+
             # Auto-detect if Agent should be used
             should_use_agent = use_agent
             if should_use_agent is None:
@@ -340,6 +380,130 @@ class ChatPresenter(BasePresenter):
         except Exception as e:
             self.handle_error(e, "Failed to send message")
             return False
+
+    def _execute_with_intelligent_agent(self, user_message: str) -> bool:
+        """
+        Execute using Intelligent Agent with auto-classification.
+
+        The intelligent agent will:
+        1. Classify the input (question, task, code, etc.)
+        2. Identify query intent (retrieve_fact, find_procedure, etc.)
+        3. Dispatch to appropriate handler
+        4. Return formatted response
+
+        Args:
+            user_message: The user's message
+
+        Returns:
+            True if execution was successful
+        """
+        import asyncio
+
+        try:
+            # Create async event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            # Process input with intelligent agent
+            result = loop.run_until_complete(
+                self.intelligent_agent.process_input(
+                    input_text=user_message,
+                    context={
+                        "user_id": "chat_user",
+                        "session_id": "chat_session"
+                    }
+                )
+            )
+
+            # Format and display response
+            response_text = self._format_intelligent_agent_response(result)
+
+            # Add assistant message to history
+            assistant_msg = ChatMessage("assistant", response_text)
+            self.conversation_history.append(assistant_msg)
+
+            # Notify view
+            if self.view:
+                self.view.on_message_added("assistant", response_text)
+
+            # Log classification info
+            handler = result.get("handler", "unknown")
+            print(f"[ChatPresenter] ✅ Intelligent Agent response (handler: {handler})")
+
+            # Clean up
+            loop.close()
+
+            return True
+
+        except Exception as e:
+            print(f"[ChatPresenter] Intelligent Agent error: {e}")
+            import traceback
+            traceback.print_exc()
+
+            # Fall back to standard chat
+            print("[ChatPresenter] Falling back to standard chat...")
+            return self._execute_standard_chat(user_message)
+
+    def _format_intelligent_agent_response(self, result: Dict[str, Any]) -> str:
+        """Format intelligent agent result into chat response"""
+
+        if not result.get("success"):
+            return "抱歉，处理您的请求时出错。"
+
+        handler = result.get("handler", "")
+        data = result.get("data", {})
+
+        # Format based on handler type
+        if handler == "greet":
+            return data.get("response", "你好！")
+
+        elif handler == "smart_search":
+            # Format search results
+            memories = data.get("results", [])
+            if memories:
+                response = f"🔍 找到 {len(memories)} 条相关信息：\n\n"
+                for i, item in enumerate(memories[:5], 1):
+                    memory_text = item.get("memory", item.get("text", ""))
+                    response += f"{i}. {memory_text}\n"
+                return response
+            return "未找到相关信息。"
+
+        elif handler == "manage_task":
+            return "✅ 任务已添加到列表中。"
+
+        elif handler == "add_task":
+            return "✅ 已记住这个任务。"
+
+        elif handler == "code_assistant":
+            return data.get("response", "这是我的代码分析。")
+
+        elif handler == "find_procedure":
+            procedures = data.get("results", [])
+            if procedures:
+                return f"📋 找到相关操作步骤：\n\n{procedures[0]}"
+            return "未找到相关操作步骤。"
+
+        elif handler == "general_query":
+            return data.get("response", "已为您处理。")
+
+        else:
+            # Default response
+            if isinstance(data, dict) and "response" in data:
+                return data["response"]
+            return "已处理完成。"
+
+    def _execute_standard_chat(self, user_message: str) -> bool:
+        """Execute standard chat flow as fallback"""
+        # Search memory for context
+        context = self._search_memory(user_message)
+
+        # Build messages for API
+        messages = self._build_messages(user_message, context)
+
+        # Start streaming response
+        self._start_streaming(messages)
+
+        return True
 
     def _execute_with_agent(self, user_message: str) -> bool:
         """

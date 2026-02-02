@@ -2667,7 +2667,15 @@ class MemScreenApp(App):
                     config=app_config.get_mllm_config()["config"]
                 ),
                 history_db_path=str(app_config.db_path),
-                timezone=app_config.timezone if hasattr(app_config, 'timezone') else "US/Pacific"
+                timezone=app_config.timezone if hasattr(app_config, 'timezone') else "US/Pacific",
+                # Enable dynamic memory features
+                enable_dynamic_memory=True,
+                dynamic_config={
+                    "enable_auto_classification": True,
+                    "enable_intent_classification": True,
+                    "enable_category_weights": True,
+                    "cache_classification_results": True,
+                }
             )
 
             self.memory = Memory(config=config)
