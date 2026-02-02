@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # MemScreen Application
+    memscreen:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: memscreen-app
+    restart: unless-stopped
+    ports:
+      - "5901:5901"  # VNC port for web UI
+      - "11434:11434"  # Ollama API
+    volumes:
+      # Persist data
+      - memscreen_data:/app/db
+      # Model cache (optional - share models between containers)
+      - ollama_models:/root/.ollama
+    environment:
+      - DISPLAY=:99
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_NUM_PARALLEL=2
+    # GPU support (uncomment if you have NVIDIA GPU)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    stdin_open: true
+    tty: true
+
+  # Optional: Web VNC for browser access
+  # novnc:
+  #   image: novnc/novnc:latest
+  #   container_name: memscreen-novnc
+  #   ports:
+  #     - "6080:6080"
+  #   environment:
+  #     - DISPLAY=vnc:0.0
+  #   depends_on:
+  #     - memscreen
+
+volumes:
+  memscreen_data:
+    driver: local
+  ollama_models:
+    driver: local

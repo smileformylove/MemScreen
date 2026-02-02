@@ -90,7 +90,30 @@ class IntelligentAgent(BaseAgent):
             "intent_counts": {},
         }
 
+        # OPTIMIZATION: Classification cache
+        self._classification_cache = {}
+        self._cache_max_size = 50
+
         logger.info(f"[Agent] Intelligent agent initialized (classification={enable_classification})")
+
+    def _get_cached_classification(self, text: str):
+        """Get cached classification if available"""
+        import hashlib
+        text_hash = hashlib.md5(text.encode()).hexdigest()
+        return self._classification_cache.get(text_hash)
+
+    def _cache_classification(self, text: str, classification, intent_classification):
+        """Cache classification results"""
+        import hashlib
+        text_hash = hashlib.md5(text.encode()).hexdigest()
+
+        # Simple cache eviction
+        if len(self._classification_cache) >= self._cache_max_size:
+            # Remove oldest entry
+            oldest_key = next(iter(self._classification_cache))
+            del self._classification_cache[oldest_key]
+
+        self._classification_cache[text_hash] = (classification, intent_classification)
 
     def _setup_default_dispatch_rules(self):
         """Setup default dispatch rules based on categories and intents"""
@@ -176,20 +199,30 @@ class IntelligentAgent(BaseAgent):
         """
         logger.info(f"[Agent] Processing input: {input_text[:50]}...")
 
-        # 1. Classify input
-        classification = None
-        if self.enable_classification and self.classifier:
-            classification = self.classifier.classify_input(input_text)
-            logger.info(f"[Agent] Input classified as: {classification.category.value} "
-                       f"(confidence: {classification.confidence:.2f})")
+        # OPTIMIZATION: Check cache first
+        cached = self._get_cached_classification(input_text)
+        if cached:
+            classification, intent_classification = cached
+            logger.info(f"[Agent] ⚡ Using cached classification")
         else:
-            logger.warning("[Agent] Classification not available, using default routing")
+            # 1. Classify input
+            classification = None
+            if self.enable_classification and self.classifier:
+                classification = self.classifier.classify_input(input_text)
+                logger.info(f"[Agent] Input classified as: {classification.category.value} "
+                           f"(confidence: {classification.confidence:.2f})")
+            else:
+                logger.warning("[Agent] Classification not available, using default routing")
 
-        # 2. Classify query intent
-        intent_classification = None
-        if self.enable_classification and self.classifier:
-            intent_classification = self.classifier.classify_query(input_text)
-            logger.info(f"[Agent] Query intent: {intent_classification.intent.value}")
+            # 2. Classify query intent
+            intent_classification = None
+            if self.enable_classification and self.classifier:
+                intent_classification = self.classifier.classify_query(input_text)
+                logger.info(f"[Agent] Query intent: {intent_classification.intent.value}")
+
+            # Cache the results
+            if classification:
+                self._cache_classification(input_text, classification, intent_classification)
 
         # 3. Find matching dispatch rule
         dispatch_rule = self._find_dispatch_rule(
@@ -209,13 +242,13 @@ class IntelligentAgent(BaseAgent):
         # 5. Update statistics
         self._update_dispatch_stats(classification, intent_classification)
 
-        # 6. Add to memory with classification
+        # 6. OPTIMIZATION: Store to memory in background (don't wait)
         if self.memory_system and classification:
-            await self._store_with_classification(
-                input_text,
-                classification,
-                result
+            # Create background task for storage (non-blocking)
+            asyncio.create_task(
+                self._store_with_classification(input_text, classification, result)
             )
+            logger.info(f"[Agent] ⚡ Storage scheduled in background")
 
         return result
 

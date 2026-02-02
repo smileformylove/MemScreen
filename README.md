@@ -90,6 +90,28 @@
 
 Get up and running in **3 minutes** — **no API keys, no cloud, no signup!**
 
+### 🐳 Option 1: Docker (Recommended)
+
+**Easiest way** - No dependencies to install!
+
+```bash
+# 1️⃣ Clone the repository
+git clone https://github.com/smileformylove/MemScreen.git && cd MemScreen
+
+# 2️⃣ One-command start
+docker-compose up -d
+
+# 3️⃣ Check logs
+docker-compose logs -f memscreen
+```
+
+✅ **Pros:** Auto-installs everything, isolated environment, easy cleanup
+📚 **See:** [Docker Guide](docs/DOCKER.md) for advanced options
+
+---
+
+### 💻 Option 2: Local Installation
+
 ```bash
 # 1️⃣ Clone the repository
 git clone https://github.com/smileformylove/MemScreen.git && cd MemScreen
@@ -101,7 +123,10 @@ brew install ollama        # macOS (visit ollama.com for Linux/Windows)
 ollama pull qwen2.5vl:3b          # Vision model (~2GB)
 ollama pull mxbai-embed-large     # Text embeddings (~470MB)
 
-# 4️⃣ Launch MemScreen 🚀
+# 4️⃣ Install Python dependencies
+pip install -r requirements.txt
+
+# 5️⃣ Launch MemScreen 🚀
 python start.py
 ```
 
@@ -280,6 +305,7 @@ python start.py
 ## 📖 Documentation
 
 For detailed documentation, see:
+- [Docker Deployment](docs/DOCKER.md) — Containerized deployment guide
 - [Architecture Overview](docs/ARCHITECTURE.md) — System design and components
 - [Intelligent Agent System](docs/INTELLIGENT_AGENT.md) — Auto-classification and smart dispatch
 - [Dynamic Memory System](docs/DYNAMIC_MEMORY.md) — Categorized memory and intelligent search

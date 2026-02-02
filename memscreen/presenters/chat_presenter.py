@@ -99,6 +99,16 @@ class ChatPresenter(BasePresenter):
             current_model="qwen2.5vl:3b"
         )
 
+        # OPTIMIZATION: Reusable event loop for async operations
+        self._event_loop = None
+
+        # OPTIMIZATION: Response cache for repeated queries
+        self._response_cache = {}  # query_hash -> response
+        self._cache_max_size = 100
+
+        # OPTIMIZATION: Smart search limit (reduce results for faster processing)
+        self._smart_search_limit = 5  # Only get top 5 results
+
         self._is_initialized = False
 
         # Initialize agents if available
@@ -201,7 +211,37 @@ class ChatPresenter(BasePresenter):
         if self.is_streaming:
             self._stop_streaming()
 
+        # Clean up event loop
+        if self._event_loop and not self._event_loop.is_closed():
+            self._event_loop.close()
+
         self._is_initialized = False
+
+    def _get_event_loop(self):
+        """Get or create reusable event loop"""
+        if self._event_loop is None or self._event_loop.is_closed():
+            self._event_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._event_loop)
+        return self._event_loop
+
+    def _get_cached_response(self, query: str) -> Optional[str]:
+        """Get cached response if available"""
+        import hashlib
+        query_hash = hashlib.md5(query.encode()).hexdigest()
+        return self._response_cache.get(query_hash)
+
+    def _cache_response(self, query: str, response: str):
+        """Cache a response"""
+        import hashlib
+        query_hash = hashlib.md5(query.encode()).hexdigest()
+
+        # Simple cache eviction if full
+        if len(self._response_cache) >= self._cache_max_size:
+            # Remove oldest entry (first key)
+            oldest_key = next(iter(self._response_cache))
+            del self._response_cache[oldest_key]
+
+        self._response_cache[query_hash] = response
 
     # ==================== Public API for View ====================
 
@@ -383,13 +423,18 @@ class ChatPresenter(BasePresenter):
 
     def _execute_with_intelligent_agent(self, user_message: str) -> bool:
         """
-        Execute using Intelligent Agent with auto-classification.
+        Execute using Intelligent Agent with auto-classification (OPTIMIZED).
 
         The intelligent agent will:
         1. Classify the input (question, task, code, etc.)
         2. Identify query intent (retrieve_fact, find_procedure, etc.)
         3. Dispatch to appropriate handler
         4. Return formatted response
+
+        OPTIMIZATIONS:
+        - Reuses event loop instead of creating new one
+        - Caches responses for repeated queries
+        - Faster pattern-based classification
 
         Args:
             user_message: The user's message
@@ -400,9 +445,23 @@ class ChatPresenter(BasePresenter):
         import asyncio
 
         try:
-            # Create async event loop
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            # OPTIMIZATION: Check cache first
+            cached_response = self._get_cached_response(user_message)
+            if cached_response:
+                print(f"[ChatPresenter] ⚡ Using cached response")
+
+                # Add to history
+                assistant_msg = ChatMessage("assistant", cached_response)
+                self.conversation_history.append(assistant_msg)
+
+                # Notify view
+                if self.view:
+                    self.view.on_message_added("assistant", cached_response)
+
+                return True
+
+            # OPTIMIZATION: Reuse event loop
+            loop = self._get_event_loop()
 
             # Process input with intelligent agent
             result = loop.run_until_complete(
@@ -418,6 +477,9 @@ class ChatPresenter(BasePresenter):
             # Format and display response
             response_text = self._format_intelligent_agent_response(result)
 
+            # OPTIMIZATION: Cache the response
+            self._cache_response(user_message, response_text)
+
             # Add assistant message to history
             assistant_msg = ChatMessage("assistant", response_text)
             self.conversation_history.append(assistant_msg)
@@ -429,9 +491,6 @@ class ChatPresenter(BasePresenter):
             # Log classification info
             handler = result.get("handler", "unknown")
             print(f"[ChatPresenter] ✅ Intelligent Agent response (handler: {handler})")
-
-            # Clean up
-            loop.close()
 
             return True
 
@@ -493,7 +552,7 @@ class ChatPresenter(BasePresenter):
             return "已处理完成。"
 
     def _execute_standard_chat(self, user_message: str) -> bool:
-        """Execute standard chat flow as fallback"""
+        """Execute standard chat flow as fallback (OPTIMIZED)"""
         # Search memory for context
         context = self._search_memory(user_message)
 
@@ -626,7 +685,7 @@ class ChatPresenter(BasePresenter):
 
     def _search_memory(self, query: str) -> str:
         """
-        Search memory for relevant context.
+        Search memory for relevant context (OPTIMIZED).
 
         Args:
             query: Search query
@@ -641,21 +700,40 @@ class ChatPresenter(BasePresenter):
         try:
             print(f"[ChatPresenter] 🔍 Searching memory for: {query}")
 
-            results = self.memory_system.search(query=query, user_id="screenshot")
+            # OPTIMIZATION: Try smart_search first (faster, category-based)
+            if hasattr(self.memory_system, 'smart_search'):
+                print(f"[ChatPresenter] ⚡ Using smart_search (category-based)")
+                results = self.memory_system.smart_search(
+                    query=query,
+                    limit=self._smart_search_limit  # Only get top 5
+                )
+            else:
+                # Fallback to standard search
+                results = self.memory_system.search(query=query, user_id="screenshot")
 
             if not results:
                 print(f"[ChatPresenter] ⚠️  No results returned from memory search")
                 return ""
 
-            if 'results' not in results:
-                print(f"[ChatPresenter] ⚠️  Results missing 'results' key: {list(results.keys())}")
+            # Handle different result formats
+            if isinstance(results, dict):
+                if 'results' not in results:
+                    print(f"[ChatPresenter] ⚠️  Results missing 'results' key: {list(results.keys())}")
+                    return ""
+                memories = results['results']
+            elif isinstance(results, list):
+                memories = results
+            else:
+                print(f"[ChatPresenter] ⚠️  Unexpected results format: {type(results)}")
                 return ""
 
-            if not results['results']:
+            if not memories:
                 print(f"[ChatPresenter] ⚠️  Empty results list - no memories found for query")
                 return ""
 
-            print(f"[ChatPresenter] ✅ Found {len(results['results'])} memories")
+            # OPTIMIZATION: Limit results for faster processing
+            memories = memories[:self._smart_search_limit]
+            print(f"[ChatPresenter] ✅ Found {len(memories)} memories (limited to {self._smart_search_limit})")
 
             # Prioritize different types of memories
             recording_memories = [

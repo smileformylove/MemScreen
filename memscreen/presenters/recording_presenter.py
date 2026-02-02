@@ -778,9 +778,9 @@ When users ask about what was on their screen or what they were doing, reference
             self.handle_error(e, "Failed to add video to memory")
 
     def _analyze_video_content(self, filename, total_frames, fps):
-        """Analyze video content by sampling frames and using OCR"""
+        """Analyze video content by sampling frames and using vision model"""
         try:
-            # Sample frames
+            # Sample frames for analysis
             num_samples = min(5, total_frames)
             sample_indices = [int(i * total_frames / num_samples) for i in range(num_samples)]
 
@@ -831,14 +831,26 @@ When users ask about what was on their screen or what they were doing, reference
             _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             img_str = base64.b64encode(buffer).decode('utf-8')
 
-            # Enhanced prompt: OCR + Scene Understanding
-            enhanced_prompt = """Analyze this screen capture and provide:
-1. All visible text (OCR)
-2. Application type (VSCode, browser, terminal, etc.)
-3. Activity type (programming, browsing, design, etc.)
-4. Key UI elements visible
+            # Enhanced prompt: Focus on object detection and scene understanding
+            enhanced_prompt = """You are analyzing a screen capture for memory storage. Describe in detail:
 
-Format: Scene: [app] - [activity]. Text: [extracted text]"""
+1. **Visible Objects**: List ALL objects you see (icons, buttons, images, symbols, etc.)
+   - Examples: keys, locks, icons, logos, buttons, menus, toolbars
+   - Be specific about position and appearance
+
+2. **Text Content**: Extract all text visible on screen
+
+3. **Application & Activity**: What app is running and what's happening
+
+4. **Visual Elements**: Colors, layouts, UI components
+
+Format your response as:
+Objects: [detailed list of visible objects]
+Text: [all extracted text]
+Scene: [application] - [activity description]
+Visual: [visual elements description]
+
+Be thorough - this information will be used for semantic search."""
 
             # Send to Ollama vision API
             response = requests.post(
@@ -849,9 +861,9 @@ Format: Scene: [app] - [activity]. Text: [extracted text]"""
                     "images": [img_str],
                     "stream": False,
                     "options": {
-                        "num_predict": 384,  # Increased for more detailed analysis
-                        "temperature": 0.4,
-                        "top_p": 0.85,
+                        "num_predict": 512,  # Increased from 384 for more detailed object descriptions
+                        "temperature": 0.3,  # Lower for more focused descriptions
+                        "top_p": 0.9,
                     }
                 },
                 timeout=30
