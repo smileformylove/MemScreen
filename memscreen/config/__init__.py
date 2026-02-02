@@ -53,6 +53,7 @@ class MemScreenConfig:
     DEFAULT_VLLM_LLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"
     DEFAULT_VLLM_VISION_MODEL = "Qwen/Qwen2-VL-7B-Instruct"
     DEFAULT_VLLM_EMBEDDING_MODEL = "intfloat/e5-mistral-7b-instruct"
+    DEFAULT_VLLM_REASONING_MODEL = "stepfun-ai/Step-3.5-Flash"  # Advanced reasoning model (196B params, 11B active)
 
     # Recording defaults
     DEFAULT_RECORDING_DURATION = 60  # seconds
@@ -115,6 +116,7 @@ class MemScreenConfig:
                 "llm_model": self.DEFAULT_VLLM_LLM_MODEL,
                 "vision_model": self.DEFAULT_VLLM_VISION_MODEL,
                 "embedding_model": self.DEFAULT_VLLM_EMBEDDING_MODEL,
+                "reasoning_model": self.DEFAULT_VLLM_REASONING_MODEL,  # Advanced reasoning model
                 "use_offline_mode": False,
                 "tensor_parallel_size": 1,
                 "gpu_memory_utilization": 0.9,
@@ -213,6 +215,9 @@ class MemScreenConfig:
 
         if vllm_embedding_model := os.getenv("MEMSCREEN_VLLM_EMBEDDING_MODEL"):
             self._config["vllm"]["embedding_model"] = vllm_embedding_model
+
+        if vllm_reasoning_model := os.getenv("MEMSCREEN_VLLM_REASONING_MODEL"):
+            self._config["vllm"]["reasoning_model"] = vllm_reasoning_model
 
     def _get_defaults_dict(self) -> Dict[str, Any]:
         """Get defaults as a dictionary."""
@@ -326,6 +331,11 @@ class MemScreenConfig:
     def vllm_gpu_memory_utilization(self) -> float:
         """Get vLLM GPU memory utilization."""
         return self._config["vllm"]["gpu_memory_utilization"]
+
+    @property
+    def vllm_reasoning_model(self) -> str:
+        """Get vLLM advanced reasoning model (Step-3.5-Flash)."""
+        return self._config["vllm"]["reasoning_model"]
 
     # Recording properties
     @property

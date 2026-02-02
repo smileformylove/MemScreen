@@ -1,0 +1,106 @@
+# vLLM Docker Compose configuration for Step-3.5-Flash
+#
+# Step-3.5-Flash is an advanced reasoning model (196B parameters, 11B active)
+# with sparse MoE structure and multi-token prediction for faster inference.
+#
+# Features:
+# - Hybrid Attention Schedules and Compensation for SWA
+# - Sparse Mixture-of-Experts (MoE) - only 11B active parameters out of 196B
+# - Multi-token prediction mechanism for faster inference
+# - Built-in reasoning and tool calling capabilities
+#
+# Usage:
+#   docker-compose -f docker-compose.step35flash.yml up -d
+#
+# Environment variables:
+#   TENSOR_PARALLEL_SIZE: Number of GPUs for tensor parallelism (default: 1)
+#   GPU_MEMORY_UTILIZATION: GPU memory utilization ratio (default: 0.9)
+#   DATA_PARALLEL_SIZE: Number of GPUs for data parallelism (optional)
+#   ENABLE_MTP: Enable multi-token prediction (default: true)
+#
+# Model options:
+#   - stepfun-ai/Step-3.5-Flash (FP16, recommended)
+#   - stepfun-ai/Step-3.5-Flash-FP8 (FP8 quantized, better memory efficiency)
+#   - stepfun-ai/Step-3.5-Flash-Int4 (Int4 quantized, not supported by vLLM yet)
+
+version: '3.8'
+
+services:
+  step35flash:
+    image: vllm/vllm-openai:latest
+    container_name: memscreen-step35flash
+    ports:
+      - "${STEP35FLASH_PORT:-8001}:8000"
+    environment:
+      - MODEL=stepfun-ai/Step-3.5-Flash
+      - TENSOR_PARALLEL_SIZE=${TENSOR_PARALLEL_SIZE:-1}
+      - GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION:-0.9}
+      - ENABLE_MTP=${ENABLE_MTP:-true}
+      # Workaround for B200 GPU FP8 MoE error
+      - VLLM_USE_FLASHINFER_MOE_FP8=0
+    volumes:
+      - step35flash_models:/root/.cache/huggingface
+    # Command for Step-3.5-Flash with reasoning and tool calling support
+    command: >
+      --model $MODEL
+      --host 0.0.0.0
+      --port 8000
+      --tensor-parallel-size $TENSOR_PARALLEL_SIZE
+      --gpu-memory-utilization $GPU_MEMORY_UTILIZATION
+      --reasoning-parser step3p5
+      --tool-call-parser step3p5
+      --enable-auto-tool-choice
+      --trust-remote-code
+      --max-model-len 32768
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # Longer start period for large model
+
+  # Optional: FP8 version with better memory efficiency
+  step35flash_fp8:
+    image: vllm/vllm-openai:latest
+    container_name: memscreen-step35flash-fp8
+    profiles:
+      - fp8  # Only start with: docker-compose --profile fp8 up
+    ports:
+      - "8002:8000"
+    environment:
+      - MODEL=stepfun-ai/Step-3.5-Flash-FP8
+      - TENSOR_PARALLEL_SIZE=1  # FP8 version cannot use TP > 1
+      - GPU_MEMORY_UTILIZATION=0.9
+    volumes:
+      - step35flash_models:/root/.cache/huggingface
+    command: >
+      --model $MODEL
+      --host 0.0.0.0
+      --port 8000
+      --tensor-parallel-size $TENSOR_PARALLEL_SIZE
+      --gpu-memory-utilization $GPU_MEMORY_UTILIZATION
+      --reasoning-parser step3p5
+      --tool-call-parser step3p5
+      --enable-auto-tool-choice
+      --trust-remote-code
+      --max-model-len 32768
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  step35flash_models:
+    driver: local
