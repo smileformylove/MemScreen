@@ -87,8 +87,17 @@ from memscreen import Memory
 from memscreen.memory.models import MemoryConfig, EmbedderConfig, LlmConfig, VectorStoreConfig
 from memscreen.presenters.recording_presenter import RecordingPresenter
 from memscreen.presenters.video_presenter import VideoPresenter
+from memscreen.presenters.chat_presenter import ChatPresenter
 from memscreen.memory.manager import get_memory_manager
 from memscreen.config import get_config
+from memscreen.services.session_analysis import (
+    save_session as core_save_session,
+    load_sessions as core_load_sessions,
+    get_session_analysis as core_get_session_analysis,
+    delete_session as core_delete_session,
+    delete_all_sessions as core_delete_all_sessions,
+    DEFAULT_DB_PATH as PROCESS_MINING_DB_PATH,
+)
 
 
 class BaseScreen(Screen):
@@ -515,6 +524,8 @@ class ChatScreen(BaseScreen):
         text = self.chat_input.text
         if not text:
             return
+        if not self.presenter:
+            return
 
         # Clear input immediately
         self.chat_input.text = ""
@@ -550,176 +561,48 @@ class ChatScreen(BaseScreen):
         typing_label.bind(texture_size=typing_label.setter('size'))
         self.chat_history.add_widget(typing_label)
 
-        # Get AI response in background thread
-        def get_ai_response():
-            ai_text = ""
-            error_msg_text = None
-            try:
-                from memscreen.llm import OllamaLLM
+        def on_done(ai_text, error_text):
+            Clock.schedule_once(lambda dt: self._on_chat_done(typing_label, ai_text, error_text), 0)
 
-                # Try to use Memory system to search for relevant context
-                context = ""
-                has_relevant_memory = False
-                memory_count = 0
+        self.presenter.send_message_sync(text, on_done=on_done)
 
-                if self.memory_system:
-                    try:
-                        # Search memories for relevant context
-                        # Use a default user_id for searching
-                        search_result = self.memory_system.search(
-                            query=text,
-                            user_id="default_user",  # Default user ID
-                            limit=5,
-                            threshold=0.0
-                        )
-
-                        # Extract context from search results
-                        if search_result and "results" in search_result:
-                            memories = search_result["results"]
-                            memory_count = len(memories) if memories else 0
-
-                            if memories and len(memories) > 0:
-                                has_relevant_memory = True
-                                # Build context from memory items
-                                context_parts = []
-                                for mem in memories[:3]:  # Use top 3 memories
-                                    if isinstance(mem, dict):
-                                        if "memory" in mem:
-                                            content = mem["memory"]
-                                        elif "content" in mem:
-                                            content = mem["content"]
-                                        else:
-                                            content = str(mem)
-                                        context_parts.append(f"- {content}")
-                                if context_parts:
-                                    context = "Relevant context from memory:\n" + "\n".join(context_parts)
-                                    print(f"[Chat] Found {len(memories)} relevant memories")
-                    except Exception as mem_err:
-                        print(f"[Chat] Memory search failed: {mem_err}")
-                        # Continue without memory context
-
-                # Smart model selection: Use small model if we have relevant memory
-                if has_relevant_memory and memory_count >= 2:
-                    # Use small model for faster response when we have good context
-                    selected_model = "gemma3:270m"  # Ultra-fast small model
-                    print(f"[Chat] Using small model (gemma3:270m) - {memory_count} memories found")
-                else:
-                    # Use large model for better reasoning when no/little memory
-                    selected_model = "qwen2.5vl:3b"
-                    print(f"[Chat] Using large model (qwen2.5vl:3b) - {memory_count} memories found")
-
-                llm = OllamaLLM(config={"model": selected_model})
-
-                # Prepare messages with context and system prompt
-                messages = []
-
-                # System prompt - define AI's role and behavior
-                system_prompt = """You are MemScreen, a helpful AI assistant. You help users with:
-- Answering questions about their screen recordings and activities
-- Providing information from their memory
-- Assisting with general knowledge
-- Being friendly and concise
-
-Respond naturally without mentioning your model provider or technical details."""
-
-                if context:
-                    messages.append({"role": "system", "content": f"{system_prompt}\n\nHere is some relevant context from the user's memory:\n\n{context}"})
-                else:
-                    messages.append({"role": "system", "content": system_prompt})
-
-                messages.append({"role": "user", "content": text})
-
-                response = llm.generate_response(messages)
-
-                if response:
-                    ai_text = str(response)
-
-                    # Save conversation to memory system for future context
-                    if self.memory_system:
-                        try:
-                            # Create conversation messages
-                            conversation = [
-                                {"role": "user", "content": text},
-                                {"role": "assistant", "content": ai_text}
-                            ]
-
-                            # Add to memory with user_id for later retrieval
-                            memory_result = self.memory_system.add(
-                                conversation,
-                                user_id="default_user",
-                                metadata={
-                                    "source": "ai_chat",
-                                    "timestamp": __import__('datetime').datetime.now().isoformat(),
-                                    "model": selected_model,
-                                    "memory_count": memory_count,
-                                    "used_context": has_relevant_memory
-                                },
-                                infer=True  # Let LLM extract key facts
-                            )
-
-                            if memory_result and "results" in memory_result:
-                                print(f"[Chat] Saved conversation to memory: {len(memory_result['results'])} memory items created/updated")
-                        except Exception as mem_err:
-                            print(f"[Chat] Failed to save conversation to memory: {mem_err}")
-                            # Don't fail the chat if memory save fails
-                            import traceback
-                            traceback.print_exc()
-                else:
-                    ai_text = "I apologize, but I couldn't generate a response."
-
-            except Exception as err:
-                error_msg_text = f"Error: {str(err)}"
-                import traceback
-                traceback.print_exc()
-
-            # Update UI on main thread
-            def update_ui(dt):
-                try:
-                    self.chat_history.remove_widget(typing_label)
-                except:
-                    pass  # Widget may already be removed
-
-                if error_msg_text:
-                    # Show error message - larger
-                    error_msg = Label(
-                        text=f'AI: {error_msg_text}',
-                        font_name='chinese',
-                        font_size='20',
-                        size_hint_y=None,
-                        height=90,
-                        halign='left',
-                        valign='top',
-                        text_size=(420, None),
-                        color=(0.8, 0.2, 0.2, 1)
-                    )
-                    error_msg.bind(texture_size=error_msg.setter('size'))
-                    self.chat_history.add_widget(error_msg)
-                else:
-                    # Show AI response - larger font
-                    import math
-                    estimated_lines = max(2, math.ceil(len(ai_text) / 40))
-                    msg_height = min(280, estimated_lines * 32)
-
-                    msg_ai = Label(
-                        text=f'AI: {ai_text}',
-                        font_name='chinese',
-                        font_size='20',
-                        size_hint_y=None,
-                        height=msg_height,
-                        halign='left',
-                        valign='top',
-                        text_size=(420, None),
-                        color=(0, 0, 0, 1)
-                    )
-                    msg_ai.bind(texture_size=msg_ai.setter('size'))
-                    self.chat_history.add_widget(msg_ai)
-
-            Clock.schedule_once(update_ui)
-
-        # Start background thread
-        import threading
-        thread = threading.Thread(target=get_ai_response, daemon=True)
-        thread.start()
+    def _on_chat_done(self, typing_label, ai_text, error_text):
+        """Update UI after AI response (run on main thread via Clock.schedule_once)."""
+        try:
+            self.chat_history.remove_widget(typing_label)
+        except Exception:
+            pass
+        if error_text:
+            error_msg = Label(
+                text=f'AI: {error_text}',
+                font_name='chinese',
+                font_size='20',
+                size_hint_y=None,
+                height=90,
+                halign='left',
+                valign='top',
+                text_size=(420, None),
+                color=(0.8, 0.2, 0.2, 1)
+            )
+            error_msg.bind(texture_size=error_msg.setter('size'))
+            self.chat_history.add_widget(error_msg)
+        else:
+            import math
+            estimated_lines = max(2, math.ceil(len(ai_text) / 40))
+            msg_height = min(280, estimated_lines * 32)
+            msg_ai = Label(
+                text=f'AI: {ai_text}',
+                font_name='chinese',
+                font_size='20',
+                size_hint_y=None,
+                height=msg_height,
+                halign='left',
+                valign='top',
+                text_size=(420, None),
+                color=(0, 0, 0, 1)
+            )
+            msg_ai.bind(texture_size=msg_ai.setter('size'))
+            self.chat_history.add_widget(msg_ai)
 
     def on_enter(self):
         """Called when screen is displayed - automatically focus input"""
@@ -731,29 +614,6 @@ Respond naturally without mentioning your model provider or technical details.""
         if self.chat_input:
             self.chat_input.focus = True
             self.chat_input.cursor = (0, len(self.chat_input.text))
-
-    def _fix_filesystem_encoding(self, path):
-        """修复 macOS 文件系统编码问题（已弃用 - tkinter 已处理）
-
-        保留此方法以兼容旧代码
-        """
-        return path
-
-    def _show_error_message(self, error_text):
-        """显示错误消息"""
-        error_label = Label(
-            text=f'❌ {error_text}',
-            font_name='chinese',
-            font_size='16',
-            size_hint_y=None,
-            height=60,
-            halign='left',
-            valign='top',
-            text_size=(420, None),
-            color=(0.8, 0.2, 0.2, 1)
-        )
-        error_label.bind(texture_size=error_label.setter('size'))
-        self.chat_history.add_widget(error_label)
 
 
 class TimelineMarker(BoxLayout):
@@ -1980,82 +1840,32 @@ class ProcessScreen(BaseScreen):
         self.session_stats.text = f'Events: {total} | Keystrokes: {keystrokes} | Mouse Clicks: {clicks}'
 
     def _save_session(self):
-        """Save current session to history"""
-        import sqlite3
-        import datetime
-
+        """Save current session to history (Core: session_analysis.save_session)."""
         try:
-            conn = sqlite3.connect('./db/process_mining.db')
-            cursor = conn.cursor()
-
-            # Create table if not exists
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    start_time TEXT,
-                    end_time TEXT,
-                    event_count INTEGER,
-                    keystrokes INTEGER,
-                    clicks INTEGER,
-                    events_json TEXT
-                )
-            ''')
-
-            # Calculate stats
-            keystrokes = sum(1 for e in self.current_session_events if e["type"] == "keypress")
-            clicks = sum(1 for e in self.current_session_events if e["type"] == "click")
-
-            start_time = self.current_session_events[0]["time"] if self.current_session_events else ""
-            end_time = self.current_session_events[-1]["time"] if self.current_session_events else ""
-
-            import json
-            events_json = json.dumps(self.current_session_events)
-
-            # Insert session
-            cursor.execute('''
-                INSERT INTO sessions (start_time, end_time, event_count, keystrokes, clicks, events_json)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (start_time, end_time, len(self.current_session_events), keystrokes, clicks, events_json))
-
-            conn.commit()
-            conn.close()
-
-            # Refresh history
+            if len(self.current_session_events) <= 1:
+                return
+            start_time = self.current_session_events[0]["time"]
+            end_time = self.current_session_events[-1]["time"]
+            core_save_session(
+                self.current_session_events,
+                start_time,
+                end_time,
+                db_path=PROCESS_MINING_DB_PATH,
+            )
             self._load_history()
-
-            # Clear current session
             self.current_session_events = []
             self.session_events.clear_widgets()
             self._update_session_stats()
-
             self._add_session_event("Session saved to history", "success")
-
         except Exception as e:
             print(f"[ProcessScreen] Error saving session: {e}")
 
     def _load_history(self):
-        """Load session history from database"""
-        import sqlite3
-
+        """Load session history from Core (session_analysis.load_sessions)."""
         try:
-            conn = sqlite3.connect('./db/process_mining.db')
-            cursor = conn.cursor()
-
-            cursor.execute('''
-                SELECT id, start_time, end_time, event_count, keystrokes, clicks
-                FROM sessions
-                ORDER BY id DESC
-                LIMIT 20
-            ''')
-
-            sessions = cursor.fetchall()
-            conn.close()
-
-            # Clear existing history
             self.history_list.clear_widgets()
-
+            sessions = core_load_sessions(limit=20, db_path=PROCESS_MINING_DB_PATH)
             if not sessions:
-                # Show empty message
                 empty_label = Label(
                     text='No session history yet. Start tracking to record your workflow!',
                     font_name='chinese',
@@ -2068,11 +1878,9 @@ class ProcessScreen(BaseScreen):
                 )
                 self.history_list.add_widget(empty_label)
             else:
-                # Display sessions
                 for session_id, start_time, end_time, event_count, keystrokes, clicks in sessions:
                     session_item = self._create_session_item(session_id, start_time, end_time, event_count, keystrokes, clicks)
                     self.history_list.add_widget(session_item)
-
         except Exception as e:
             print(f"[ProcessScreen] Error loading history: {e}")
 
@@ -2223,90 +2031,50 @@ class ProcessScreen(BaseScreen):
         self._add_session_event("History refreshed", "success")
 
     def _delete_session(self, session_id):
-        """Delete a specific session from database"""
-        import sqlite3
-
+        """Delete a specific session (Core: session_analysis.delete_session)."""
         try:
-            conn = sqlite3.connect('./db/process_mining.db')
-            cursor = conn.cursor()
-
-            cursor.execute('DELETE FROM sessions WHERE id=?', (session_id,))
-            conn.commit()
-            deleted_count = cursor.rowcount
-            conn.close()
-
+            deleted_count = core_delete_session(session_id, db_path=PROCESS_MINING_DB_PATH)
             if deleted_count > 0:
                 print(f"[ProcessScreen] Session #{session_id} deleted")
                 self._load_history()
                 self._add_session_event(f"Session #{session_id} deleted", "success")
             else:
                 print(f"[ProcessScreen] Session #{session_id} not found")
-
         except Exception as e:
             print(f"[ProcessScreen] Error deleting session: {e}")
             import traceback
             traceback.print_exc()
 
     def _delete_all_sessions(self, instance):
-        """Delete all sessions from database"""
-        import sqlite3
-
+        """Delete all sessions (Core: session_analysis.delete_all_sessions)."""
         try:
-            conn = sqlite3.connect('./db/process_mining.db')
-            cursor = conn.cursor()
-
-            # Get count before deleting
-            cursor.execute('SELECT COUNT(*) FROM sessions')
-            count = cursor.fetchone()[0]
-
+            count = core_delete_all_sessions(db_path=PROCESS_MINING_DB_PATH)
             if count == 0:
-                conn.close()
                 self._add_session_event("No sessions to delete", "info")
                 return
-
-            # Delete all sessions
-            cursor.execute('DELETE FROM sessions')
-            conn.commit()
-            conn.close()
-
             print(f"[ProcessScreen] All {count} sessions deleted")
             self._load_history()
             self._add_session_event(f"All {count} sessions deleted", "success")
-
         except Exception as e:
             print(f"[ProcessScreen] Error deleting all sessions: {e}")
             import traceback
             traceback.print_exc()
 
     def _show_session_analysis(self, session_id, start_time, end_time, event_count, keystrokes, clicks):
-        """Show categorized analysis of selected session"""
-        import sqlite3
-        import json
-
+        """Show categorized analysis of selected session (Core: session_analysis.get_session_analysis)."""
         try:
-            # Load events from database
-            conn = sqlite3.connect('./db/process_mining.db')
-            cursor = conn.cursor()
-            cursor.execute('SELECT events_json FROM sessions WHERE id=?', (session_id,))
-            result = cursor.fetchone()
-            conn.close()
-
+            result = core_get_session_analysis(
+                session_id, event_count, keystrokes, clicks, start_time, end_time,
+                db_path=PROCESS_MINING_DB_PATH,
+            )
             if not result:
                 self.analysis_content.text = f'No data found for Session #{session_id}'
                 self.analysis_content.color = (0.5, 0.5, 0.5, 1)
                 return
-
-            events = json.loads(result[0])
-
-            # Categorize activities
-            categories = self._categorize_activities(events)
-            patterns = self._analyze_patterns(events)
-
-            # Format duration
+            categories = result['categories']
+            patterns = result['patterns']
             duration_min = patterns['duration_minutes']
             duration_str = f"{duration_min:.1f} min" if duration_min > 0 else "N/A"
-
-            # Build analysis text (centered layout)
             analysis_text = f'''
 ════════════════════════════════════════
            Session #{session_id} Analysis
@@ -2341,196 +2109,18 @@ Top Keys: {', '.join(patterns['top_keys'][:3])}
 
 Time: {start_time} → {end_time}
 '''
-            # Update analysis display (centered)
             self.analysis_content.text = analysis_text
             self.analysis_content.color = (0.2, 0.2, 0.2, 1)
             self.analysis_content.halign = 'center'
             self.analysis_content.valign = 'top'
             self.analysis_content.text_size = (650, None)
-
             print(f"[ProcessScreen] Analysis displayed for Session #{session_id}")
-
         except Exception as e:
             print(f"[ProcessScreen] Error showing analysis: {e}")
             import traceback
             traceback.print_exc()
             self.analysis_content.text = f'Error loading analysis: {str(e)}'
             self.analysis_content.color = (0.8, 0.3, 0.3, 1)
-
-    def _categorize_activities(self, events):
-        """Categorize events into detailed activity types"""
-        typing_score = 0
-        browsing_score = 0
-        design_score = 0
-        programming_score = 0
-        communication_score = 0
-        document_score = 0
-        gaming_score = 0
-        other_score = 0
-
-        for event in events:
-            event_type = event.get("type", "")
-            text = event.get("text", "").lower()
-
-            # Typing indicators (general keyboard activity)
-            if event_type == "keypress":
-                typing_score += 1
-
-            # Browsing indicators
-            if any(word in text for word in ["scroll", "browser", "chrome", "safari", "firefox", "edge", "webkit", "navigator"]):
-                browsing_score += 2
-
-            # Design indicators
-            if any(word in text for word in ["figma", "sketch", "design", "draw", "paint", "canvas", "adobe", "photoshop", "illustrator"]):
-                design_score += 3
-
-            # Programming indicators
-            if any(word in text for word in ["code", "python", "javascript", "java", "terminal", "console", "debug", "compile", "git", "vscode", "intellij", "vim", "emacs", "function", "class", "import"]):
-                programming_score += 3
-
-            # Communication indicators
-            if any(word in text for word in ["slack", "teams", "zoom", "meet", "chat", "message", "email", "outlook", "telegram", "whatsapp", "discord"]):
-                communication_score += 2
-
-            # Document editing indicators
-            if any(word in text for word in ["word", "excel", "powerpoint", "docs", "sheets", "slides", "notion", "evernote", "text", "edit", "document", "write"]):
-                document_score += 2
-
-            # Gaming indicators
-            if any(word in text for word in ["game", "play", "steam", "epic", "minecraft", "lol", "valorant", "overwatch", "fps", "rpg"]):
-                gaming_score += 3
-
-            # General activity (baseline)
-            other_score += 0.5
-
-        # Calculate total and percentages
-        total = typing_score + browsing_score + design_score + programming_score + communication_score + document_score + gaming_score + other_score
-
-        if total == 0:
-            return {
-                'typing': {'score': 0, 'percentage': 0},
-                'browsing': {'score': 0, 'percentage': 0},
-                'design': {'score': 0, 'percentage': 0},
-                'programming': {'score': 0, 'percentage': 0},
-                'communication': {'score': 0, 'percentage': 0},
-                'document': {'score': 0, 'percentage': 0},
-                'gaming': {'score': 0, 'percentage': 0},
-                'other': {'score': 0, 'percentage': 100},
-                'primary': 'Unknown'
-            }
-
-        typing_pct = int((typing_score / total) * 100)
-        browsing_pct = int((browsing_score / total) * 100)
-        design_pct = int((design_score / total) * 100)
-        programming_pct = int((programming_score / total) * 100)
-        communication_pct = int((communication_score / total) * 100)
-        document_pct = int((document_score / total) * 100)
-        gaming_pct = int((gaming_score / total) * 100)
-        other_pct = 100 - typing_pct - browsing_pct - design_pct - programming_pct - communication_pct - document_pct - gaming_pct
-
-        # Determine primary activity
-        scores = {
-            'Typing': typing_pct,
-            'Browsing': browsing_pct,
-            'Design': design_pct,
-            'Programming': programming_pct,
-            'Communication': communication_pct,
-            'Documents': document_pct,
-            'Gaming': gaming_pct,
-            'Other': other_pct
-        }
-        primary = max(scores, key=scores.get)
-
-        return {
-            'typing': {'score': typing_score, 'percentage': typing_pct},
-            'browsing': {'score': browsing_score, 'percentage': browsing_pct},
-            'design': {'score': design_score, 'percentage': design_pct},
-            'programming': {'score': programming_score, 'percentage': programming_pct},
-            'communication': {'score': communication_score, 'percentage': communication_pct},
-            'document': {'score': document_score, 'percentage': document_pct},
-            'gaming': {'score': gaming_score, 'percentage': gaming_pct},
-            'other': {'score': other_score, 'percentage': other_pct},
-            'primary': primary
-        }
-
-    def _analyze_patterns(self, events):
-        """Analyze patterns in session events"""
-        from collections import Counter
-        import datetime
-
-        # Extract key presses
-        key_events = [e for e in events if e.get("type") == "keypress"]
-        click_events = [e for e in events if e.get("type") == "click"]
-
-        # Count top keys
-        key_texts = []
-        for e in key_events:
-            text = e.get("text", "")
-            if "Key press:" in text:
-                key = text.split("Key press:")[-1].strip().strip("'\"")
-                key_texts.append(key)
-
-        top_keys = [k for k, v in Counter(key_texts).most_common(5)]
-
-        # Calculate duration
-        if len(events) >= 2:
-            try:
-                start_time = datetime.datetime.strptime(events[0]["time"], "%H:%M:%S")
-                end_time = datetime.datetime.strptime(events[-1]["time"], "%H:%M:%S")
-                duration_minutes = (end_time - start_time).total_seconds() / 60
-                if duration_minutes < 0:  # Handle midnight crossover
-                    duration_minutes = 24 * 60 + duration_minutes
-            except:
-                duration_minutes = 0
-        else:
-            duration_minutes = 0
-
-        # Calculate metrics
-        avg_events_per_minute = len(events) / duration_minutes if duration_minutes > 0 else 0
-        click_ratio = len(click_events) / len(events) if events else 0
-
-        return {
-            "top_keys": top_keys if top_keys else ["N/A"],
-            "avg_events_per_minute": avg_events_per_minute,
-            "click_ratio": click_ratio,
-            "duration_minutes": duration_minutes
-        }
-
-    def _create_detail_event_item(self, event):
-        """Create a single event item for detail view"""
-        from kivy.metrics import dp
-
-        item = BoxLayout(
-            orientation='horizontal',
-            spacing=10,
-            size_hint_y=None,
-            height=dp(30),
-            padding=dp(5)
-        )
-
-        # Time label
-        time_label = Label(
-            text=event.get("time", ""),
-            font_name='chinese',
-            font_size='12',
-            size_hint_x=0.2,
-            color=(0.5, 0.5, 0.5, 1)
-        )
-        item.add_widget(time_label)
-
-        # Event text
-        text_label = Label(
-            text=event.get("text", ""),
-            font_name='chinese',
-            font_size='13',
-            size_hint_x=0.8,
-            color=(0.2, 0.2, 0.2, 1),
-            halign='left',
-            text_size=(None, None)
-        )
-        item.add_widget(text_label)
-
-        return item
 
 
 class AboutScreen(BaseScreen):
@@ -2844,7 +2434,21 @@ class MemScreenApp(App):
             recording_screen.set_presenter(self.recording_presenter)
         self.sm.add_widget(recording_screen)
 
-        self.sm.add_widget(ChatScreen(name='chat', memory_system=self.memory))
+        self.chat_presenter = None
+        try:
+            cfg = get_config()
+            self.chat_presenter = ChatPresenter(
+                memory_system=self.memory,
+                ollama_base_url=cfg.ollama_base_url,
+            )
+            chat_screen = ChatScreen(name='chat', memory_system=self.memory)
+            chat_screen.set_presenter(self.chat_presenter)
+            self.chat_presenter.set_view(chat_screen)
+            self.chat_presenter.initialize()
+            self.sm.add_widget(chat_screen)
+        except Exception as e:
+            print(f"[App] Failed to init ChatPresenter: {e}")
+            self.sm.add_widget(ChatScreen(name='chat', memory_system=self.memory))
 
         video_screen = VideoScreen(name='video', memory_system=self.memory)
         if self.video_presenter:
@@ -2877,6 +2481,8 @@ class MemScreenApp(App):
             self.recording_presenter.cleanup()
         if self.video_presenter:
             self.video_presenter.cleanup()
+        if getattr(self, 'chat_presenter', None):
+            self.chat_presenter.cleanup()
 
     def on_start(self):
         print("[App] Started - Light purple theme, all black text")

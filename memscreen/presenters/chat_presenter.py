@@ -421,6 +421,126 @@ class ChatPresenter(BasePresenter):
             self.handle_error(e, "Failed to send message")
             return False
 
+    def send_message_sync(
+        self,
+        user_message: str,
+        on_done: Callable[[str, Optional[str]], None],
+    ) -> None:
+        """
+        Send a user message and get full AI response in background; call on_done(ai_text, error_text) when done.
+        Replicates original Kivy chat logic 1:1 (memory search, model selection, LLM call, save to memory).
+        Call from UI: start a thread that calls this, or call this and let it start the thread; on_done runs
+        in worker thread so UI should use Clock.schedule_once inside on_done to update on main thread.
+
+        Args:
+            user_message: The user's message
+            on_done: Callback(ai_text, error_text). error_text is None on success; str on error.
+        """
+        def _run():
+            ai_text = ""
+            error_msg_text = None
+            try:
+                from ..llm import OllamaLLM
+
+                context = ""
+                has_relevant_memory = False
+                memory_count = 0
+
+                if self.memory_system:
+                    try:
+                        search_result = self.memory_system.search(
+                            query=user_message,
+                            user_id="default_user",
+                            limit=5,
+                            threshold=0.0,
+                        )
+                        if search_result and "results" in search_result:
+                            memories = search_result["results"]
+                            memory_count = len(memories) if memories else 0
+                            if memories and len(memories) > 0:
+                                has_relevant_memory = True
+                                context_parts = []
+                                for mem in memories[:3]:
+                                    if isinstance(mem, dict):
+                                        if "memory" in mem:
+                                            content = mem["memory"]
+                                        elif "content" in mem:
+                                            content = mem["content"]
+                                        else:
+                                            content = str(mem)
+                                        context_parts.append(f"- {content}")
+                                if context_parts:
+                                    context = "Relevant context from memory:\n" + "\n".join(context_parts)
+                                    print(f"[Chat] Found {len(memories)} relevant memories")
+                    except Exception as mem_err:
+                        print(f"[Chat] Memory search failed: {mem_err}")
+
+                if has_relevant_memory and memory_count >= 2:
+                    selected_model = "gemma3:270m"
+                    print(f"[Chat] Using small model (gemma3:270m) - {memory_count} memories found")
+                else:
+                    selected_model = "qwen2.5vl:3b"
+                    print(f"[Chat] Using large model (qwen2.5vl:3b) - {memory_count} memories found")
+
+                llm = OllamaLLM(config={"model": selected_model})
+
+                system_prompt = """You are MemScreen, a helpful AI assistant. You help users with:
+- Answering questions about their screen recordings and activities
+- Providing information from their memory
+- Assisting with general knowledge
+- Being friendly and concise
+
+Respond naturally without mentioning your model provider or technical details."""
+
+                messages = []
+                if context:
+                    messages.append({"role": "system", "content": f"{system_prompt}\n\nHere is some relevant context from the user's memory:\n\n{context}"})
+                else:
+                    messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "user", "content": user_message})
+
+                response = llm.generate_response(messages)
+
+                if response:
+                    ai_text = str(response)
+                    if self.memory_system:
+                        try:
+                            from datetime import datetime
+                            conversation = [
+                                {"role": "user", "content": user_message},
+                                {"role": "assistant", "content": ai_text},
+                            ]
+                            self.memory_system.add(
+                                conversation,
+                                user_id="default_user",
+                                metadata={
+                                    "source": "ai_chat",
+                                    "timestamp": datetime.now().isoformat(),
+                                    "model": selected_model,
+                                    "memory_count": memory_count,
+                                    "used_context": has_relevant_memory,
+                                },
+                                infer=True,
+                            )
+                            print(f"[Chat] Saved conversation to memory")
+                        except Exception as mem_err:
+                            print(f"[Chat] Failed to save conversation to memory: {mem_err}")
+                else:
+                    ai_text = "I apologize, but I couldn't generate a response."
+
+            except Exception as err:
+                error_msg_text = f"Error: {str(err)}"
+                import traceback
+                traceback.print_exc()
+
+            try:
+                on_done(ai_text, error_msg_text)
+            except Exception:
+                pass
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+
     def _execute_with_intelligent_agent(self, user_message: str) -> bool:
         """
         Execute using Intelligent Agent with auto-classification (OPTIMIZED).
