@@ -74,6 +74,7 @@ class ChatPresenter(BasePresenter):
             ollama_base_url: Base URL for Ollama API
         """
         super().__init__(view, memory_system)
+        self.memory_system = memory_system  # Store memory_system reference
         self.ollama_base_url = ollama_base_url
 
         # Chat state
