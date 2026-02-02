@@ -18,6 +18,7 @@
   [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0xMCAyMEgyMm0tOCAwaDgiLz48cGF0aCBkPSJNOSAxOWg2Ii8+PHBhdGggZD0iTTEwIDVoNG0tMiAwaDQiLz48L3N2Zz4=)](LICENSE)
   [![Python](https://img.shields.io/badge/python-3.8+-green?style=for-the-badge&logo=python&logoColor=white&labelColor=333)](https://www.python.org/downloads/)
   [![Ollama](https://img.shields.io/badge/ollama-supported-orange?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMmwwIDdjMi42NyAwIDguMTYgMS4zNCA4IDl2MmMwIDUuNjItNS4zMyA4LTggOGwwLTd6Ii8+PC9zdmc+)](https://ollama.com)
+  [![vLLM](https://img.shields.io/badge/vLLM-supported-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMmwwIDdjMi42NyAwIDguMTYgMS4zNCA4IDl2MmMwIDUuNjItNS4zMyA4LTggOGwwLTd6Ii8+PHBhdGggZD0iTTEyIDdsNSA1djZoLTEweiIvPjwvc3ZnPg==)](https://docs.vllm.ai/)
   [![Version](https://img.shields.io/badge/version-v0.5.0-brightgreen?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMCIvPjxwYXRoIGQ9Ik0xMiA2djZsNCAzIi8+PC9zdmc+&labelColor=333)](https://github.com/smileformylove/MemScreen/releases/tag/v0.5.0)
 
   **100% Local • 100% Private • AI-Powered Visual Memory System**
@@ -306,6 +307,8 @@ python start.py
 
 For detailed documentation, see:
 - [Docker Deployment](docs/DOCKER.md) — Containerized deployment guide
+- [vLLM Backend](docs/VLLM_BACKEND.md) — High-performance inference backend setup
+- [Step-3.5-Flash Model](docs/STEP35FLASH.md) — Advanced reasoning model integration
 - [Architecture Overview](docs/ARCHITECTURE.md) — System design and components
 - [Intelligent Agent System](docs/INTELLIGENT_AGENT.md) — Auto-classification and smart dispatch
 - [Dynamic Memory System](docs/DYNAMIC_MEMORY.md) — Categorized memory and intelligent search
@@ -366,8 +369,142 @@ For detailed documentation, see:
 | **Screen Capture** | PIL ImageGrab | ✅ Local |
 | **Video Processing** | OpenCV | ✅ Local |
 | **Databases** | SQLite + ChromaDB | ✅ Local |
-| **AI Models** | Ollama (qwen2.5vl:3b) | ✅ **100% Local** |
+| **AI Inference Backends** | Ollama / vLLM | ✅ **100% Local** |
+| **Vision Models** | qwen2.5vl:3b / Qwen2-VL | ✅ **100% Local** |
+| **Advanced Reasoning** | Step-3.5-Flash (optional) | ✅ **100% Local** |
 | **Language** | Python 3.8+ | ✅ Local |
+
+---
+
+## 🧠 AI Inference Backends
+
+<div align="center">
+
+  <img src="assets/logo_medium.png" alt="AI Backends" width="100"/>
+
+  **Flexible Inference Options**
+
+</div>
+
+MemScreen supports **multiple local AI inference backends** for different use cases:
+
+### 🦙 Ollama (Default)
+
+**Best for:** Development, local testing, users without dedicated GPUs
+
+- ✅ **Easy setup** — One-command installation
+- ✅ **Mac-friendly** — Runs on macOS without GPU
+- ✅ **Low resource usage** — ~4GB RAM
+- ✅ **Good models** — qwen2.5vl:3b (vision), mxbai-embed-large (embeddings)
+
+**Setup:**
+```bash
+# Install Ollama
+brew install ollama  # macOS
+
+# Pull models
+ollama pull qwen2.5vl:3b
+ollama pull mxbai-embed-large
+
+# Start MemScreen
+python start.py
+```
+
+### ⚡ vLLM (Production)
+
+**Best for:** Production deployments, high throughput, GPU acceleration
+
+- ✅ **High performance** — PagedAttention for efficient memory management
+- ✅ **OpenAI-compatible API** — Drop-in replacement for cloud APIs
+- ✅ **GPU optimized** — Tensor parallelism for multi-GPU setups
+- ✅ **Production-ready** — Used by enterprises for inference at scale
+
+**Models:**
+- **LLM:** Qwen/Qwen2.5-7B-Instruct (default)
+- **Vision:** Qwen/Qwen2-VL-7B-Instruct
+- **Embeddings:** intfloat/e5-mistral-7b-instruct
+
+**Setup:**
+```bash
+# Install vLLM (optional dependency)
+pip install 'memscreen[vllm]'
+
+# Start vLLM server with Docker
+docker-compose -f docker-compose.vllm.yml up -d
+
+# Configure MemScreen to use vLLM
+export MEMSCREEN_LLM_BACKEND=vllm
+export MEMSCREEN_VLLM_URL=http://localhost:8000
+
+# Start MemScreen
+python start.py
+```
+
+**Hardware Requirements:**
+- GPU: NVIDIA GPU with 12GB+ VRAM (for 7B models)
+- CPU: Modern multi-core processor
+- RAM: 16GB+ recommended
+
+### 🚀 Step-3.5-Flash (Advanced Reasoning)
+
+**Best for:** Complex reasoning tasks, mathematical problem solving, multi-step logic
+
+- ✅ **196B parameters** — Only 11B active (sparse MoE)
+- ✅ **Multi-token prediction** — Faster inference
+- ✅ **Built-in reasoning** — Optimized for complex logic
+- ✅ **Tool calling** — Native function execution support
+
+**Setup:**
+```bash
+# Requires 4x H200/H20/B200 GPUs (~400GB VRAM for FP16)
+
+# Start Step-3.5-Flash server
+docker-compose -f docker-compose.step35flash.yml up -d
+
+# Configure MemScreen
+export MEMSCREEN_LLM_BACKEND=vllm
+export MEMSCREEN_VLLM_URL=http://localhost:8001
+export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
+
+# Start MemScreen
+python start.py
+```
+
+**Hardware Requirements:**
+- GPU: 4x NVIDIA H200/H20/B200 (recommended)
+- VRAM: ~400GB for FP16, ~200GB for FP8
+- Alternative: Use FP8 version with 2x GPUs
+
+See [Step-3.5-Flash Documentation](docs/STEP35FLASH.md) for details.
+
+### 🔄 Switching Backends
+
+Easily switch between backends using environment variables:
+
+```bash
+# Use Ollama (default)
+export MEMSCREEN_LLM_BACKEND=ollama
+
+# Use vLLM with standard models
+export MEMSCREEN_LLM_BACKEND=vllm
+export MEMSCREEN_VLLM_URL=http://localhost:8000
+
+# Use vLLM with Step-3.5-Flash
+export MEMSCREEN_LLM_BACKEND=vllm
+export MEMSCREEN_VLLM_URL=http://localhost:8001
+export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
+```
+
+### 📊 Backend Comparison
+
+| Feature | Ollama | vLLM (Standard) | vLLM (Step-3.5-Flash) |
+|---------|--------|-----------------|----------------------|
+| **Setup Difficulty** | ⭐ Easy | ⭐⭐ Medium | ⭐⭐⭐ Hard |
+| **Hardware Requirements** | CPU/GPU | GPU (12GB+) | 4x GPU (200GB+) |
+| **Performance** | Good | Excellent | Outstanding |
+| **Model Size** | 3B | 7B | 196B (11B active) |
+| **Reasoning** | Basic | Good | Advanced |
+| **Best For** | Development | Production | Complex Tasks |
 
 ---
 
