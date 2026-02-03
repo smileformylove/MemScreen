@@ -13,8 +13,8 @@ This implementation adds vLLM as a parallel inference backend to MemScreen, prov
 
 1. **New Files Created:**
    - `memscreen/llm/vllm.py` — vLLM implementation (VllmConfig + VllmLLM classes)
-   - `docker-compose.vllm.yml` — Standard vLLM Docker configuration
-   - `docker-compose.step35flash.yml` — Step-3.5-Flash specialized configuration
+   - `docker/docker-compose.vllm.yml` — Standard vLLM Docker configuration
+   - `docker/docker-compose.step35flash.yml` — Step-3.5-Flash specialized configuration
    - `tests/test_vllm.py` — Comprehensive test suite
    - `tests/test_step35flash.py` — Step-3.5-Flash test suite
    - `tests/demo_step35flash.py` — Configuration demonstration
@@ -103,10 +103,10 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 
 ```bash
 # Standard vLLM
-docker-compose -f docker-compose.vllm.yml up -d
+docker-compose -f docker/docker-compose.vllm.yml up -d
 
 # Step-3.5-Flash
-docker-compose -f docker-compose.step35flash.yml up -d
+docker-compose -f docker/docker-compose.step35flash.yml up -d
 ```
 
 ## Performance Benefits
@@ -126,7 +126,7 @@ docker-compose -f docker-compose.step35flash.yml up -d
 pip install 'memscreen[vllm]'
 
 # 2. Start vLLM server
-docker-compose -f docker-compose.vllm.yml up -d
+docker-compose -f docker/docker-compose.vllm.yml up -d
 
 # 3. Switch backend
 export MEMSCREEN_LLM_BACKEND=vllm

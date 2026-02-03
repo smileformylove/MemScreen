@@ -21,26 +21,26 @@ tests/
 
 ```bash
 # 从项目根目录
-python run_tests.py
+python tests/run_tests.py
 ```
 
 ### 运行特定测试
 
 ```bash
 # 性能测试
-python run_tests.py --performance
+python tests/run_tests.py --performance
 
 # 视觉记忆测试
-python run_tests.py --visual
+python tests/run_tests.py --visual
 
 # 动态 Memory 测试
-python run_tests.py --dynamic
+python tests/run_tests.py --dynamic
 
 # 集成测试
-python run_tests.py --integration
+python tests/run_tests.py --integration
 
 # 音频测试
-python run_tests.py --audio
+python tests/run_tests.py --audio
 ```
 
 ### 直接运行测试
@@ -132,8 +132,8 @@ python tests/test_dynamic_memory.py
 
 快速测试：
 ```bash
-chmod +x ../test_docker.sh
-../test_docker.sh
+chmod +x docker/test_docker.sh
+docker/test_docker.sh
 ```
 
 ## 📊 测试覆盖率
@@ -176,6 +176,6 @@ python run_tests.py --performance
 
 ## 📚 相关文档
 
-- [性能优化文档](../INTELLIGENT_AGENT_SUMMARY.md)
+- [性能优化文档](../docs/INTELLIGENT_AGENT_SUMMARY.md)
 - [动态 Memory 文档](../docs/DYNAMIC_MEMORY.md)
 - [Intelligent Agent 文档](../docs/INTELLIGENT_AGENT.md)

@@ -45,10 +45,10 @@ pip install vllm>=0.6.0 openai>=1.0.0
 
 ```bash
 # Start vLLM server with default model (Qwen2.5-7B-Instruct)
-docker-compose -f docker-compose.vllm.yml up -d
+docker-compose -f docker/docker-compose.vllm.yml up -d
 
 # View logs
-docker-compose -f docker-compose.vllm.yml logs -f
+docker-compose -f docker/docker-compose.vllm.yml logs -f
 
 # Check server health
 curl http://localhost:8000/health
@@ -116,7 +116,7 @@ vllm:
 ### Single GPU
 
 ```yaml
-# docker-compose.vllm.yml
+# docker/docker-compose.vllm.yml
 services:
   vllm:
     image: vllm/vllm-openai:latest
@@ -140,7 +140,7 @@ services:
 ```bash
 # Use 4 GPUs for faster inference
 export TENSOR_PARALLEL_SIZE=4
-docker-compose -f docker-compose.vllm.yml up -d
+docker-compose -f docker/docker-compose.vllm.yml up -d
 ```
 
 ### Custom Model
@@ -148,7 +148,7 @@ docker-compose -f docker-compose.vllm.yml up -d
 ```bash
 # Use a different model
 export MODEL=meta-llama/Llama-3.1-8B-Instruct
-docker-compose -f docker-compose.vllm.yml up -d
+docker-compose -f docker/docker-compose.vllm.yml up -d
 ```
 
 ## 🎯 Supported Models
@@ -280,7 +280,7 @@ Switching from Ollama to vLLM is simple:
 pip install 'memscreen[vllm]'
 
 # 3. Start vLLM server
-docker-compose -f docker-compose.vllm.yml up -d
+docker-compose -f docker/docker-compose.vllm.yml up -d
 
 # 4. Switch backend
 export MEMSCREEN_LLM_BACKEND=vllm

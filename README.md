@@ -100,10 +100,10 @@ Get up and running in **3 minutes** — **no API keys, no cloud, no signup!**
 git clone https://github.com/smileformylove/MemScreen.git && cd MemScreen
 
 # 2️⃣ One-command start
-docker-compose up -d
+docker-compose -f docker/docker-compose.yml up -d
 
 # 3️⃣ Check logs
-docker-compose logs -f memscreen
+docker-compose -f docker/docker-compose.yml logs -f memscreen
 ```
 
 ✅ **Pros:** Auto-installs everything, isolated environment, easy cleanup
@@ -430,7 +430,7 @@ python start.py
 pip install 'memscreen[vllm]'
 
 # Start vLLM server with Docker
-docker-compose -f docker-compose.vllm.yml up -d
+docker-compose -f docker/docker-compose.vllm.yml up -d
 
 # Configure MemScreen to use vLLM
 export MEMSCREEN_LLM_BACKEND=vllm
@@ -459,7 +459,7 @@ python start.py
 # Requires 4x H200/H20/B200 GPUs (~400GB VRAM for FP16)
 
 # Start Step-3.5-Flash server
-docker-compose -f docker-compose.step35flash.yml up -d
+docker-compose -f docker/docker-compose.step35flash.yml up -d
 
 # Configure MemScreen
 export MEMSCREEN_LLM_BACKEND=vllm

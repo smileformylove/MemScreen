@@ -21,13 +21,13 @@ git clone https://github.com/smileformylove/MemScreen.git
 cd MemScreen
 
 # 2. 构建并启动
-docker-compose up -d
+docker-compose -f docker/docker-compose.yml up -d
 
 # 3. 查看日志
-docker-compose logs -f memscreen
+docker-compose -f docker/docker-compose.yml logs -f memscreen
 
 # 4. 停止服务
-docker-compose down
+docker-compose -f docker/docker-compose.yml down
 ```
 
 ### 方法 2: 使用 Docker 命令
@@ -57,7 +57,7 @@ docker rm memscreen-app
 
 ### 环境变量
 
-在 `docker-compose.yml` 中可以配置：
+在 `docker/docker-compose.yml` 中可以配置：
 
 ```yaml
 environment:
@@ -68,7 +68,7 @@ environment:
 
 ### GPU 支持
 
-如果您有 NVIDIA GPU，取消注释 `docker-compose.yml` 中的 GPU 配置：
+如果您有 NVIDIA GPU，取消注释 `docker/docker-compose.yml` 中的 GPU 配置：
 
 ```yaml
 deploy:
@@ -111,8 +111,8 @@ docker run --rm -v memscreen_data:/data -v $(pwd):/backup \
 
 2. **启用 noVNC（Web 访问）**：
    ```bash
-   # 在 docker-compose.yml 中取消注释 novnc 服务
-   docker-compose up -d
+   # 在 docker/docker-compose.yml 中取消注释 novnc 服务
+   docker-compose -f docker/docker-compose.yml up -d
    # 访问 http://localhost:6080
    ```
 
@@ -252,16 +252,16 @@ docker-compose -f docker-compose.dev.yml up
 
 ```bash
 # 1. 停止容器
-docker-compose down
+docker-compose -f docker/docker-compose.yml down
 
 # 2. 拉取最新代码
 git pull
 
 # 3. 重新构建
-docker-compose build --no-cache
+docker-compose -f docker/docker-compose.yml build --no-cache
 
 # 4. 启动新版本
-docker-compose up -d
+docker-compose -f docker/docker-compose.yml up -d
 ```
 
 ### 清理旧镜像
@@ -279,7 +279,7 @@ docker volume prune
 ### 使用 Docker Swarm
 
 ```bash
-docker stack deploy -c docker-compose.yml memscreen
+docker stack deploy -c docker/docker-compose.yml memscreen
 ```
 
 ### 使用 Kubernetes

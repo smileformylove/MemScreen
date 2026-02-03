@@ -16,13 +16,13 @@ Step-3.5-Flash 是 StepFun 开发的高级大语言模型，专为生产级推�
 
 ```bash
 # 启动 FP16 版本（推荐）
-docker-compose -f docker-compose.step35flash.yml up -d
+docker-compose -f docker/docker-compose.step35flash.yml up -d
 
 # 查看日志
-docker-compose -f docker-compose.step35flash.yml logs -f
+docker-compose -f docker/docker-compose.step35flash.yml logs -f
 
 # 停止服务
-docker-compose -f docker-compose.step35flash.yml down
+docker-compose -f docker/docker-compose.step35flash.yml down
 ```
 
 ### 2. 配置 MemScreen 使用 Step-3.5-Flash
@@ -51,12 +51,12 @@ python test_step35flash.py
 #### Tensor Parallel (TP) - 适合低延迟场景
 ```bash
 export TENSOR_PARALLEL_SIZE=4
-docker-compose -f docker-compose.step35flash.yml up -d
+docker-compose -f docker/docker-compose.step35flash.yml up -d
 ```
 
 #### Data Parallel (DP) - 适合高负载场景
 ```yaml
-# 修改 docker-compose.step35flash.yml
+# 修改 docker/docker-compose.step35flash.yml
 command: >
   --model stepfun-ai/Step-3.5-Flash
   --data-parallel-size 4
@@ -71,7 +71,7 @@ command: >
 
 ```bash
 # 启动 FP8 版本
-docker-compose --profile fp8 -f docker-compose.step35flash.yml up -d
+docker-compose --profile fp8 -f docker/docker-compose.step35flash.yml up -d
 ```
 
 **注意**: FP8 版本不支持 TP > 1
@@ -80,7 +80,7 @@ docker-compose --profile fp8 -f docker-compose.step35flash.yml up -d
 
 ```bash
 export GPU_MEMORY_UTILIZATION=0.95
-docker-compose -f docker-compose.step35flash.yml up -d
+docker-compose -f docker/docker-compose.step35flash.yml up -d
 ```
 
 ## 📊 性能指标
