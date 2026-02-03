@@ -43,11 +43,73 @@
 ### 💡 The Solution
 
 **MemScreen** gives you a **photographic memory for your digital life**:
-- 📸 **Record** your screen continuously or on-demand
-- 🤖 **AI-powered understanding** with local vision models
-- 🔍 **Instant semantic search** across all your recordings
-- 💬 **Natural language queries** — just ask like you would a human
-- 🔒 **Zero privacy concerns** — everything runs locally on your machine
+
+<table align="center">
+<tr>
+<td align="center" width="20%">
+
+### 📸 Record
+
+</td>
+<td align="center" width="20%">
+
+### 🤖 Understand
+
+</td>
+<td align="center" width="20%">
+
+### 🔍 Search
+
+</td>
+<td align="center" width="20%">
+
+### 💬 Ask
+
+</td>
+<td align="center" width="20%">
+
+### 🔒 Private
+
+</td>
+</tr>
+<tr>
+<td align="center">
+
+**Screen Recording**
+<br/>
+Capture continuously or on-demand
+
+</td>
+<td align="center">
+
+**AI-Powered**
+<br/>
+Local vision models understand your screen
+
+</td>
+<td align="center">
+
+**Semantic Search**
+<br/>
+Find anything by meaning, not keywords
+
+</td>
+<td align="center">
+
+**Natural Language**
+<br/>
+Just ask like you would a person
+
+</td>
+<td align="center">
+
+**100% Local**
+<br/>
+Everything runs on your machine
+
+</td>
+</tr>
+</table>
 
 <div align="center">
 
