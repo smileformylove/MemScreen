@@ -546,6 +546,12 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 
 ---
 
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=smileformylove/MemScreen&type=Date)](https://star-history.com/#smileformylove/MemScreen&Date)
+
+---
+
 ## 🤝 Contributing
 
 Contributions welcome! Here's how to help:
