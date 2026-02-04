@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Basic App Information -->
+    <key>CFBundleDisplayName</key>
+    <string>MemScreen</string>
+
+    <key>CFBundleExecutable</key>
+    <string>MemScreen</string>
+
+    <key>CFBundleIconFile</key>
+    <string>logo</string>
+
+    <key>CFBundleIdentifier</key>
+    <string>com.smileformylove.MemScreen</string>
+
+    <key>CFBundleName</key>
+    <string>MemScreen</string>
+
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+
+    <!-- Version Information -->
+    <key>CFBundleShortVersionString</key>
+    <string>0.5.0</string>
+
+    <key>CFBundleVersion</key>
+    <string>0.5.0</string>
+
+    <key>CFBundleGetInfoString</key>
+    <string>MemScreen 0.5.0 - AI-Powered Visual Memory</string>
+
+    <!-- High DPI Support -->
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!-- Dark Mode Support -->
+    <key>NSRequiresAquaSystemAppearance</key>
+    <false/>
+
+    <!-- App Category -->
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
+
+    <!-- Background/Auxiliary Execution -->
+    <key>LSBackgroundOnly</key>
+    <false/>
+
+    <key>LSUIElement</key>
+    <false/>
+
+    <!-- Minimum macOS Version -->
+    <key>LSMinimumSystemVersion</key>
+    <string>11.0</string>
+
+    <!-- Document Types -->
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>db</string>
+            </array>
+            <key>CFBundleTypeName</key>
+            <string>MemScreen Database</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.sqlite3.database</string>
+            </array>
+        </dict>
+    </array>
+
+    <!-- Privacy Permissions Descriptions (macOS 10.14+) -->
+    <key>NSAppleMusicUsageDescription</key>
+    <string>MemScreen needs access to your screen to provide AI-powered visual memory and screen recording capabilities.</string>
+
+    <key>NSCameraUsageDescription</key>
+    <string>MemScreen needs camera access for video recording and visual capture features.</string>
+
+    <key>NSMicrophoneUsageDescription</key>
+    <string>MemScreen needs microphone access for audio recording and voice features.</string>
+
+    <key>NSScreenCaptureDescription</key>
+    <string>MemScreen needs screen recording permission to capture and analyze your screen content for AI-powered visual memory.</string>
+
+    <key>NSAccessibilityUsageDescription</key>
+    <string>MemScreen needs accessibility permissions to automatically capture screen content for visual memory.</string>
+
+    <!-- File Access -->
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>MemScreen needs access to documents to search and analyze screen content.</string>
+
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>MemScreen needs access to downloads to search and analyze screen content.</string>
+
+    <!-- URL Schemes -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.smileformylove.MemScreen</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>memscreen</string>
+            </array>
+        </dict>
+    </array>
+
+    <!-- Localizations -->
+    <key>CFBundleAllowMixedLocalizations</key>
+    <true/>
+
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>zh_CN</string>
+    </array>
+
+    <!-- Signing Info -->
+    <key>CFBundleSignature</key>
+    <string>????</string>
+
+    <!-- App Transport Security (for network requests) -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <false/>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+
+    <!-- Scripting Handler -->
+    <key>NSAppleScriptEnabled</key>
+    <false/>
+
+</dict>
+</plist>

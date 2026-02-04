@@ -1,0 +1,40 @@
+[Desktop Entry]
+# MemScreen Desktop Entry
+# This file describes how MemScreen appears in application menus
+
+Name=MemScreen
+GenericName=AI Visual Memory
+Comment=AI-Powered Visual Memory System - Capture, understand, and search your screen
+
+# Path to executable (relative to AppDir)
+Exec=/usr/bin/MemScreen
+TryExec=/usr/bin/MemScreen
+
+# Icon (will be copied to AppDir/usr/share/icons/)
+Icon=memscreen
+
+# Terminal settings (don't show terminal for GUI app)
+Terminal=false
+Type=Application
+
+# Categories for application menu
+Categories=Utility;Productivity;Graphics;Recorder;
+
+# Keywords for search
+Keywords=ai;memory;screen;capture;search;visual;automation
+
+# Startup notification
+StartupNotify=true
+
+# Startup WM class (helps with window management)
+StartupWMClass=MemScreen
+
+# Supported MIME types
+MimeType=application/x-memscreen;
+
+# Translations
+Name[zh_CN]=MemScreen
+Comment[zh_CN]=AI驱动的视觉记忆系统 - 捕获、理解和搜索您的屏幕
+
+# Desktop entry specification version
+Version=1.1
