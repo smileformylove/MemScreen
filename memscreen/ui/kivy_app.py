@@ -615,6 +615,12 @@ class ChatScreen(BaseScreen):
             self.chat_input.focus = True
             self.chat_input.cursor = (0, len(self.chat_input.text))
 
+    def on_models_loaded(self, available_models, current_model):
+        """Callback when models are loaded successfully"""
+        # This is called when models are loaded
+        # Can be used to update UI if needed
+        pass
+
 
 class TimelineMarker(BoxLayout):
     """Timeline marker widget for displaying video positions on timeline"""
