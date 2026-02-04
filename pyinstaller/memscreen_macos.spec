@@ -47,6 +47,11 @@ hiddenimports = [
     'torch',
     'ollama',
     'chromadb',
+    'chromadb.api',
+    'chromadb.api.rust',
+    'chromadb.telemetry',
+    'chromadb.telemetry.product',
+    'chromadb.telemetry.product.posthog',
     'sentence_transformers',
     'openai',
     'pydantic',
@@ -67,6 +72,10 @@ excludes = [
     'matplotlib',
     'pandas',
     'scipy',
+    # Exclude cv2's SDL2 to avoid conflict with kivy's SDL2
+    'cv2.cuda',
+    'cv2.cv2',
+    'cv2.gapi',
 ]
 
 a = Analysis(
@@ -75,9 +84,12 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,
-    hookspath=[],
+    hookspath=[os.path.join(spec_dir, 'hooks')],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=[
+        os.path.join(spec_dir, 'rthook/pyi_rthook_chromadb.py'),
+        os.path.join(spec_dir, 'rthook/pyi_rthook_disable_telemetry.py'),
+    ],
     excludes=excludes,
     noarchive=False,
     optimize=0,

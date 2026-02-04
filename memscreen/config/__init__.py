@@ -30,11 +30,14 @@ class MemScreenConfig:
     """
 
     # Default paths
-    DEFAULT_DB_DIR = Path("./db")
+    # Use user home directory for data storage to avoid read-only filesystem issues
+    _HOME_DIR = Path.home()
+    DEFAULT_APP_DIR = _HOME_DIR / ".memscreen"
+    DEFAULT_DB_DIR = DEFAULT_APP_DIR / "db"
     DEFAULT_DB_NAME = "screen_capture.db"
     DEFAULT_CHROMA_DB_NAME = "chroma.sqlite3"
-    DEFAULT_VIDEOS_DIR = "videos"
-    DEFAULT_LOGS_DIR = "logs"
+    DEFAULT_VIDEOS_DIR = DEFAULT_APP_DIR / "videos"
+    DEFAULT_LOGS_DIR = DEFAULT_APP_DIR / "logs"
 
     # Default timezone
     DEFAULT_TIMEZONE = "US/Pacific"

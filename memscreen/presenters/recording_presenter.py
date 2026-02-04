@@ -10,7 +10,6 @@ import os
 import time
 import threading
 import sqlite3
-import cv2
 import numpy as np
 from datetime import datetime
 from typing import Optional, Dict, Any
@@ -377,6 +376,7 @@ class RecordingPresenter(BasePresenter):
             numpy array of the frame or None if capture failed
         """
         try:
+            import cv2  # Lazy import to avoid PyInstaller recursion
             from PIL import ImageGrab
 
             # Capture screen with region support
@@ -395,8 +395,14 @@ class RecordingPresenter(BasePresenter):
 
             return frame
 
+        except ImportError as e:
+            # cv2 import failed - likely due to PyInstaller bundling issue
+            print(f"[RecordingPresenter] cv2 not available: {e}")
+            print("[RecordingPresenter] Preview function requires cv2 - please install opencv-python")
+            return None
         except Exception as e:
             self.handle_error(e, "Failed to capture preview frame")
+            return None
             return None
 
     def get_recordings_list(self) -> list:
@@ -441,6 +447,7 @@ class RecordingPresenter(BasePresenter):
         Record screen in background thread.
         This method runs in a separate thread.
         """
+        import cv2  # Lazy import to avoid PyInstaller recursion
         last_screenshot_time = time.time()
         last_save_time = time.time()
 
@@ -545,6 +552,7 @@ class RecordingPresenter(BasePresenter):
             frames: List of video frames
         """
         try:
+            import cv2  # Lazy import to avoid PyInstaller recursion
             if not frames:
                 return
 
@@ -586,6 +594,7 @@ class RecordingPresenter(BasePresenter):
             audio_file: Optional path to audio file to merge
         """
         try:
+            import cv2  # Lazy import to avoid PyInstaller recursion
             if not frames:
                 self.show_info("No frames to save")
                 return
@@ -780,6 +789,7 @@ When users ask about what was on their screen or what they were doing, reference
     def _analyze_video_content(self, filename, total_frames, fps):
         """Analyze video content by sampling frames and using vision model"""
         try:
+            import cv2  # Lazy import to avoid PyInstaller recursion
             # Sample frames for analysis
             num_samples = min(5, total_frames)
             sample_indices = [int(i * total_frames / num_samples) for i in range(num_samples)]

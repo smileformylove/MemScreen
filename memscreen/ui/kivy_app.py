@@ -54,7 +54,6 @@ from kivy.core.window import Window
 from kivy.config import Config
 from kivy.core.text import LabelBase
 from kivy.graphics.texture import Texture
-import cv2
 import threading
 
 Config.set('graphics', 'width', '1200')
@@ -127,6 +126,8 @@ class RecordingScreen(BaseScreen):
         self.presenter = None
         self.preview_update_event = None
         self.region_selector_overlay = None  # Track current overlay
+        self.cv2_available = True  # Track if cv2 is available
+        self.preview_failed_count = 0  # Count consecutive preview failures
 
         layout = BoxLayout(orientation='vertical', spacing=15, padding=25)
 
@@ -249,22 +250,43 @@ class RecordingScreen(BaseScreen):
 
     def _update_preview_frame(self, dt):
         """Update preview with current frame"""
-        if self.presenter and not self.is_recording:
+        if self.presenter and not self.is_recording and self.cv2_available:
             frame = self.presenter.get_preview_frame()
             if frame is not None:
                 self._display_frame(frame)
+                self.preview_failed_count = 0  # Reset count on success
+            else:
+                self.preview_failed_count += 1
+                # If preview fails 3 times in a row, disable it
+                if self.preview_failed_count >= 3:
+                    print("[RecordingScreen] Preview disabled after 3 consecutive failures")
+                    self.cv2_available = False
+                    # Cancel the update timer
+                    if self.preview_update_event is not None:
+                        self.preview_update_event.cancel()
+                        self.preview_update_event = None
 
     def _display_frame(self, frame):
         """Convert OpenCV frame to Kivy texture and display"""
-        # Convert BGR to RGB
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        try:
+            import cv2  # Lazy import to avoid PyInstaller recursion
+            # Convert BGR to RGB
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        # Flip vertically for correct display
-        frame_rgb = cv2.flip(frame_rgb, 0)
+            # Flip vertically for correct display
+            frame_rgb = cv2.flip(frame_rgb, 0)
 
-        # Create texture
-        texture = Texture.create(size=(frame_rgb.shape[1], frame_rgb.shape[0]), colorfmt='rgb')
-        texture.blit_buffer(frame_rgb.tobytes(), colorfmt='rgb', bufferfmt='ubyte')
+            # Create texture
+            texture = Texture.create(size=(frame_rgb.shape[1], frame_rgb.shape[0]), colorfmt='rgb')
+            texture.blit_buffer(frame_rgb.tobytes(), colorfmt='rgb', bufferfmt='ubyte')
+
+            # Display texture
+            self.preview_image.texture = texture
+        except ImportError as e:
+            print(f"[RecordingScreen] cv2 not available: {e}")
+            print("[RecordingScreen] Display function requires cv2")
+        except Exception as e:
+            print(f"[RecordingScreen] Error displaying frame: {e}")
 
         # Update image
         self.preview_image.texture = texture
@@ -1456,6 +1478,7 @@ class VideoScreen(BaseScreen):
 
     def _display_frame(self, frame):
         """Display a frame in the preview"""
+        import cv2  # Lazy import to avoid PyInstaller recursion
         try:
             if frame is None:
                 print("[VideoScreen] Warning: Received None frame")
@@ -2284,7 +2307,10 @@ class MemScreenApp(App):
 
         # Initialize presenters
         try:
-            self.recording_presenter = RecordingPresenter(memory_system=self.memory)
+            self.recording_presenter = RecordingPresenter(
+                memory_system=self.memory,
+                db_path=str(app_config.db_path)
+            )
             self.recording_presenter.initialize()
             print("[App] RecordingPresenter initialized")
         except Exception as e:
@@ -2292,7 +2318,7 @@ class MemScreenApp(App):
             self.recording_presenter = None
 
         try:
-            self.video_presenter = VideoPresenter()
+            self.video_presenter = VideoPresenter(db_path=str(app_config.db_path))
             self.video_presenter.initialize()
             print("[App] VideoPresenter initialized")
         except Exception as e:

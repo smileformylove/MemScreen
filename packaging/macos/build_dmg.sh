@@ -159,39 +159,6 @@ print_info "Creating Applications symlink..."
 ln -s /Applications "$DMG_TEMP_DIR/Applications"
 print_success "Applications symlink created"
 
-# Create README file in DMG
-cat > "$DMG_TEMP_DIR/README.txt" <<EOF
-MemScreen - AI-Powered Visual Memory
-
-Version: $VERSION
-
-Installation:
-1. Drag MemScreen.app to the Applications folder
-2. Launch MemScreen from Applications
-3. Follow the first-run setup wizard
-
-Requirements:
-- macOS 11.0 (Big Sur) or later
-- Ollama (will be installed by setup wizard if needed)
-- ~3GB disk space for AI models
-
-Permissions:
-MemScreen requires the following permissions:
-- Screen Recording (for capturing screen content)
-- Accessibility (for automated screen capture)
-- Microphone (optional, for audio recording)
-
-These permissions will be requested during first launch.
-
-For more information, visit:
-https://github.com/smileformylove/MemScreen
-
-Support:
-https://github.com/smileformylove/MemScreen/issues
-EOF
-
-print_success "README file created"
-
 ################################################################################
 # Step 3: Create DMG
 ################################################################################

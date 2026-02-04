@@ -104,6 +104,7 @@ class ChromaDB(VectorStoreBase):
         if client:
             self.client = client
         else:
+            # Disable telemetry completely
             self.settings = Settings(anonymized_telemetry=False)
 
             if host and port:

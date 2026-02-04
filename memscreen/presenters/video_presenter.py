@@ -8,9 +8,11 @@
 
 import os
 import sqlite3
-import cv2
 import threading
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import cv2
 
 from kivy.clock import Clock
 from .base_presenter import BasePresenter
@@ -192,6 +194,7 @@ class VideoPresenter(BasePresenter):
             True if video loaded successfully
         """
         try:
+            import cv2  # Lazy import to avoid PyInstaller recursion
             print(f"[VideoPresenter] load_video called: {filename}")
             # Stop current playback
             self.stop_playback()
@@ -247,6 +250,7 @@ class VideoPresenter(BasePresenter):
         Returns:
             True if playback started
         """
+        import cv2  # Lazy import to avoid PyInstaller recursion
         print(f"[VideoPresenter] play_video called, is_playing={self.is_playing}")
         if not self.video_capture:
             print("[VideoPresenter] Error: No video loaded")
@@ -321,6 +325,7 @@ class VideoPresenter(BasePresenter):
         Returns:
             True if stopped successfully
         """
+        import cv2  # Lazy import to avoid PyInstaller recursion
         self.is_playing = False
         self.stop_playback_flag = True
 
@@ -345,6 +350,7 @@ class VideoPresenter(BasePresenter):
 
     def seek_to_frame(self, frame_number: int) -> bool:
         """Seek to specific frame and display it"""
+        import cv2  # Lazy import to avoid PyInstaller recursion
         if not self.video_capture:
             return False
 
