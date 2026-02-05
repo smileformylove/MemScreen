@@ -144,5 +144,9 @@ app = BUNDLE(
         'NSRequiresAquaSystemAppearance': False,
         'NSMicrophoneUsageDescription': 'MemScreen needs microphone access for audio recording.',
         'NSCameraUsageDescription': 'MemScreen needs camera access for video recording.',
+        'NSAppleMusicUsageDescription': 'MemScreen needs access to your screen to provide AI-powered visual memory.',
+        'LSBackgroundOnly': False,  # Run as foreground app, not background
+        'LSUIElement': False,  # Show in dock and allow focus
+        'NSSupportsAutomaticTermination': False,  # Prevent auto-termination
     },
 )

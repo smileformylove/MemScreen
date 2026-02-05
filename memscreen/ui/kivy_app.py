@@ -2519,6 +2519,23 @@ class MemScreenApp(App):
     def on_start(self):
         print("[App] Started - Light purple theme, all black text")
 
+        # Force activate the app on macOS using Cocoa API
+        if sys.platform == 'darwin':
+            try:
+                from Cocoa import NSRunningApplication, NSApplicationActivateIgnoringOtherApps
+                app = NSRunningApplication.currentApplication()
+                app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+                print("[App] ✓ Activated app using Cocoa API")
+            except Exception as e:
+                print(f"[App] ⚠ Could not activate with Cocoa: {e}")
+
+        # Request attention to bring window to front on macOS
+        try:
+            Window.request_attention(window_attention="normal")
+            print("[App] ✓ Window attention requested")
+        except Exception as e:
+            print(f"[App] ⚠ Could not request attention: {e}")
+
         # Ensure Ollama service is running
         print("[App] Checking Ollama service...")
         try:
