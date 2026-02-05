@@ -2267,23 +2267,40 @@ class MemScreenApp(App):
             from kivy.clock import Clock
             def center_window(dt):
                 try:
-                    # Get screen size
-                    from kivy.config import Config
-                    screen_width = 1920  # Default, will be overridden
-                    screen_height = 1080
+                    # Get actual screen size using pygame
+                    try:
+                        import pygame
+                        pygame.init()
+                        info = pygame.display.Info()
+                        screen_width = info.current_w
+                        screen_height = info.current_h
+                        pygame.quit()
+                    except:
+                        # Fallback to default screen size
+                        screen_width = 1920
+                        screen_height = 1080
 
                     # Set window size explicitly
                     Window.size = (1200, 800)
 
                     # Center window on screen
-                    Window.left = (screen_width - 1200) // 2
-                    Window.top = (screen_height - 800) // 2
+                    Window.left = max(0, (screen_width - 1200) // 2)
+                    Window.top = max(0, (screen_height - 800) // 2)
 
+                    # Force window to show
+                    Window.show()
+                    Window.raise_window()
+
+                    print(f"[App] Screen size: {screen_width}x{screen_height}")
                     print(f"[App] Window set to size: {Window.size}, position: ({Window.left}, {Window.top})")
                 except Exception as e:
                     print(f"[App] ⚠ Could not center window: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             Clock.schedule_once(center_window, 0.1)
+            Clock.schedule_once(center_window, 0.5)
+            Clock.schedule_once(center_window, 1.0)
 
         # Memory system - use centralized config
         try:
@@ -2384,8 +2401,22 @@ class MemScreenApp(App):
         )
 
         # Get project root directory (MemScreen folder)
-        # __file__ is memscreen/ui/kivy_app.py, need to go up 3 levels
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # Handle both source and packaged environments
+        if getattr(sys, 'frozen', False):
+            # PyInstaller packaged app
+            # Resources are in Contents/Resources/
+            if sys.platform == 'darwin':
+                # macOS .app bundle
+                bundle_path = sys.executable.split('/Contents/MacOS')[0]
+                project_root = os.path.join(bundle_path, 'Contents', 'Resources')
+            else:
+                # Other platforms
+                project_root = os.path.dirname(sys.executable)
+        else:
+            # Source environment
+            # __file__ is memscreen/ui/kivy_app.py, need to go up 3 levels
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
         logo_path = os.path.join(project_root, 'assets', 'logo.png')
 
         if os.path.exists(logo_path):
@@ -2554,15 +2585,54 @@ class MemScreenApp(App):
         print("[App] Started - Light purple theme, all black text")
 
         # Activate this app using osascript (macOS only)
+        # Note: When packaged with py2app, the process name is "MemScreen.bin"
+        # When running from source, it's just "MemScreen"
         if sys.platform == 'darwin':
             try:
                 import subprocess
-                subprocess.run(
-                    ['osascript', '-e', 'tell application "MemScreen" to activate'],
-                    capture_output=True,
-                    timeout=1
-                )
-                print("[App] ✓ App activated using osascript")
+                # Determine the correct app name based on frozen state
+                if getattr(sys, 'frozen', False):
+                    # Running as packaged app
+                    app_names = ["MemScreen.bin", "MemScreen"]
+                else:
+                    # Running from source
+                    app_names = ["MemScreen", "MemScreen.bin"]
+
+                # Try each possible app name
+                activated = False
+                for app_name in app_names:
+                    try:
+                        result = subprocess.run(
+                            ['osascript', '-e', f'tell application "{app_name}" to activate'],
+                            capture_output=True,
+                            timeout=1
+                        )
+                        if result.returncode == 0:
+                            print(f"[App] ✓ App activated using osascript ({app_name})")
+                            activated = True
+                            break
+                    except:
+                        continue
+
+                if not activated:
+                    print("[App] ⚠ Could not activate app via osascript")
+
+                # Additional activation using System Events
+                from kivy.clock import Clock
+                def force_activate(dt):
+                    try:
+                        subprocess.run([
+                            'osascript', '-e',
+                            'tell application "System Events" to set frontmost of process "MemScreen" to true'
+                        ], capture_output=True, timeout=1)
+                        print("[App] ✓ Forced to front using System Events")
+                    except:
+                        pass
+
+                # Try multiple times with delays
+                Clock.schedule_once(force_activate, 0.5)
+                Clock.schedule_once(force_activate, 1.0)
+                Clock.schedule_once(force_activate, 2.0)
             except Exception as e:
                 print(f"[App] ⚠ Could not activate app: {e}")
 

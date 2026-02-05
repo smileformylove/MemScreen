@@ -78,6 +78,12 @@ excludes = [
     'cv2.gapi',
 ]
 
+# Exclude cv2's SDL2 binaries to avoid conflict with Kivy's SDL2
+binaries_excludes = [
+    'libSDL2',
+    'SDL2',
+]
+
 a = Analysis(
     [os.path.join(project_root, 'start.py')],
     pathex=[project_root],
@@ -89,8 +95,10 @@ a = Analysis(
     runtime_hooks=[
         os.path.join(spec_dir, 'rthook/pyi_rthook_chromadb.py'),
         os.path.join(spec_dir, 'rthook/pyi_rthook_disable_telemetry.py'),
+        os.path.join(spec_dir, 'rthook/pyi_rthook_kivy.py'),
     ],
     excludes=excludes,
+    binaries_excludes=binaries_excludes,  # Exclude cv2's SDL2
     noarchive=False,
     optimize=0,
 )
