@@ -2492,6 +2492,19 @@ class MemScreenApp(App):
 
         root.add_widget(self.sm)
 
+        # Schedule window activation after UI is built (macOS only)
+        if sys.platform == 'darwin':
+            from kivy.clock import Clock
+            def activate_window(dt):
+                try:
+                    from Cocoa import NSRunningApplication, NSApplicationActivateIgnoringOtherApps
+                    app = NSRunningApplication.currentApplication()
+                    app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+                    print("[App] ✓ Window activated using Cocoa API")
+                except Exception as e:
+                    print(f"[App] ⚠ Could not activate window: {e}")
+            Clock.schedule_once(activate_window, 0.5)
+
         return root
 
     def _switch(self, screen_name):
