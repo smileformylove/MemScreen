@@ -12,8 +12,8 @@ HERE=${SELF%/*}
 
 # Set up environment variables for the bundled application
 export PATH="${HERE}/usr/bin:${PATH}"
-export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
-export PYTHONPATH="${HERE}/usr/lib/python3.8/site-packages:${PYTHONPATH}"
+export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/python3.11/lib-dynload:${LD_LIBRARY_PATH}"
+export PYTHONPATH="${HERE}/usr/lib/python3.11:${HERE}/usr/lib/python3.11/site-packages:${PYTHONPATH}"
 
 # Set XDG data directories to use bundled paths
 export XDG_DATA_HOME="${HERE}/usr/share"
@@ -23,5 +23,8 @@ export XDG_CONFIG_HOME="${HOME}/.config/MemScreen"
 mkdir -p "${XDG_CONFIG_HOME}"
 mkdir -p "${HOME}/.local/share/MemScreen"
 
+# Change to the app directory to ensure relative paths work
+cd "${HERE}"
+
 # Launch MemScreen
-exec "${HERE}/usr/bin/MemScreen" "$@"
+exec "${HERE}/MemScreen/MemScreen" "$@"

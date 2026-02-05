@@ -38,7 +38,7 @@ class AgentExecutor:
         self.memory_system = memory_system
         self.ollama_base_url = ollama_base_url
         self.current_model = current_model
-        self.vision_model = "qwen2.5vl:3b"  # Vision model for screen understanding
+        self.vision_model = "qwen3:1.7b"  # Vision model for screen understanding
 
         # Create temp directory for screenshots
         self.temp_dir = "./db/temp"

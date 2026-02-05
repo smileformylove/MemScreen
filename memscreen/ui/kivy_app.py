@@ -67,12 +67,29 @@ Config.set('input', 'mouse', 'mouse,disable_multitouch')
 Window.title = "MemScreen v0.5.0"
 
 # Register Chinese fonts
+linux_fonts = [
+    '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+    '/usr/share/fonts/truetype/arphic/uming.ttc',
+    '/usr/share/fonts/truetype/arphic/ukai.ttc',
+]
+
 mac_fonts = [
     '/System/Library/Fonts/PingFang.ttc',
     '/System/Library/Fonts/STHeiti Light.ttc',
     '/System/Library/Fonts/Helvetica.ttc',
 ]
 
+# Try Linux fonts first
+for font_path in linux_fonts:
+    if os.path.exists(font_path):
+        try:
+            LabelBase.register('chinese', font_path)
+            print(f"[Font] Registered Linux font: {font_path}")
+            break
+        except:
+            pass
+
+# Fallback to macOS fonts
 for font_path in mac_fonts:
     if os.path.exists(font_path):
         try:
@@ -1654,7 +1671,7 @@ class ProcessScreen(BaseScreen):
         # Start Tracking button (full width)
         self.track_btn = Button(
             text='Start Tracking',
-            font_name='Roboto',  # 使用Roboto字体
+            font_name='chinese',  # 使用Roboto字体
             font_size='24',
             bold=True,
             size_hint_y=None,
@@ -1668,7 +1685,7 @@ class ProcessScreen(BaseScreen):
         # Current Session Stats
         self.session_stats = Label(
             text='Events: 0 | Keystrokes: 0 | Mouse Clicks: 0',
-            font_name='Roboto',  # 使用Roboto字体
+            font_name='chinese',  # 使用Roboto字体
             font_size='18',
             size_hint_y=None,
             height=40,
@@ -1680,7 +1697,7 @@ class ProcessScreen(BaseScreen):
         # Current Session Section (15% height)
         session_label = Label(
             text='Current Session',
-            font_name='Roboto',  # 使用Roboto字体
+            font_name='chinese',  # 使用Roboto字体
             font_size='20',
             bold=True,
             size_hint_y=None,
@@ -1701,7 +1718,7 @@ class ProcessScreen(BaseScreen):
 
         history_label = Label(
             text='Session History',
-            font_name='Roboto',  # 使用Roboto字体
+            font_name='chinese',  # 使用Roboto字体
             font_size='20',
             bold=True,
             size_hint_x=0.6,
@@ -1713,7 +1730,7 @@ class ProcessScreen(BaseScreen):
         # Refresh button
         refresh_btn = Button(
             text='Refresh',
-            font_name='Roboto',
+            font_name='chinese',
             font_size='16',
             size_hint_x=0.2,
             background_color=(0.3, 0.6, 0.9, 1),
@@ -1725,7 +1742,7 @@ class ProcessScreen(BaseScreen):
         # Delete All button
         delete_all_btn = Button(
             text='Clear All',
-            font_name='Roboto',
+            font_name='chinese',
             font_size='16',
             size_hint_x=0.2,
             background_color=(0.8, 0.3, 0.3, 1),
@@ -1749,7 +1766,7 @@ class ProcessScreen(BaseScreen):
         # Session Analysis Section (40% height, centered)
         analysis_label = Label(
             text='Session Analysis',
-            font_name='Roboto',  # 使用Roboto字体
+            font_name='chinese',  # 使用Roboto字体
             font_size='20',
             bold=True,
             size_hint_y=None,
@@ -1779,7 +1796,7 @@ class ProcessScreen(BaseScreen):
 
         self.analysis_content = Label(
             text='Select a session to view analysis\n\nTap on any session in Session History to see detailed categorization',
-            font_name='Roboto',  # 使用Roboto字体
+            font_name='chinese',  # 使用Roboto字体
             font_size='18',
             color=(0.5, 0.5, 0.5, 1),
             halign='center',
@@ -1838,7 +1855,7 @@ class ProcessScreen(BaseScreen):
 
         time_label = Label(
             text=timestamp,
-            font_name='Roboto',  # 使用Roboto字体
+            font_name='chinese',  # 使用Roboto字体
             font_size='16',
             size_hint_x=0.15,
             color=(0.5, 0.5, 0.5, 1)
@@ -1847,7 +1864,7 @@ class ProcessScreen(BaseScreen):
 
         event_label = Label(
             text=text,
-            font_name='Roboto',  # 使用Roboto字体
+            font_name='chinese',  # 使用Roboto字体
             font_size='17',
             size_hint_x=0.85,
             color=color_map.get(event_type, (0.2, 0.2, 0.2, 1)),
@@ -1953,7 +1970,7 @@ class ProcessScreen(BaseScreen):
 
         time_label = Label(
             text=f'Session #{session_id} • {start_time}',
-            font_name='Roboto',
+            font_name='chinese',
             font_size='19',
             bold=True,
             size_hint_x=0.55,
@@ -1966,7 +1983,7 @@ class ProcessScreen(BaseScreen):
 
         stats_label = Label(
             text=f'{event_count} actions • {keystrokes} keys',
-            font_name='Roboto',
+            font_name='chinese',
             font_size='17',
             size_hint_x=0.45,
             color=(0.5, 0.5, 0.5, 1),
@@ -1989,7 +2006,7 @@ class ProcessScreen(BaseScreen):
         # Duration label (left side)
         duration_label = Label(
             text=f'{start_time} → {end_time}',
-            font_name='Roboto',
+            font_name='chinese',
             font_size='15',
             size_hint_x=0.45,
             color=(0.4, 0.4, 0.4, 1),
@@ -2002,7 +2019,7 @@ class ProcessScreen(BaseScreen):
         # Hint label (middle)
         hint_label = Label(
             text='Tap to analyze',
-            font_name='Roboto',
+            font_name='chinese',
             font_size='16',
             size_hint_x=0.35,
             color=(0.6, 0.4, 0.75, 1),
@@ -2015,7 +2032,7 @@ class ProcessScreen(BaseScreen):
         # Delete button (right side)
         delete_btn = Button(
             text='Delete',
-            font_name='Roboto',
+            font_name='chinese',
             font_size='14',
             size_hint_x=0.20,
             background_color=(0.9, 0.4, 0.4, 1),

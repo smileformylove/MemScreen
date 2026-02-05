@@ -13,10 +13,20 @@ Supports recording from:
 """
 
 import os
-import pyaudio
+try:
+    import pyaudio
+    PYAUDIO_AVAILABLE = True
+except ImportError:
+    PYAUDIO_AVAILABLE = False
+    pyaudio = None
 import wave
 import threading
-import numpy as np
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+    np = None
 from typing import Optional, Dict, Any
 from enum import Enum
 
@@ -53,6 +63,21 @@ class AudioRecorder:
         self.audio_frames = []
         self.current_file = None
 
+        # Check if PyAudio is available
+        if not PYAUDIO_AVAILABLE:
+            print("[AudioRecorder] PyAudio not available. Audio recording disabled.")
+            self.format = None
+            self.channels = 1  # Mono
+            self.rate = 44100  # Sample rate
+            self.chunk = 1024  # Chunk size
+            self.pyaudio_instance = None
+            self.current_audio_level = 0.0
+            self.audio_level_callback = None
+            self.mic_device_index = None
+            self.system_device_index = None
+            os.makedirs(self.output_dir, exist_ok=True)
+            return
+
         # Audio settings
         self.format = pyaudio.paInt16
         self.channels = 1  # Mono
@@ -75,12 +100,17 @@ class AudioRecorder:
 
     def get_pyaudio(self):
         """Get or create PyAudio instance"""
+        if not PYAUDIO_AVAILABLE:
+            raise RuntimeError("PyAudio is not installed. Audio recording is disabled.")
         if self.pyaudio_instance is None:
             self.pyaudio_instance = pyaudio.PyAudio()
         return self.pyaudio_instance
 
     def list_audio_devices(self) -> list:
         """List all available audio devices"""
+        if not PYAUDIO_AVAILABLE:
+            print("[AudioRecorder] PyAudio not available. Cannot list audio devices.")
+            return []
         try:
             p = self.get_pyaudio()
             devices = []

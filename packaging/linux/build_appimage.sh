@@ -31,7 +31,7 @@ PROJECT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../.." && pwd )"
 BUILD_DIR="$PROJECT_ROOT/build"
 DIST_DIR="$PROJECT_ROOT/dist"
 APPDIR="${APP_NAME}.AppDir"
-PYINSTALLER_SPEC="$PROJECT_ROOT/pyinstaller/memscreen_macos.spec"
+PYINSTALLER_SPEC="$PROJECT_ROOT/pyinstaller/memscreen_linux.spec"
 
 # Output paths
 APPIMAGE_NAME="${APP_NAME}-${VERSION}-${ARCH}.AppImage"

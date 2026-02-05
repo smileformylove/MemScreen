@@ -79,7 +79,7 @@ class ChatPresenter(BasePresenter):
 
         # Chat state
         self.conversation_history: List[ChatMessage] = []
-        self.current_model = "qwen2.5vl:3b"
+        self.current_model = "qwen3:1.7b"
         self.available_models = []
 
         # Streaming state
@@ -97,7 +97,7 @@ class ChatPresenter(BasePresenter):
         self.agent_executor = AgentExecutor(
             memory_system=memory_system,
             ollama_base_url=ollama_base_url,
-            current_model="qwen2.5vl:3b"
+            current_model="qwen3:1.7b"
         )
 
         # OPTIMIZATION: Reusable event loop for async operations
@@ -133,7 +133,7 @@ class ChatPresenter(BasePresenter):
                         response = requests.post(
                             f"{self.base_url}/api/generate",
                             json={
-                                "model": "qwen2.5vl:3b",
+                                "model": "qwen3:1.7b",
                                 "prompt": content,
                                 "stream": False
                             },
@@ -480,8 +480,8 @@ class ChatPresenter(BasePresenter):
                     selected_model = "gemma3:270m"
                     print(f"[Chat] Using small model (gemma3:270m) - {memory_count} memories found")
                 else:
-                    selected_model = "qwen2.5vl:3b"
-                    print(f"[Chat] Using large model (qwen2.5vl:3b) - {memory_count} memories found")
+                    selected_model = "qwen3:1.7b"
+                    print(f"[Chat] Using large model (qwen3:1.7b) - {memory_count} memories found")
 
                 llm = OllamaLLM(config={"model": selected_model})
 
@@ -798,7 +798,7 @@ Respond naturally without mentioning your model provider or technical details.""
             self.handle_error(e, "Failed to load models")
             # Set default models if API call fails
             self.available_models = [
-                "qwen2.5vl:3b",
+                "qwen3:1.7b",
                 "qwen3:1.7b",
                 "llama3.2:3b",
                 "gemma2:9b"

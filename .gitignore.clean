@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.egg-info/
+.eggs/
+*.log
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# MemScreen specific
+db/*.db
+db/*.sqlite
+db/*.sqlite3
+db/logs/
+db/videos/
+db/temp/
+*.tar.gz
+*.sha256
+
+# Build artifacts
+*.AppImage
+appimagetool
+MemScreen.AppDir/
+MemScreen-*.tar.gz
+
+# Node.js (if any)
+node_modules/
+package-lock.json
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Distribution / packaging
+/PACKAGING
+*.orig
