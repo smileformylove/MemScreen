@@ -12,7 +12,7 @@
 
 ## 解决方案
 
-采用 **Bash 包装脚本** 方案，确保应用作为前台应用启动并激活窗口。
+采用 **简化包装脚本 + Kivy Window.request_attention()** 方案，确保应用作为前台应用启动并激活窗口。
 
 ### 实现步骤
 
@@ -22,24 +22,18 @@
 
 ```bash
 #!/bin/bash
+# MemScreen launcher wrapper
 # 获取脚本所在目录
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# 在后台启动实际的可执行文件
-"$SCRIPT_DIR/MemScreen.bin" &
-
-# 获取后台进程的 PID
-APP_PID=$!
-
-# 等待应用启动
-sleep 2
-
-# 使用 AppleScript 激活应用
-osascript -e "tell application \"MemScreen\" to activate" 2>/dev/null || true
-
-# 等待后台进程
-wait $APP_PID
+# 使用 exec 替换当前进程为 Python 应用
+exec "$SCRIPT_DIR/MemScreen.bin"
 ```
+
+**注意**: 使用 `exec` 而不是后台进程 (`&`)，这样可以：
+- 让 macOS 识别应用为前台应用
+- 避免额外的 shell 进程
+- 让应用直接继承父进程的 PID
 
 #### 2. 更新 Info.plist
 
@@ -60,22 +54,17 @@ info_plist={
 
 ```python
 def on_start(self):
-    # 使用 Cocoa API 强制激活应用 (macOS)
-    if sys.platform == 'darwin':
-        try:
-            from Cocoa import NSRunningApplication, NSApplicationActivateIgnoringOtherApps
-            app = NSRunningApplication.currentApplication()
-            app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
-            print("[App] ✓ Activated app using Cocoa API")
-        except Exception as e:
-            print(f"[App] ⚠ Could not activate with Cocoa: {e}")
+    print("[App] Started - Light purple theme, all black text")
 
-    # 请求窗口注意
+    # Request attention to bring window to front on macOS
     try:
         Window.request_attention(window_attention="normal")
+        print("[App] ✓ Window attention requested")
     except Exception as e:
         print(f"[App] ⚠ Could not request attention: {e}")
 ```
+
+**注意**: 不要使用 Cocoa API (`NSRunningApplication`)，因为它在 PyInstaller 打包的应用中会导致崩溃。只使用 Kivy 内置的 `Window.request_attention()` 方法。
 
 #### 4. 自动化构建脚本
 
@@ -133,9 +122,9 @@ open /Applications/MemScreen.app
 
 ### 为什么需要包装脚本？
 
-1. **可靠性**: AppleScript 的 `activate` 命令是从外部进程调用的，更可靠
-2. **时序**: 包装脚本确保应用完全启动后再尝试激活
-3. **独立性**: 不依赖应用内部的代码正确执行
+1. **简单直接**: `exec` 替换当前进程，避免额外的 shell 进程
+2. **进程识别**: macOS 可以正确识别应用为前台应用
+3. **无需外部激活**: 依赖 Kivy 的 `Window.request_attention()` 而不是 AppleScript
 
 ### 文件结构
 
