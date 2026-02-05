@@ -2492,19 +2492,6 @@ class MemScreenApp(App):
 
         root.add_widget(self.sm)
 
-        # Schedule window activation after UI is built (macOS only)
-        if sys.platform == 'darwin':
-            from kivy.clock import Clock
-            def activate_window(dt):
-                try:
-                    from Cocoa import NSRunningApplication, NSApplicationActivateIgnoringOtherApps
-                    app = NSRunningApplication.currentApplication()
-                    app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
-                    print("[App] ✓ Window activated using Cocoa API")
-                except Exception as e:
-                    print(f"[App] ⚠ Could not activate window: {e}")
-            Clock.schedule_once(activate_window, 0.5)
-
         return root
 
     def _switch(self, screen_name):
@@ -2522,25 +2509,26 @@ class MemScreenApp(App):
 
     def on_stop(self):
         """Clean up presenters when app closes"""
-        if self.recording_presenter:
-            self.recording_presenter.cleanup()
-        if self.video_presenter:
-            self.video_presenter.cleanup()
-        if getattr(self, 'chat_presenter', None):
-            self.chat_presenter.cleanup()
+        try:
+            if self.recording_presenter:
+                self.recording_presenter.cleanup()
+        except Exception as e:
+            print(f"[App] ⚠ Error cleaning up recording presenter: {e}")
+
+        try:
+            if self.video_presenter:
+                self.video_presenter.cleanup()
+        except Exception as e:
+            print(f"[App] ⚠ Error cleaning up video presenter: {e}")
+
+        try:
+            if getattr(self, 'chat_presenter', None):
+                self.chat_presenter.cleanup()
+        except Exception as e:
+            print(f"[App] ⚠ Error cleaning up chat presenter: {e}")
 
     def on_start(self):
         print("[App] Started - Light purple theme, all black text")
-
-        # Force activate the app on macOS using Cocoa API
-        if sys.platform == 'darwin':
-            try:
-                from Cocoa import NSRunningApplication, NSApplicationActivateIgnoringOtherApps
-                app = NSRunningApplication.currentApplication()
-                app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
-                print("[App] ✓ Activated app using Cocoa API")
-            except Exception as e:
-                print(f"[App] ⚠ Could not activate with Cocoa: {e}")
 
         # Request attention to bring window to front on macOS
         try:
