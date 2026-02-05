@@ -101,12 +101,12 @@ if [ ! -f "$INFO_PLIST" ]; then
 fi
 
 ################################################################################
-# Step 1: Build .app Bundle with PyInstaller
+# Step 1: Build .app Bundle with Wrapper
 ################################################################################
 
-print_header "Step 1: Building .app Bundle"
+print_header "Step 1: Building .app Bundle with Wrapper"
 
-print_info "Running PyInstaller..."
+print_info "Running build script with wrapper..."
 cd "$PROJECT_ROOT"
 
 # Clean previous builds
@@ -114,22 +114,17 @@ print_info "Cleaning previous builds..."
 rm -rf "$BUILD_DIR"
 rm -rf "$DIST_DIR"
 
-# Run PyInstaller
-pyinstaller "$PYINSTALLER_SPEC" --noconfirm
+# Run the build script that includes wrapper installation
+"$PROJECT_ROOT/packaging/macos/build_with_wrapper.sh"
 
 # Check if app was created
 if [ ! -d "$APP_PATH" ]; then
-    print_error "PyInstaller failed to create .app bundle"
+    print_error "Build failed to create .app bundle"
     print_error "Expected: $APP_PATH"
     exit 1
 fi
 
-print_success ".app bundle created"
-
-# Copy Info.plist to app bundle
-print_info "Copying Info.plist to app bundle..."
-cp "$INFO_PLIST" "$APP_PATH/Contents/Info.plist"
-print_success "Info.plist copied"
+print_success ".app bundle created with activation wrapper"
 
 # Copy assets if they exist
 if [ -d "$PROJECT_ROOT/assets" ]; then

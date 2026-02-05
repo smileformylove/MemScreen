@@ -109,3 +109,4 @@ dist_macos/
 *.pkg/
 setup_*.py
 setup_temp.py
+MemScreen-*.dmg
