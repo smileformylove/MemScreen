@@ -2262,6 +2262,29 @@ class MemScreenApp(App):
         from kivy.core.window import Window
         Window.title = "MemScreen v0.5.0"
 
+        # Force window to be visible and centered on macOS
+        if sys.platform == 'darwin':
+            from kivy.clock import Clock
+            def center_window(dt):
+                try:
+                    # Get screen size
+                    from kivy.config import Config
+                    screen_width = 1920  # Default, will be overridden
+                    screen_height = 1080
+
+                    # Set window size explicitly
+                    Window.size = (1200, 800)
+
+                    # Center window on screen
+                    Window.left = (screen_width - 1200) // 2
+                    Window.top = (screen_height - 800) // 2
+
+                    print(f"[App] Window set to size: {Window.size}, position: ({Window.left}, {Window.top})")
+                except Exception as e:
+                    print(f"[App] ⚠ Could not center window: {e}")
+
+            Clock.schedule_once(center_window, 0.1)
+
         # Memory system - use centralized config
         try:
             # Get centralized configuration
@@ -2529,6 +2552,19 @@ class MemScreenApp(App):
 
     def on_start(self):
         print("[App] Started - Light purple theme, all black text")
+
+        # Activate this app using osascript (macOS only)
+        if sys.platform == 'darwin':
+            try:
+                import subprocess
+                subprocess.run(
+                    ['osascript', '-e', 'tell application "MemScreen" to activate'],
+                    capture_output=True,
+                    timeout=1
+                )
+                print("[App] ✓ App activated using osascript")
+            except Exception as e:
+                print(f"[App] ⚠ Could not activate app: {e}")
 
         # Request attention to bring window to front on macOS
         try:
