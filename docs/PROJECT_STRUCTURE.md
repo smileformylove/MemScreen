@@ -26,48 +26,35 @@ MemScreen/
 │
 ├── 📚 docs/                 # 文档目录
 │   ├── history/             # 历史文档
-│   ├── UBUNTU_INSTALLATION_GUIDE.md
-│   ├── SQLITE_FIX.md
-│   └── PROJECT_STRUCTURE.md
+│   ├── guides/              # 用户指南
+│   ├── INSTALLATION.md      # 安装指南
+│   └── PROJECT_STRUCTURE.md # 本文件
 │
-├── 🐳 docker/               # Docker配置
-│   ├── docker-compose.yml
-│   ├── docker-entrypoint.sh
-│   └── test_docker.sh
-│
-├── 📦 packaging/           # 平台打包脚本
-│   ├── linux/               # Linux/AppImage
-│   ├── macos/               # macOS/.dmg
-│   └── windows/             # Windows安装程序
+├── ⚙️ setup/                # 安装和配置
+│   ├── bin/                 # 可执行脚本
+│   │   ├── run_ui.sh        # UI启动脚本
+│   │   └── README.md
+│   ├── install/             # 安装脚本
+│   │   ├── install_ubuntu.sh     # Ubuntu安装
+│   │   ├── install_macos.sh      # macOS安装
+│   │   ├── uninstall_ubuntu.sh   # Ubuntu卸载
+│   │   ├── package_source.sh     # 源码打包
+│   │   ├── cleanup_project.sh    # 项目清理
+│   │   └── README.md
+│   ├── docker/              # Docker配置
+│   │   ├── docker-compose.yml
+│   │   └── README.md
+│   └── tools/               # 工具脚本
+│       └── optimize_models.py
 │
 ├── 🧪 tests/                # 测试文件
-│   ├── test_*.py
-│   └── test_installation.sh
+│   └── test_*.py
 │
-├── 🔧 tools/                # 工具脚本
-│   └── optimize_models.py
+├── 📦 releases/             # 发布包
 │
-├── 🐍 pyinstaller/          # PyInstaller配置
-│   ├── hooks/               # PyInstaller钩子
-│   ├── rthook/              # 运行时钩子
-│   └── *.spec               # 打包配置文件
-│
-├── 📦 install/              # 平台安装脚本
-│   └── install.sh           # macOS安装脚本
-│
-├── 🚀 bin/                  # 可执行脚本
-│   ├── run_ui.sh            # 主UI启动脚本
-│   └── README.md            # bin目录说明
-│
-├── 🔧 scripts/              # 维护脚本
-│   ├── install_ubuntu.sh    # Ubuntu安装脚本
-│   ├── uninstall_ubuntu.sh  # Ubuntu卸载脚本
-│   ├── package_source.sh    # 源码打包脚本
-│   ├── cleanup_project.sh   # 项目清理脚本
-│   └── README.md            # 脚本使用说明
+├── 📖 examples/             # 示例代码
 │
 ├── 📄 start.py              # 应用入口
-├── 🚀 run.sh                # 快速启动脚本（快捷方式）
 ├── 📖 README.md             # 项目说明
 ├── 📜 LICENSE                # MIT许可证
 └── ⚙️ config_example.yaml   # 配置示例
@@ -84,26 +71,31 @@ MemScreen/
 | `LICENSE` | MIT开源许可证 |
 | `config_example.yaml` | 配置文件示例 |
 
-### 可执行脚本 (bin/)
+### 配置目录 (setup/)
 
+#### 可执行脚本 (bin/)
 | 脚本 | 说明 |
 |------|------|
 | `run_ui.sh` | 主UI启动脚本（从源码运行） |
 
-### 维护脚本 (scripts/)
-
+#### 安装脚本 (install/)
 | 脚本 | 用途 |
 |------|------|
 | `install_ubuntu.sh` | Ubuntu自动安装脚本 |
+| `install_macos.sh` | macOS安装脚本 |
 | `uninstall_ubuntu.sh` | Ubuntu卸载脚本 |
 | `package_source.sh` | 创建分发包 |
 | `cleanup_project.sh` | 清理项目目录 |
 
-### 平台安装脚本 (install/)
-
-| 脚本 | 用途 |
+#### Docker配置 (docker/)
+| 文件 | 说明 |
 |------|------|
-| `install.sh` | macOS安装脚本 |
+| `docker-compose.yml` | Docker编排配置 |
+
+#### 工具脚本 (tools/)
+| 脚本 | 说明 |
+|------|------|
+| `optimize_models.py` | 模型优化工具 |
 
 ### 主要目录
 
@@ -111,8 +103,9 @@ MemScreen/
 - **assets/** - 图片、图标等资源
 - **docs/** - 所有文档
 - **tests/** - 测试文件
-- **docker/** - Docker配置
-- **packaging/** - 打包脚本
+- **examples/** - 示例代码
+- **releases/** - 发布包
+- **setup/** - 统一的安装配置目录
 
 ## 🎯 快速开始
 
@@ -126,25 +119,23 @@ source venv/bin/activate
 # 2. 安装依赖
 pip install -r requirements.txt  # 如果有的话
 
-# 3. 运行应用（三种方式）
-./run.sh                    # 方式1: 快捷启动脚本
-./bin/run_ui.sh             # 方式2: 直接运行启动脚本
-python3 start.py            # 方式3: 使用Python直接运行
+# 3. 运行应用
+python start.py
+```
+
+### Docker用户
+
+```bash
+# 使用Docker Compose启动
+docker-compose -f setup/docker/docker-compose.yml up -d
 ```
 
 ### Ubuntu用户
 
 ```bash
-# 1. 下载安装包
-wget [URL]/MemScreen-0.5.0-ubuntu-installer.tar.gz
-
-# 2. 解压并安装
-tar -xzf MemScreen-0.5.0-ubuntu-installer.tar.gz
-cd MemScreen-installer
+# 使用安装脚本
+cd setup/install
 ./install_ubuntu.sh
-
-# 3. 运行
-./run_memscreen.sh
 ```
 
 ## 🧹 保持项目整洁
@@ -152,7 +143,7 @@ cd MemScreen-installer
 ### 清理临时文件
 
 ```bash
-./scripts/cleanup_project.sh
+./setup/install/cleanup_project.sh
 ```
 
 这将删除：
@@ -175,7 +166,7 @@ cd MemScreen-installer
 ### 创建分发包
 
 ```bash
-./scripts/package_source.sh
+./setup/install/package_source.sh
 ```
 
 生成的文件：`MemScreen-0.5.0-ubuntu-installer.tar.gz`
@@ -186,7 +177,7 @@ cd MemScreen-installer
 
 ```bash
 mkdir -p releases
-./package_source.sh
+./setup/install/package_source.sh
 mv MemScreen-*.tar.gz releases/
 ```
 
@@ -196,7 +187,7 @@ mv MemScreen-*.tar.gz releases/
 
 1. **清理临时文件**
    ```bash
-   ./scripts/cleanup_project.sh
+   ./setup/install/cleanup_project.sh
    ```
 
 2. **运行测试**
@@ -206,12 +197,14 @@ mv MemScreen-*.tar.gz releases/
 
 3. **创建新分发包**
    ```bash
-   ./scripts/package_source.sh
+   ./setup/install/package_source.sh
    ```
 
 ### 修改文档后
 
-文档都放在 `docs/` 目录下，保持统一的文档结构。
+文档都放在 `docs/` 目录下，保持统一的文档结构：
+- `docs/guides/` - 用户指南
+- `docs/history/` - 历史文档
 
 ### 修改配置后
 
@@ -228,18 +221,13 @@ mv MemScreen-*.tar.gz releases/
 ### 文档
 - 用户文档: `docs/`
 - 示例: `examples/`
-- 配置: `install/` 和 `packaging/`
+- 配置: `setup/`
 
-### 脚本目录
-- **bin/** - 可执行启动脚本（用户日常使用）
-- **scripts/** - 维护和安装脚本（开发者/安装时使用）
-- **install/** - 平台安装脚本（首次安装使用）
-- **packaging/** - 平台打包脚本（打包发布使用）
-
-### 打包
-- PyInstaller配置: `pyinstaller/`
-- 平台脚本: `packaging/{linux,macos,windows}/`
-- 分发包: `releases/`（需创建）
+### 配置
+- **setup/bin/** - 可执行启动脚本（用户日常使用）
+- **setup/install/** - 维护和安装脚本（开发者/安装时使用）
+- **setup/docker/** - Docker配置（容器化部署）
+- **setup/tools/** - 工具脚本（开发辅助）
 
 ## 💡 维护建议
 
@@ -247,7 +235,7 @@ mv MemScreen-*.tar.gz releases/
 
 每周或发布版本后运行：
 ```bash
-./scripts/cleanup_project.sh
+./setup/install/cleanup_project.sh
 ```
 
 ### 版本发布前
@@ -260,9 +248,8 @@ mv MemScreen-*.tar.gz releases/
 
 ### 文件命名规范
 
-- 启动脚本: `run*.sh` (放在bin/目录)
-- 维护脚本: `*_ubuntu.sh`, `package_*.sh`, `cleanup_*.sh` (放在scripts/目录)
-- 安装脚本: `install*.sh` (放在install/目录)
+- 启动脚本: `run*.sh` (放在setup/bin/目录)
+- 维护脚本: `*_ubuntu.sh`, `package_*.sh`, `cleanup_*.sh` (放在setup/install/目录)
 - 文档: `*.md` (放在docs/目录)
 - 配置: `config_*.yaml`
 - 分发包: `MemScreen-VERSION-*.tar.gz`
@@ -272,10 +259,10 @@ mv MemScreen-*.tar.gz releases/
 整理后的项目结构清晰明了：
 - ✅ 核心代码集中在 `memscreen/`
 - ✅ 文档统一在 `docs/`
-- ✅ 可执行脚本在 `bin/`（用户启动）
-- ✅ 维护脚本在 `scripts/`（开发者使用）
-- ✅ 安装脚本在 `install/`（平台安装）
-- ✅ 打包脚本在 `packaging/`（打包发布）
+- ✅ 所有配置统一在 `setup/`
+- ✅ 可执行脚本在 `setup/bin/`（用户启动）
+- ✅ 安装脚本在 `setup/install/`（开发者使用）
+- ✅ Docker配置在 `setup/docker/`（容器部署）
 - ✅ 测试在 `tests/`
 - ✅ 根目录整洁，只保留必要文件
 

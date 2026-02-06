@@ -159,10 +159,10 @@ Get up and running in **3 minutes** — **no API keys, no cloud, no signup!**
 ```bash
 # 1️⃣ Clone and start
 git clone https://github.com/smileformylove/MemScreen.git && cd MemScreen
-docker-compose -f docker/docker-compose.yml up -d
+docker-compose -f setup/docker/docker-compose.yml up -d
 
 # 2️⃣ Check logs
-docker-compose -f docker/docker-compose.yml logs -f memscreen
+docker-compose -f setup/docker/docker-compose.yml logs -f memscreen
 ```
 
 ✅ **Pros:** Auto-installs everything, isolated environment
