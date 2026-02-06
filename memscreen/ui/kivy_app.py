@@ -104,6 +104,7 @@ from memscreen.memory.models import MemoryConfig, EmbedderConfig, LlmConfig, Vec
 from memscreen.presenters.recording_presenter import RecordingPresenter
 from memscreen.presenters.video_presenter import VideoPresenter
 from memscreen.presenters.chat_presenter import ChatPresenter
+from memscreen.presenters.process_mining_presenter import ProcessMiningPresenter
 from memscreen.memory.manager import get_memory_manager
 from memscreen.config import get_config
 from memscreen.services.session_analysis import (
@@ -313,6 +314,18 @@ class RecordingScreen(BaseScreen):
         self.presenter = presenter
         self.presenter.view = self
 
+        # Check if cv2 is available for preview and recording
+        if hasattr(self.presenter, 'cv2_available') and not self.presenter.cv2_available:
+            self.status_label.text = "⚠️ Recording unavailable in packaged app. Please use: python3 start.py"
+            self.record_btn.disabled = True
+            self.record_btn.background_color = (0.5, 0.5, 0.5, 1)
+            self.record_btn.text = "Recording Disabled"
+            self.cv2_available = False
+            print("[RecordingScreen] cv2 not available - recording functionality disabled")
+            print("[RecordingScreen] TO FIX: Run from source: python3 start.py")
+        else:
+            self.status_label.text = "Status: Ready"
+
     def on_recording_started(self):
         """Callback when recording starts"""
         self.is_recording = True
@@ -346,6 +359,48 @@ class RecordingScreen(BaseScreen):
     def on_recording_deleted(self, filename):
         """Callback when recording is deleted"""
         pass  # Could update UI here if needed
+
+    def show_error(self, message: str, title: str = "Error"):
+        """Display error message to user"""
+        # Update status label to show error
+        self.status_label.text = f"Status: Error - {message}"
+        print(f"[RecordingScreen] {title}: {message}")
+
+        # Also show popup for better visibility
+        content = BoxLayout(orientation='vertical', padding=20, spacing=10)
+        content.add_widget(Label(
+            text=message,
+            font_name='chinese',
+            font_size='18',
+            color=(0, 0, 0, 1)
+        ))
+
+        close_btn = Button(
+            text='OK',
+            font_name='chinese',
+            font_size='18',
+            size_hint_y=None,
+            height=50,
+            background_color=(0.7, 0.2, 0.2, 1)  # Red
+        )
+        content.add_widget(close_btn)
+
+        popup = Popup(
+            title=title,
+            title_font='chinese',
+            title_size='24',
+            content=content,
+            size_hint=(0.8, 0.4),
+            auto_dismiss=False
+        )
+        close_btn.bind(on_press=popup.dismiss)
+        popup.open()
+
+    def show_info(self, message: str, title: str = "Info"):
+        """Display info message to user"""
+        # Update status label
+        self.status_label.text = f"Status: {message}"
+        print(f"[RecordingScreen] {title}: {message}")
 
     def toggle_recording(self, instance):
         """Toggle recording - close overlay when starting"""
@@ -517,6 +572,18 @@ class ChatScreen(BaseScreen):
         scroll.add_widget(self.chat_history)
         layout.add_widget(scroll)
 
+        # Status label (hidden by default)
+        self.status_label = Label(
+            text='',
+            font_name='chinese',
+            font_size='16',
+            size_hint_y=None,
+            height=40,
+            color=(0.5, 0.5, 0.5, 1),
+            opacity=0  # Hidden by default
+        )
+        layout.add_widget(self.status_label)
+
         # Input box with Send button
         input_box = BoxLayout(size_hint_y=None, height=80, spacing=12)
 
@@ -559,11 +626,45 @@ class ChatScreen(BaseScreen):
 
         self.add_widget(layout)
 
+        # Check presenter status after a short delay
+        from kivy.clock import Clock
+        Clock.schedule_once(self._check_presenter_status, 0.5)
+
+    def _check_presenter_status(self, dt):
+        """Check if presenter is initialized and show status"""
+        if not self.presenter:
+            self.status_label.text = "⚠️ Chat system not initialized - restart app"
+            self.status_label.color = (1, 0, 0, 1)
+            self.status_label.opacity = 1
+            print("[ChatScreen] WARNING: No presenter attached!")
+        else:
+            self.status_label.text = "✓ Chat system ready"
+            self.status_label.color = (0, 0.5, 0, 1)
+            self.status_label.opacity = 0.7
+            print("[ChatScreen] Presenter attached successfully")
+
     def send_message(self, instance):
         text = self.chat_input.text
+        print(f"[ChatScreen] send_message called, text={repr(text)}, presenter={self.presenter}")
         if not text:
+            print("[ChatScreen] No text, returning")
             return
         if not self.presenter:
+            print("[ChatScreen] No presenter! Showing error to user...")
+            # Show error message in chat
+            error_label = Label(
+                text='⚠️ Error: Chat system not initialized. Please restart the app.',
+                font_name='chinese',
+                font_size='18',
+                size_hint_y=None,
+                height=90,
+                halign='left',
+                valign='top',
+                text_size=(420, None),
+                color=(1, 0, 0, 1),  # Red
+            )
+            error_label.bind(texture_size=error_label.setter('size'))
+            self.chat_history.add_widget(error_label)
             return
 
         # Clear input immediately
@@ -1653,6 +1754,7 @@ class ProcessScreen(BaseScreen):
         self.is_tracking = False
         self.current_session_events = []
         self.selected_session_id = None  # Track selected session
+        self.presenter = None  # ProcessMiningPresenter
 
         layout = BoxLayout(orientation='vertical', spacing=12, padding=20)
 
@@ -1815,6 +1917,13 @@ class ProcessScreen(BaseScreen):
         # Load history on init
         self._load_history()
 
+    def set_presenter(self, presenter):
+        """Set the presenter for this screen"""
+        self.presenter = presenter
+        if self.presenter:
+            self.presenter.view = self
+            print("[ProcessScreen] Presenter set successfully")
+
     def toggle(self, instance):
         if not self.is_tracking:
             self.start()
@@ -1822,6 +1931,15 @@ class ProcessScreen(BaseScreen):
             self.stop()
 
     def start(self):
+        """Start tracking input events"""
+        if self.presenter:
+            success = self.presenter.start_tracking()
+            if not success:
+                self._add_session_event("Failed to start tracking", "error")
+                return
+        else:
+            print("[ProcessScreen] Warning: No presenter set, tracking UI only")
+
         self.is_tracking = True
         self.track_btn.text = "Stop Tracking"
         self.track_btn.background_color = (0.75, 0.3, 0.4, 1)
@@ -1829,6 +1947,10 @@ class ProcessScreen(BaseScreen):
         self._update_session_stats()
 
     def stop(self):
+        """Stop tracking input events"""
+        if self.presenter:
+            self.presenter.stop_tracking()
+
         self.is_tracking = False
         self.track_btn.text = "Start Tracking"
         self.track_btn.background_color = (0.6, 0.4, 0.75, 1)
@@ -2076,6 +2198,19 @@ class ProcessScreen(BaseScreen):
         self._load_history()
         self._add_session_event("History refreshed", "success")
 
+    def on_tracking_started(self):
+        """Callback when tracking is started by presenter"""
+        self._add_session_event("Tracking active - listening for events", "success")
+
+    def on_tracking_stopped(self):
+        """Callback when tracking is stopped by presenter"""
+        self._add_session_event("Tracking stopped", "info")
+
+    def on_event_captured(self, event_data):
+        """Callback when a new event is captured"""
+        self._add_session_event(event_data, event_data.get("type", "info"))
+        self._update_session_stats()
+
     def _delete_session(self, session_id):
         """Delete a specific session (Core: session_analysis.delete_session)."""
         try:
@@ -2275,9 +2410,32 @@ class AboutScreen(BaseScreen):
 
 class MemScreenApp(App):
     def build(self):
-        # Set window title
+        # Set window title and icon early
         from kivy.core.window import Window
+        from kivy.resources import resource_add_path
+
         Window.title = "MemScreen v0.5.0"
+
+        # Set app icon to prevent Kivy from overriding it with default icon
+        # Get project root for icon path
+        if getattr(sys, 'frozen', False):
+            # PyInstaller packaged app
+            if sys.platform == 'darwin':
+                bundle_path = sys.executable.split('/Contents/MacOS')[0]
+                icon_path = os.path.join(bundle_path, 'Contents', 'Resources', 'assets', 'logo.icns')
+            else:
+                icon_path = os.path.join(os.path.dirname(sys.executable), 'assets', 'logo.icns')
+        else:
+            # Source environment
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            icon_path = os.path.join(project_root, 'assets', 'logo.png')
+
+        # Set the icon if it exists
+        if os.path.exists(icon_path):
+            Window.icon = icon_path
+            print(f"[App] Set icon to: {icon_path}")
+        else:
+            print(f"[App] Icon not found at: {icon_path}")
 
         # Force window to be visible and centered on macOS
         if sys.platform == 'darwin':
@@ -2381,6 +2539,18 @@ class MemScreenApp(App):
         except Exception as e:
             print(f"[App] Failed to initialize VideoPresenter: {e}")
             self.video_presenter = None
+
+        try:
+            self.process_mining_presenter = ProcessMiningPresenter(
+                db_path="./db/input_events.db"
+            )
+            self.process_mining_presenter.initialize()
+            print("[App] ProcessMiningPresenter initialized")
+        except Exception as e:
+            print(f"[App] Failed to initialize ProcessMiningPresenter: {e}")
+            import traceback
+            traceback.print_exc()
+            self.process_mining_presenter = None
 
         # Root layout - horizontal with left sidebar navigation
         root = BoxLayout(orientation='horizontal', spacing=0)
@@ -2539,18 +2709,64 @@ class MemScreenApp(App):
 
         self.chat_presenter = None
         try:
+            print("[App] Initializing ChatPresenter...")
             cfg = get_config()
+            print(f"[App] Config loaded, ollama_base_url={cfg.ollama_base_url}")
+
+            # Log to file for debugging
+            import datetime
+            log_dir = os.path.expanduser("~/.memscreen/logs")
+            os.makedirs(log_dir, exist_ok=True)
+            log_file = os.path.join(log_dir, f"memscreen_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+
+            with open(log_file, 'a') as f:
+                f.write(f"[{datetime.datetime.now()}] Starting ChatPresenter initialization\n")
+                f.write(f"[{datetime.datetime.now()}] Config: ollama_base_url={cfg.ollama_base_url}\n")
+                f.write(f"[{datetime.datetime.now()}] Memory system: {self.memory}\n")
+
             self.chat_presenter = ChatPresenter(
                 memory_system=self.memory,
                 ollama_base_url=cfg.ollama_base_url,
             )
+            print(f"[App] ChatPresenter created: {self.chat_presenter}")
+
+            with open(log_file, 'a') as f:
+                f.write(f"[{datetime.datetime.now()}] ChatPresenter created successfully\n")
+
             chat_screen = ChatScreen(name='chat', memory_system=self.memory)
+            print(f"[App] ChatScreen created: {chat_screen}")
+
             chat_screen.set_presenter(self.chat_presenter)
+            print(f"[App] Presenter set to screen")
+
             self.chat_presenter.set_view(chat_screen)
+            print(f"[App] View set to presenter")
+
             self.chat_presenter.initialize()
+            print(f"[App] ChatPresenter initialized successfully")
+
+            with open(log_file, 'a') as f:
+                f.write(f"[{datetime.datetime.now()}] ChatPresenter initialized successfully\n")
+                f.write(f"[{datetime.datetime.now()}] Log file: {log_file}\n")
+
             self.sm.add_widget(chat_screen)
+            print(f"[App] ChatScreen added to screen manager")
         except Exception as e:
             print(f"[App] Failed to init ChatPresenter: {e}")
+            import traceback
+            import datetime
+            traceback.print_exc()
+
+            # Log error
+            log_dir = os.path.expanduser("~/.memscreen/logs")
+            os.makedirs(log_dir, exist_ok=True)
+            log_file = os.path.join(log_dir, f"memscreen_error_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+            with open(log_file, 'a') as f:
+                f.write(f"[{datetime.datetime.now()}] ERROR: Failed to initialize ChatPresenter\n")
+                f.write(f"[{datetime.datetime.now()}] Error: {e}\n")
+                f.write(f"[{datetime.datetime.now()}] Traceback:\n{traceback.format_exc()}\n")
+
+            print(f"[App] Error logged to: {log_file}")
             self.sm.add_widget(ChatScreen(name='chat', memory_system=self.memory))
 
         video_screen = VideoScreen(name='video', memory_system=self.memory)
@@ -2558,7 +2774,10 @@ class MemScreenApp(App):
             video_screen.set_presenter(self.video_presenter)
         self.sm.add_widget(video_screen)
 
-        self.sm.add_widget(ProcessScreen(name='process', memory_system=self.memory))
+        process_screen = ProcessScreen(name='process', memory_system=self.memory)
+        if self.process_mining_presenter:
+            process_screen.set_presenter(self.process_mining_presenter)
+        self.sm.add_widget(process_screen)
         self.sm.add_widget(AboutScreen(name='settings', memory_system=self.memory))
 
         root.add_widget(self.sm)
@@ -2601,64 +2820,54 @@ class MemScreenApp(App):
     def on_start(self):
         print("[App] Started - Light purple theme, all black text")
 
-        # Activate this app using osascript (macOS only)
-        # Note: When packaged with py2app, the process name is "MemScreen.bin"
-        # When running from source, it's just "MemScreen"
-        if sys.platform == 'darwin':
-            try:
-                import subprocess
-                # Determine the correct app name based on frozen state
-                if getattr(sys, 'frozen', False):
-                    # Running as packaged app
-                    app_names = ["MemScreen.bin", "MemScreen"]
-                else:
-                    # Running from source
-                    app_names = ["MemScreen", "MemScreen.bin"]
-
-                # Try each possible app name
-                activated = False
-                for app_name in app_names:
-                    try:
-                        result = subprocess.run(
-                            ['osascript', '-e', f'tell application "{app_name}" to activate'],
-                            capture_output=True,
-                            timeout=1
-                        )
-                        if result.returncode == 0:
-                            print(f"[App] ✓ App activated using osascript ({app_name})")
-                            activated = True
-                            break
-                    except:
-                        continue
-
-                if not activated:
-                    print("[App] ⚠ Could not activate app via osascript")
-
-                # Additional activation using System Events
-                from kivy.clock import Clock
-                def force_activate(dt):
-                    try:
-                        subprocess.run([
-                            'osascript', '-e',
-                            'tell application "System Events" to set frontmost of process "MemScreen" to true'
-                        ], capture_output=True, timeout=1)
-                        print("[App] ✓ Forced to front using System Events")
-                    except:
-                        pass
-
-                # Try multiple times with delays
-                Clock.schedule_once(force_activate, 0.5)
-                Clock.schedule_once(force_activate, 1.0)
-                Clock.schedule_once(force_activate, 2.0)
-            except Exception as e:
-                print(f"[App] ⚠ Could not activate app: {e}")
-
         # Request attention to bring window to front on macOS
         try:
             Window.request_attention(window_attention="normal")
             print("[App] ✓ Window attention requested")
         except Exception as e:
             print(f"[App] ⚠ Could not request attention: {e}")
+
+        # Activate this app using osascript (macOS only)
+        # IMPORTANT: Delay activation to ensure window is fully created first
+        if sys.platform == 'darwin':
+            import subprocess
+            from kivy.clock import Clock
+
+            def activate_app(dt):
+                """Activate the app after window is fully created"""
+                try:
+                    # Always use the .app bundle name for activation
+                    app_name = "MemScreen"
+
+                    # Try to activate the app
+                    result = subprocess.run(
+                        ['osascript', '-e', f'tell application "{app_name}" to activate'],
+                        capture_output=True,
+                        timeout=2
+                    )
+                    if result.returncode == 0:
+                        print(f"[App] ✓ App activated using osascript ({app_name})")
+                    else:
+                        # Try using bundle ID as fallback
+                        result = subprocess.run(
+                            ['osascript', '-e', 'tell application id "com.smileformylove.MemScreen" to activate'],
+                            capture_output=True,
+                            timeout=2
+                        )
+                        if result.returncode == 0:
+                            print(f"[App] ✓ App activated using bundle ID")
+                        else:
+                            print(f"[App] ⚠ Could not activate app via osascript (stderr: {result.stderr.decode()})")
+                except Exception as e:
+                    print(f"[App] ⚠ Activation failed: {e}")
+
+            # Schedule activation with more aggressive delays
+            # macOS needs more time for window to be fully created and registered
+            Clock.schedule_once(activate_app, 0.5)
+            Clock.schedule_once(activate_app, 1.5)
+            Clock.schedule_once(activate_app, 2.5)
+            Clock.schedule_once(activate_app, 3.5)
+            Clock.schedule_once(activate_app, 5.0)
 
         # Ensure Ollama service is running
         print("[App] Checking Ollama service...")

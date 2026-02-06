@@ -10,20 +10,16 @@ A smart screen recording and memory system that uses AI to:
 """
 
 if __name__ == '__main__':
-    # Ensure Ollama service is running before starting the app
-    from memscreen.utils import ensure_ollama_running
     import logging
-
     logging.basicConfig(level=logging.INFO)
 
-    if ensure_ollama_running():
+    # Always try to start the app, even if Ollama check fails
+    # The app will show a warning in the UI if Ollama is not available
+    try:
         from memscreen.ui.kivy_app import MemScreenApp
         MemScreenApp().run()
-    else:
-        print("❌ Failed to start Ollama service")
-        print("")
-        print("Please install Ollama from https://ollama.com/download")
-        print("Then run: ollama serve")
-        print("")
-        print("Or use the macOS installer:")
-        print("  cd macos && ./install_complete.sh")
+    except Exception as e:
+        print(f"❌ Failed to start MemScreen: {e}")
+        import traceback
+        traceback.print_exc()
+        input("Press Enter to exit...")  # Keep console open for debugging

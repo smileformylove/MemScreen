@@ -1,28 +1,36 @@
 #!/bin/bash
 # MemScreen launcher wrapper
-# Launches the bundled app and ensures it activates as foreground application
+# This script ensures the app activates properly on macOS
 
-# Get the directory where this script is located
+set -e
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Launch the actual executable in background
+# Launch the actual executable
+# Do NOT use exec - we need to stay alive to activate the window
 "$SCRIPT_DIR/MemScreen.bin" &
-
-# Get the PID of the background process
 APP_PID=$!
 
-# Wait for the app to fully initialize (window creation)
-sleep 3
+# Wait for the app to fully initialize
+# macOS needs time for the window to be created and registered
+sleep 2
 
-# Force activate the app using osascript
-# Try multiple methods to ensure it works
+# Force activate using multiple methods
+# Method 1: Direct app name activation
 osascript -e 'tell application "MemScreen" to activate' 2>/dev/null || true
+
+# Method 2: Bundle ID activation
 osascript -e 'tell application id "com.smileformylove.MemScreen" to activate' 2>/dev/null || true
+
+# Method 3: System Events force to front
 osascript -e 'tell application "System Events" to set frontmost of every process whose bundle identifier is "com.smileformylove.MemScreen" to true' 2>/dev/null || true
 
-# Additional activation attempts
+# Additional activation attempts with delays
 sleep 1
 osascript -e 'tell application "MemScreen" to activate' 2>/dev/null || true
 
-# Wait for the app to finish (keep the wrapper script running)
+sleep 1
+osascript -e 'tell application "MemScreen" to activate' 2>/dev/null || true
+
+# Wait for the app to finish
 wait $APP_PID

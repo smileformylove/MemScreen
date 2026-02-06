@@ -16,6 +16,7 @@ from typing import Optional, Dict, Any
 
 from .base_presenter import BasePresenter
 from memscreen.audio import AudioRecorder, AudioSource
+from memscreen.cv2_loader import get_cv2, is_cv2_available
 
 
 class RecordingPresenter(BasePresenter):
@@ -77,6 +78,21 @@ class RecordingPresenter(BasePresenter):
 
         self._is_initialized = False
 
+        # Check if cv2 is available
+        self.cv2_available = self._check_cv2_available()
+
+    def _check_cv2_available(self) -> bool:
+        """Check if cv2 is available for video processing"""
+        # Use the safe cv2 loader that handles PyInstaller recursion
+        cv2 = get_cv2()
+        if cv2 is not None:
+            print(f"[RecordingPresenter] ✓ cv2 is available (version: {cv2.__version__})")
+            return True
+        else:
+            print("[RecordingPresenter] ✗ cv2 not available")
+            print("[RecordingPresenter] Recording and preview will be disabled")
+            return False
+
     def initialize(self):
         """Initialize presenter and create output directory"""
         try:
@@ -87,7 +103,7 @@ class RecordingPresenter(BasePresenter):
             self._init_database()
 
             self._is_initialized = True
-            print("[RecordingPresenter] Initialized successfully")
+            print(f"[RecordingPresenter] Initialized successfully (cv2_available={self.cv2_available})")
         except Exception as e:
             self.handle_error(e, "Failed to initialize RecordingPresenter")
             raise
@@ -229,6 +245,15 @@ class RecordingPresenter(BasePresenter):
         """
         if self.is_recording:
             self.show_error("Recording is already in progress")
+            return False
+
+        # Check if cv2 is available
+        if not self.cv2_available:
+            error_msg = "Video recording requires opencv-python (cv2), but it's not available. "
+            error_msg += "This is likely due to missing SDL2 dependencies. "
+            error_msg += "Please check the console for details."
+            self.show_error(error_msg)
+            print("[RecordingPresenter] ERROR: Cannot start recording - cv2 not available")
             return False
 
         try:
@@ -376,7 +401,11 @@ class RecordingPresenter(BasePresenter):
             numpy array of the frame or None if capture failed
         """
         try:
-            import cv2  # Lazy import to avoid PyInstaller recursion
+            cv2 = get_cv2()
+            if cv2 is None:
+                print("[RecordingPresenter] cv2 not available: cannot capture preview")
+                return None
+
             from PIL import ImageGrab
 
             # Capture screen with region support
@@ -447,7 +476,12 @@ class RecordingPresenter(BasePresenter):
         Record screen in background thread.
         This method runs in a separate thread.
         """
-        import cv2  # Lazy import to avoid PyInstaller recursion
+        # Use safe cv2 loader to avoid PyInstaller recursion
+        cv2 = get_cv2()
+        if cv2 is None:
+            print("[RecordingPresenter] ERROR: cv2 not available for recording")
+            self.is_recording = False
+            return
         last_screenshot_time = time.time()
         last_save_time = time.time()
 
@@ -552,7 +586,11 @@ class RecordingPresenter(BasePresenter):
             frames: List of video frames
         """
         try:
-            import cv2  # Lazy import to avoid PyInstaller recursion
+            cv2 = get_cv2()
+            if cv2 is None:
+                print("[RecordingPresenter] ERROR: cv2 not available for saving video")
+                return
+
             if not frames:
                 return
 
@@ -594,7 +632,12 @@ class RecordingPresenter(BasePresenter):
             audio_file: Optional path to audio file to merge
         """
         try:
-            import cv2  # Lazy import to avoid PyInstaller recursion
+            cv2 = get_cv2()
+            if cv2 is None:
+                print("[RecordingPresenter] ERROR: cv2 not available for saving recording")
+                self.show_error("Video recording is not available")
+                return
+
             if not frames:
                 self.show_info("No frames to save")
                 return
@@ -789,7 +832,11 @@ When users ask about what was on their screen or what they were doing, reference
     def _analyze_video_content(self, filename, total_frames, fps):
         """Analyze video content by sampling frames and using vision model"""
         try:
-            import cv2  # Lazy import to avoid PyInstaller recursion
+            cv2 = get_cv2()
+            if cv2 is None:
+                print("[RecordingPresenter] cv2 not available for video analysis")
+                return "Video recording (analysis unavailable)", []
+
             # Sample frames for analysis
             num_samples = min(5, total_frames)
             sample_indices = [int(i * total_frames / num_samples) for i in range(num_samples)]

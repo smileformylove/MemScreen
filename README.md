@@ -266,21 +266,34 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 
 ## 📖 Documentation
 
-**Deployment & Setup:**
+**🚀 Getting Started:**
+- [Installation Guide](docs/INSTALLATION.md) — Detailed setup instructions for all platforms
 - [Docker Deployment](docs/DOCKER.md) — Containerized deployment guide
-- [Quick Start Guide](docs/QUICK_START_GUIDE.py) — Interactive setup tutorial
+- [macOS Build Guide](docs/MACOS_BUILD_GUIDE.md) — Build for macOS
+- [Ubuntu Installation Guide](docs/UBUNTU_INSTALLATION_GUIDE.md) — Linux setup
+- [macOS Permission Guide](docs/MACOS_PERMISSION_GUIDE.md) — macOS permissions explained
 
-**AI Backend Configuration:**
+**💡 User Guides:**
+- [Accessibility Guide](docs/guides/ACCESSIBILITY.md) — Accessibility features setup
+- [Process Mining Guide](docs/guides/PROCESS_MINING.md) — Track keyboard and mouse usage
+- [Docker Test Guide](docs/guides/DOCKER_TEST.md) — Test Docker deployment
+- [Recording Guide](docs/RECORDING_GUIDE.md) — Screen recording features
+- [Audio Recording Guide](docs/AUDIO_RECORDING.md) — Audio capture setup
+
+**🤖 AI Backend Configuration:**
 - [vLLM Backend](docs/VLLM_BACKEND.md) — High-performance inference backend
-- [Step-3.5-Flash Model](docs/STEP35FLASH.md) — Advanced reasoning model
+- [vLLM Implementation Summary](docs/history/VLLM_IMPLEMENTATION_SUMMARY.md) — Implementation details
 
-**System Architecture:**
+**🏗️ System Architecture:**
 - [Architecture Overview](docs/ARCHITECTURE.md) — System design and components
+- [Project Structure](docs/PROJECT_STRUCTURE.md) — Code organization
 - [Intelligent Agent System](docs/INTELLIGENT_AGENT.md) — Auto-classification and smart dispatch
 - [Dynamic Memory System](docs/DYNAMIC_MEMORY.md) — Categorized memory and search
+- [Core API Documentation](docs/CORE_API.md) — API reference
 
-**Development:**
+**🔧 Development:**
 - [Testing Guide](docs/TESTING_GUIDE.md) — How to test the system
+- [Packaging Guide](docs/PACKAGING.md) — Package for distribution
 - [Logo & Brand Guidelines](docs/LOGO_GUIDELINES.md) — Logo usage and branding
 
 ---
@@ -302,12 +315,13 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 
 ## 📝 What's New
 
-### ✨ v0.5.0 — Dynamic Memory System & Intelligent Agent (February 2026)
+### ✨ v0.5.0 — Dynamic Memory System & Code Cleanup (February 2026)
 
 - 🤖 **Intelligent Agent** — Auto-classification & smart routing (3-5x faster, 70% fewer tokens)
 - 📊 **Dynamic Memory** — 15 categories, 7 query intents, smart search
 - 🎯 **Custom Region Recording** — Visual crosshair guides, re-selectable regions
-- 🧹 **Code Cleanup** — Removed unused files, cleaner structure
+- 🧹 **Code Cleanup** — Removed test files, reorganized documentation
+- 📁 **Improved Structure** — Centralized documentation in `docs/` directory
 
 ### ✨ v0.4.0 — Local AI Agent & Privacy-First Design
 
@@ -350,7 +364,7 @@ This project is released under the **MIT License** — free to use, modify, and 
 
   Made with ❤️ and 🦉 by [Jixiang Luo](https://github.com/smileformylove)
 
-  **v0.5.0** — Enhanced Custom Region Recording & Code Cleanup (January 2026)
+  **v0.5.0** — Dynamic Memory System & Documentation Reorganization (February 2026)
 
   [📧 Email](mailto:jixiangluo85@gmail.com) • [🐛 Report Bug](https://github.com/smileformylove/MemScreen/issues) • [💬 Discussion](https://github.com/smileformylove/MemScreen/discussions)
 

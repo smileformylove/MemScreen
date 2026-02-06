@@ -1,41 +1,36 @@
 """
-Runtime hook to fix cv2 import recursion in PyInstaller bundled apps.
-
-This hook modifies cv2's import behavior to prevent recursion errors
-by setting the appropriate environment variable before cv2 is imported.
+Runtime hook for cv2 (OpenCV) in PyInstaller
+Fixes recursion and config file issues
 """
 
 import os
 import sys
 
-# Set environment variable to disable OpenCV's CUDA and other extensions
-# that cause recursion issues in PyInstaller
-os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '1'
-os.environ['OPENCV_LOG_LEVEL'] = 'ERROR'
+# This hook MUST run before cv2 is imported
+if hasattr(sys, '_MEIPASS'):
+    # Running in PyInstaller bundle
+    meipass = sys._MEIPASS
 
-# Try to prevent cv2 from loading problematic binary extensions
-# by intercepting the import
-class CV2ImportInterceptor:
-    """Intercept cv2 imports to prevent recursion."""
+    # CRITICAL: Add cv2 to path BEFORE any imports
+    cv2_path = os.path.join(meipass, 'cv2')
+    if cv2_path not in sys.path:
+        sys.path.insert(0, cv2_path)
 
-    def find_spec(self, fullname, path, target=None):
-        if fullname == 'cv2' or fullname.startswith('cv2.'):
-            # Mark that cv2 is being imported to prevent recursion
-            if fullname == 'cv2' and 'cv2' not in sys.modules:
-                # Set a flag to indicate cv2 is being imported
-                sys._cv2_importing = True
+    # Set environment variables to prevent cv2 from searching system paths
+    # which can cause recursion in PyInstaller environment
+    os.environ['OPENCV_IO_ENABLE_GEOS'] = 'FALSE'
 
-            try:
-                # Continue with normal import
-                return None
-            finally:
-                if fullname == 'cv2':
-                    # Clear the flag after import attempt
-                    sys._cv2_importing = False
+    # Prevent cv2 from loading Qt which causes recursion
+    os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = ''
 
-        return None
+    # Pre-load numpy to ensure it's available before cv2
+    try:
+        import numpy
+        import numpy.core.multiarray
+    except ImportError:
+        pass
 
+    # DON'T try to pre-import cv2 here - it causes module structure issues
+    # The cv2_loader module will handle cv2 loading safely when needed
 
-# Install the import interceptor before any cv2 imports
-interceptor = CV2ImportInterceptor()
-sys.meta_path.insert(0, interceptor)
+print("[Runtime Hook] cv2 runtime configuration complete")

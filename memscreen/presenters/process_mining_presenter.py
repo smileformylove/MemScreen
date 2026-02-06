@@ -59,9 +59,9 @@ class ProcessMiningPresenter(BasePresenter):
     def initialize(self):
         """Initialize presenter"""
         try:
-            # Import here to avoid circular imports
-            from ...input_tracker import InputTracker
-            from ...process_mining import ProcessMiningAnalyzer
+            # Import using absolute imports to work in both dev and packaged environments
+            from memscreen.input_tracker import InputTracker
+            from memscreen.process_mining import ProcessMiningAnalyzer
 
             if not self.input_tracker:
                 self.input_tracker = InputTracker(db_path=self.db_path)

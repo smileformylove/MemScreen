@@ -40,8 +40,9 @@ class AgentExecutor:
         self.current_model = current_model
         self.vision_model = "qwen3:1.7b"  # Vision model for screen understanding
 
-        # Create temp directory for screenshots
-        self.temp_dir = "./db/temp"
+        # Create temp directory for screenshots - use user home directory
+        import tempfile
+        self.temp_dir = os.path.join(os.path.expanduser("~"), ".memscreen", "temp")
         os.makedirs(self.temp_dir, exist_ok=True)
 
     def execute_task(self, user_message: str) -> Dict[str, Any]:
