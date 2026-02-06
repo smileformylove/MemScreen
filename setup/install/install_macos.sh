@@ -10,7 +10,7 @@
 # - Installing MemScreen Python package
 # - Requesting necessary system permissions
 #
-# Usage: sudo ./install/install.sh
+# Usage: sudo ./scripts/install_macos.sh
 ################################################################################
 
 set -e  # Exit on error
@@ -257,7 +257,7 @@ if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
     python3 -m pip install -r "$PROJECT_ROOT/requirements.txt" --user
     print_success "Python dependencies installed"
 else
-    print_error "requirements.txt not found in project root"
+    print_error "requirements.txt not found in project root: $PROJECT_ROOT"
     exit 1
 fi
 

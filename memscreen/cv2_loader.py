@@ -36,12 +36,12 @@ def get_cv2():
 
     # Check if running in PyInstaller bundle
     # cv2 is known to have recursion issues in PyInstaller
+    # However, we've fixed this with proper spec file configuration and runtime hooks
     if hasattr(sys, '_MEIPASS'):
-        print("[cv2_loader] Running in PyInstaller bundle - cv2 is disabled")
-        print("[cv2_loader] Recording feature will not be available in packaged app")
-        _cv2_module = None
-        _cv2_available = False
-        return None
+        print("[cv2_loader] Running in PyInstaller bundle - attempting to load cv2...")
+        print("[cv2_loader] If this fails, recording feature will be disabled")
+        # Don't return None immediately - let's try to load it
+        # The runtime hook and spec file should handle the recursion issue
 
     # Strategy 1: Check if cv2 is already in sys.modules
     if 'cv2' in sys.modules:

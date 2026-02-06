@@ -94,7 +94,7 @@ Download the appropriate installer for your platform from the [Releases](https:/
 
 2. **Run** the installation script:
    ```bash
-   sudo ./install/install.sh
+   sudo ./scripts/install_macos.sh
    ```
 
 3. **Follow** the prompts to install:
@@ -157,12 +157,14 @@ MemScreen requires the following permissions:
    cd MemScreen
    ```
 
-2. **Run** the installation script as Administrator:
-   ```powershell
-   Right-click install/install.bat > Run as Administrator
-   ```
+2. **Install** dependencies manually:
+   - Install Python 3.8+ from [python.org](https://www.python.org/downloads/)
+   - Install Ollama from [ollama.com](https://ollama.com/download)
 
-3. **Follow** the prompts
+3. **Install** Python packages:
+   ```powershell
+   pip install -r requirements.txt
+   ```
 
 4. **Launch** MemScreen:
    ```powershell

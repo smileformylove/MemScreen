@@ -132,7 +132,27 @@ Everything runs on your machine
 
 Get up and running in **3 minutes** — **no API keys, no cloud, no signup!**
 
-### 🐳 Option 1: Docker (Recommended)
+### 📦 Option 1: Download Pre-built App (Easiest)
+
+**For macOS users** - Download and run without installing dependencies!
+
+```bash
+# 1️⃣ Download the latest DMG from [Releases](https://github.com/smileformylove/MemScreen/releases)
+
+# 2️⃣ Open DMG and drag MemScreen.app to Applications
+
+# 3️⃣ Launch and grant permissions when prompted:
+#     - Screen Recording (required)
+#     - Accessibility (required for process tracking)
+#     - Microphone (optional, for audio recording)
+```
+
+✅ **Pros:** No Python/dependencies installation, standalone app
+📚 **See:** [Installation Guide](docs/INSTALLATION.md) for platform-specific instructions
+
+---
+
+### 🐳 Option 2: Docker (Recommended)
 
 **Easiest way** - No dependencies to install!
 
@@ -150,7 +170,7 @@ docker-compose -f docker/docker-compose.yml logs -f memscreen
 
 ---
 
-### 💻 Option 2: Local Installation
+### 💻 Option 3: Local Installation
 
 ```bash
 # 1️⃣ Install Ollama

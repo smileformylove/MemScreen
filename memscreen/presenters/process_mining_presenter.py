@@ -125,8 +125,17 @@ class ProcessMiningPresenter(BasePresenter):
 
             return True
 
+        except PermissionError as e:
+            # macOS permission error
+            error_msg = "Permission denied: This app needs Accessibility permissions to track input events."
+            error_msg += "\n\nGo to: System Settings > Privacy & Security > Accessibility > Add MemScreen"
+            self.show_error(error_msg)
+            print(f"[ProcessMiningPresenter] Permission error: {e}")
+            self.is_tracking = False
+            return False
         except Exception as e:
             self.handle_error(e, "Failed to start tracking")
+            self.is_tracking = False
             return False
 
     def stop_tracking(self) -> bool:

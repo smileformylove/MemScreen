@@ -37,7 +37,7 @@ class RecordingPresenter(BasePresenter):
     - Handle button clicks
     """
 
-    def __init__(self, view=None, memory_system=None, db_path="./db/screen_capture.db"):
+    def __init__(self, view=None, memory_system=None, db_path=None, output_dir=None, audio_dir=None):
         """
         Initialize recording presenter.
 
@@ -45,8 +45,27 @@ class RecordingPresenter(BasePresenter):
             view: RecordingTab view instance
             memory_system: Memory system for storing recordings
             db_path: Path to SQLite database
+            output_dir: Directory for video output
+            audio_dir: Directory for audio output
         """
         super().__init__(view, memory_system)
+
+        # Use centralized config for any missing paths
+        from memscreen.config import get_config
+        config = get_config()
+
+        # Set db_path
+        if db_path is None:
+            db_path = str(config.db_path)
+
+        # Set output_dir
+        if output_dir is None:
+            output_dir = str(config.videos_dir)
+
+        # Set audio_dir
+        if audio_dir is None:
+            audio_dir = str(config.db_dir / "audio")
+
         self.db_path = db_path
         self.memory_system = memory_system
 
@@ -59,10 +78,10 @@ class RecordingPresenter(BasePresenter):
         # Recording settings (with defaults)
         self.duration = 60  # seconds per segment
         self.interval = 2.0  # seconds between screenshots
-        self.output_dir = "./db/videos"
+        self.output_dir = output_dir
 
         # Audio recording
-        self.audio_recorder = AudioRecorder(output_dir="./db/audio")
+        self.audio_recorder = AudioRecorder(output_dir=audio_dir)
         self.audio_source = AudioSource.NONE  # none, microphone, system_audio
 
         # Statistics
@@ -98,6 +117,11 @@ class RecordingPresenter(BasePresenter):
         try:
             # Create output directory if it doesn't exist
             os.makedirs(self.output_dir, exist_ok=True)
+
+            # Create audio directory if it doesn't exist
+            audio_dir = getattr(self.audio_recorder, 'output_dir', './db/audio')
+            os.makedirs(audio_dir, exist_ok=True)
+            print(f"[RecordingPresenter] Created output directories: {self.output_dir}, {audio_dir}")
 
             # Initialize database
             self._init_database()
@@ -256,6 +280,29 @@ class RecordingPresenter(BasePresenter):
             print("[RecordingPresenter] ERROR: Cannot start recording - cv2 not available")
             return False
 
+        # Reset permission denied flag - user is explicitly trying to record
+        self._preview_permission_denied = False
+
+        # Pre-flight permission check - test permission BEFORE starting recording thread
+        # This prevents repeated permission dialogs during recording loop
+        print("[RecordingPresenter] Performing pre-flight permission check...")
+        try:
+            from PIL import ImageGrab
+            # Try to capture a tiny region to test permission
+            test_img = ImageGrab.grab(bbox=(0, 0, 1, 1))
+            print("[RecordingPresenter] ✓ Pre-flight permission check passed")
+            # If we get here without exception, permission is granted
+            del test_img  # Discard test image
+        except Exception as test_error:
+            error_msg = str(test_error).lower()
+            if "permission" in error_msg or "denied" in error_msg or "screen" in error_msg:
+                print(f"[RecordingPresenter] ✗ Pre-flight permission check failed: {test_error}")
+                self._preview_permission_denied = True
+                self.show_error("Screen recording permission is required. Please grant permission in System Settings > Privacy & Security > Screen Recording, then restart the app.")
+                return False
+            # If it's some other error, log but continue
+            print(f"[RecordingPresenter] Warning: Pre-flight check had non-permission error: {test_error}")
+
         try:
             self.duration = duration
             self.interval = interval
@@ -400,6 +447,11 @@ class RecordingPresenter(BasePresenter):
         Returns:
             numpy array of the frame or None if capture failed
         """
+        # Check if we've already detected permission denial
+        if hasattr(self, '_preview_permission_denied') and self._preview_permission_denied:
+            # Don't keep trying if permission was denied
+            return None
+
         try:
             cv2 = get_cv2()
             if cv2 is None:
@@ -409,10 +461,22 @@ class RecordingPresenter(BasePresenter):
             from PIL import ImageGrab
 
             # Capture screen with region support
-            if self.region_bbox:
-                screenshot = ImageGrab.grab(bbox=self.region_bbox)
-            else:
-                screenshot = ImageGrab.grab()  # Full screen
+            try:
+                if self.region_bbox:
+                    screenshot = ImageGrab.grab(bbox=self.region_bbox)
+                else:
+                    screenshot = ImageGrab.grab()  # Full screen
+            except Exception as grab_error:
+                error_msg = str(grab_error).lower()
+                # Check if it's a permission error
+                if "permission" in error_msg or "denied" in error_msg or "screen" in error_msg:
+                    # Mark permission as denied and stop trying
+                    self._preview_permission_denied = True
+                    print("[RecordingPresenter] Screen recording permission denied - stopping preview")
+                    return None
+                else:
+                    # Some other error
+                    raise grab_error
 
             # Convert to numpy array and ensure proper format
             frame_array = np.array(screenshot)
@@ -485,6 +549,14 @@ class RecordingPresenter(BasePresenter):
         last_screenshot_time = time.time()
         last_save_time = time.time()
 
+        # Check if permission was denied before entering recording loop
+        if hasattr(self, '_preview_permission_denied') and self._preview_permission_denied:
+            print("[RecordingPresenter] Permission was denied during pre-flight check - not starting recording loop")
+            self.is_recording = False
+            if self.view:
+                self.view.show_error("Screen recording permission is required. Please grant permission in System Settings > Privacy & Security > Screen Recording, then restart the app.")
+            return
+
         try:
             from PIL import ImageGrab
 
@@ -518,6 +590,25 @@ class RecordingPresenter(BasePresenter):
                             screenshot = ImageGrab.grab(bbox=self.region_bbox)
                         else:
                             screenshot = ImageGrab.grab()  # Full screen
+                    except Exception as grab_error:
+                        error_msg = str(grab_error).lower()
+                        # Check if it's a permission error
+                        if "permission" in error_msg or "denied" in error_msg or "screen" in error_msg:
+                            # Permission denied - stop recording
+                            print("[RecordingPresenter] Screen recording permission denied during recording")
+                            self._preview_permission_denied = True
+                            self.is_recording = False
+                            # Notify user
+                            if self.view:
+                                self.view.show_error("Screen recording permission denied. Please grant permission in System Settings > Privacy & Security > Screen Recording, then restart the app.")
+                            break  # Exit the recording loop
+                        else:
+                            # Some other error - log and continue
+                            print(f"[Recording] Error capturing frame: {grab_error}")
+                            # Continue to next iteration
+                            last_screenshot_time = current_time
+                            time.sleep(0.1)
+                            continue
 
                         # Convert to numpy array
                         frame_array = np.array(screenshot)

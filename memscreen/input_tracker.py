@@ -50,6 +50,13 @@ class InputTracker:
 
     def _init_database(self):
         """Create database tables if they don't exist"""
+        # Ensure database directory exists
+        import os
+        db_dir = os.path.dirname(self.db_path)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+            print(f"[InputTracker] Created database directory: {db_dir}")
+
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -101,13 +108,17 @@ class InputTracker:
 
             conn.commit()
             conn.close()
+            print(f"[DEBUG] Event logged: {event_type} - {action}")  # Debug log
         except Exception as e:
             print(f"[ERROR] Failed to log event: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _on_keyboard_press(self, key):
         """Handle keyboard press event"""
         try:
             key_name = key.name if hasattr(key, 'name') else str(key)
+            print(f"[DEBUG] Keyboard press: {key_name}")  # Debug log
             modifiers = []
             if keyboard.Shift in keyboard._modifiers_pressed:
                 modifiers.append("Shift")
@@ -170,6 +181,81 @@ class InputTracker:
             print(f"[ERROR] Mouse scroll error: {e}")
         return True
 
+    def _check_macos_permissions(self) -> bool:
+        """
+        Check if the app has necessary permissions on macOS.
+
+        On macOS, pynput requires Accessibility permissions to monitor keyboard and mouse events.
+
+        Returns:
+            True if permissions are granted, raises PermissionError otherwise
+        """
+        import sys
+        if sys.platform != 'darwin':
+            return True  # Only check on macOS
+
+        print("[INFO] Checking macOS Accessibility permissions...")
+
+        try:
+            # Try to create a CGEventTap to test permissions
+            from Quartz.CoreGraphics import (
+                CGEventTapCreate,
+                kCGSessionEventTap,
+                kCGHeadInsertEventTap,
+                kCGEventTapOptionDefault,
+            )
+            from Quartz import kCGEventMaskForAllEvents
+
+            tap = CGEventTapCreate(
+                kCGSessionEventTap,
+                kCGHeadInsertEventTap,
+                kCGEventTapOptionDefault,
+                kCGEventMaskForAllEvents(),
+                None,
+                None
+            )
+
+            if tap is None:
+                # No permission - raise error with helpful message
+                error_msg = """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+缺少辅助功能权限
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MemScreen 需要辅助功能权限才能记录键盘和鼠标事件。
+
+请按以下步骤授予权限：
+
+1. 打开"系统设置"
+2. 点击"隐私与安全性"
+3. 选择"辅助功能"
+4. 点击"+"按钮
+5. 从"应用程序"文件夹中选择 MemScreen.app
+6. 确保 MemScreen.app 旁边的开关已打开 ✓
+
+完成后，重新启动 MemScreen 应用。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+                raise PermissionError(error_msg)
+
+            # Clean up the tap
+            import ctypes
+            CFRelease = ctypes.CDLL('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation').CFRelease
+            CFRelease(tap)
+
+            print("[INFO] ✓ Accessibility permissions verified")
+            return True
+
+        except ImportError:
+            # Quartz not available - just show warning
+            print("[WARNING] Cannot verify permissions (Quartz not available)")
+            print("[INFO] If tracking crashes, grant Accessibility permissions in System Settings")
+            return True
+        except PermissionError:
+            # Re-raise PermissionError with our message
+            raise
+
     def start_tracking(self):
         """Start tracking keyboard and mouse events"""
         if self.is_tracking:
@@ -177,6 +263,14 @@ class InputTracker:
             return
 
         print("[INFO] Starting input tracking...")
+
+        # NOTE: Permission checking removed because CGEventTapCreate can cause crashes
+        # Instead, we rely on exception handling when starting listeners
+        import sys
+        if sys.platform == 'darwin':
+            print("[INFO] macOS detected. If tracking fails, grant Accessibility permissions:")
+            print("       System Settings > Privacy & Security > Accessibility > Add MemScreen")
+
         self.is_tracking = True
 
         # Start mouse listener in a separate thread
@@ -189,22 +283,56 @@ class InputTracker:
                 )
                 self.mouse_listener.start()
                 print("[INFO] Mouse listener started")
+
+                # Check if listener is actually running
+                time.sleep(0.5)
+                if self.mouse_listener.is_alive():
+                    print("[INFO] Mouse listener is running")
+                else:
+                    print("[WARNING] Mouse listener failed to start (not alive)")
+
             except Exception as e:
                 print(f"[ERROR] Failed to start mouse listener: {e}")
+                import traceback
+                traceback.print_exc()
 
         mouse_thread = threading.Thread(target=start_mouse_listener, daemon=True)
         mouse_thread.start()
 
-        # Start keyboard listener
-        try:
-            self.keyboard_listener = keyboard.Listener(
-                on_press=self._on_keyboard_press,
-                on_release=self._on_keyboard_release
-            )
-            self.keyboard_listener.start()
-            print("[INFO] Keyboard listener started")
-        except Exception as e:
-            print(f"[ERROR] Failed to start keyboard listener: {e}")
+        # Start keyboard listener in a separate thread to avoid blocking main thread
+        # This is critical for GUI applications like Kivy to prevent freezing/crashes
+        def start_keyboard_listener():
+            try:
+                self.keyboard_listener = keyboard.Listener(
+                    on_press=self._on_keyboard_press,
+                    on_release=self._on_keyboard_release
+                )
+                self.keyboard_listener.start()
+                print("[INFO] Keyboard listener started")
+
+                # Check if listener is actually running
+                time.sleep(0.5)
+                if self.keyboard_listener.is_alive():
+                    print("[INFO] Keyboard listener is running")
+                else:
+                    print("[WARNING] Keyboard listener failed to start (not alive)")
+
+            except Exception as e:
+                print(f"[ERROR] Failed to start keyboard listener: {e}")
+                import traceback
+                traceback.print_exc()
+
+        # TEMPORARY DISABLE KEYBOARD LISTENER ON MACOS
+        # Due to pynput compatibility issues with macOS 15.5 + Python 3.13
+        # The keyboard listener causes crashes in TSMGetInputSourceProperty
+        import sys
+        if sys.platform == 'darwin':
+            print("[WARNING] Keyboard tracking disabled on macOS due to compatibility issues")
+            print("[INFO] Mouse tracking is enabled")
+            print("[INFO] Full input tracking will be enabled in a future update")
+        else:
+            keyboard_thread = threading.Thread(target=start_keyboard_listener, daemon=True)
+            keyboard_thread.start()
 
         print("[INFO] Input tracking started successfully")
 

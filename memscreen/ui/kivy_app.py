@@ -99,6 +99,7 @@ for font_path in mac_fonts:
         except:
             pass
 
+import os
 from memscreen import Memory
 from memscreen.memory.models import MemoryConfig, EmbedderConfig, LlmConfig, VectorStoreConfig
 from memscreen.presenters.recording_presenter import RecordingPresenter
@@ -113,8 +114,38 @@ from memscreen.services.session_analysis import (
     get_session_analysis as core_get_session_analysis,
     delete_session as core_delete_session,
     delete_all_sessions as core_delete_all_sessions,
-    DEFAULT_DB_PATH as PROCESS_MINING_DB_PATH,
 )
+
+
+def get_db_path(filename: str) -> str:
+    """
+    Get the appropriate database path for the current environment.
+
+    In development: uses relative path ./db/filename
+    In packaged app: uses absolute path ~/db/filename
+
+    Args:
+        filename: Database filename (e.g., 'input_events.db')
+
+    Returns:
+        Full path to the database file
+    """
+    import sys
+
+    # Check if running in PyInstaller bundle
+    if getattr(sys, 'frozen', False):
+        # Running in packaged app - use user home directory
+        db_dir = os.path.expanduser("~/db")
+        os.makedirs(db_dir, exist_ok=True)
+        return os.path.join(db_dir, filename)
+    else:
+        # Running in development - use relative path
+        return f"./db/{filename}"
+
+
+def get_process_mining_db_path() -> str:
+    """Get the path to the process mining database."""
+    return get_db_path("process_mining.db")
 
 
 class BaseScreen(Screen):
@@ -172,18 +203,30 @@ class RecordingScreen(BaseScreen):
         )
         layout.add_widget(self.status_label)
 
-        # Preview area with image widget - larger (moved up, increased from 0.6 to 0.65)
-        self.preview_box = BoxLayout(size_hint_y=0.65)
+        # Preview area with static placeholder (disabled to avoid permission prompts)
+        self.preview_box = BoxLayout(size_hint_y=0.65, orientation='vertical')
         with self.preview_box.canvas.before:
             Color(0.88, 0.85, 0.92, 1)  # Light purple gray
             self.preview_bg = Rectangle(pos=self.preview_box.pos, size=self.preview_box.size)
         self.preview_box.bind(pos=self._update_preview, size=self._update_preview)
 
-        # Use Image widget for displaying frames
+        # Add a placeholder label instead of live preview
+        preview_label = Label(
+            text='📹 Screen Recording\n\nClick "Start Recording" to begin.\n\nPreview will appear during recording.',
+            font_name='chinese',
+            font_size='20',
+            color=(0.4, 0.3, 0.5, 1),
+            halign='center',
+            valign='middle'
+        )
+        self.preview_box.add_widget(preview_label)
+
+        # Hide the preview image widget (will show during recording)
         self.preview_image = Image(
             size_hint=(1, 1),
             allow_stretch=True,
-            keep_ratio=True
+            keep_ratio=True,
+            opacity=0  # Hidden initially
         )
         self.preview_box.add_widget(self.preview_image)
         layout.add_widget(self.preview_box)
@@ -254,8 +297,10 @@ class RecordingScreen(BaseScreen):
 
         self.add_widget(layout)
 
-        # Start preview update
-        Clock.schedule_once(self._start_preview, 1)
+        # NOTE: Auto-preview disabled to avoid triggering permission prompts on startup
+        # Preview will start when user clicks "Start Recording" or manually enables it
+        # Clock.schedule_once(self._start_preview, 1)
+        print("[RecordingScreen] Auto-preview disabled. Preview will start when recording begins.")
 
     def _update_preview(self, instance, value):
         self.preview_bg.pos = instance.pos
@@ -267,22 +312,22 @@ class RecordingScreen(BaseScreen):
             self.preview_update_event = Clock.schedule_interval(self._update_preview_frame, 0.1)
 
     def _update_preview_frame(self, dt):
-        """Update preview with current frame"""
-        if self.presenter and not self.is_recording and self.cv2_available:
+        """Update preview with current frame (only during recording)"""
+        if self.presenter and self.is_recording and self.cv2_available:
+            # Only show preview during recording
             frame = self.presenter.get_preview_frame()
             if frame is not None:
                 self._display_frame(frame)
                 self.preview_failed_count = 0  # Reset count on success
+                # Show preview image
+                self.preview_image.opacity = 1
             else:
                 self.preview_failed_count += 1
                 # If preview fails 3 times in a row, disable it
                 if self.preview_failed_count >= 3:
-                    print("[RecordingScreen] Preview disabled after 3 consecutive failures")
+                    print("[RecordingScreen] Too many preview failures, disabling")
                     self.cv2_available = False
-                    # Cancel the update timer
-                    if self.preview_update_event is not None:
-                        self.preview_update_event.cancel()
-                        self.preview_update_event = None
+                    self.preview_image.opacity = 0  # Hide preview
 
     def _display_frame(self, frame):
         """Convert OpenCV frame to Kivy texture and display"""
@@ -332,12 +377,15 @@ class RecordingScreen(BaseScreen):
         self.record_btn.text = "Stop Recording"
         self.record_btn.background_color = (0.75, 0.3, 0.4, 1)
 
+        # NOTE: NOT showing preview image - preview is completely disabled to avoid permission prompts
+        # self.preview_image.opacity = 1
+
         # Show status with audio source info
         audio_source_text = self.audio_spinner.text
         if audio_source_text != 'No Audio':
-            self.status_label.text = f"Status: Recording with {audio_source_text}..."
+            self.status_label.text = f"Status: Recording with {audio_source_text}... (Preview disabled during recording)"
         else:
-            self.status_label.text = "Status: Recording..."
+            self.status_label.text = "Status: Recording... (Preview disabled during recording)"
 
     def on_recording_stopped(self):
         """Callback when recording stops"""
@@ -345,6 +393,9 @@ class RecordingScreen(BaseScreen):
         self.record_btn.text = "Start Recording"
         self.record_btn.background_color = (0.6, 0.4, 0.75, 1)
         self.status_label.text = "Status: Saved"
+
+        # Hide preview image after recording
+        self.preview_image.opacity = 0
 
     def on_frame_captured(self, frame_count, elapsed_time):
         """Callback when a frame is captured"""
@@ -412,11 +463,31 @@ class RecordingScreen(BaseScreen):
                 self.region_selector_overlay = None
 
             if self.presenter:
+                print("[RecordingScreen] Starting recording...")
                 # Use default values: 60 seconds duration, 2.0 seconds interval
-                self.presenter.start_recording(duration=60, interval=2.0)
+                result = self.presenter.start_recording(duration=60, interval=2.0)
+                print(f"[RecordingScreen] Start recording result: {result}")
+
+                # NOTE: NOT starting preview updates to avoid triggering permission prompts
+                # Recording will happen silently in the background
+                # User will see the recorded video after stopping
+            else:
+                print("[RecordingScreen] ✗ ERROR: presenter is None!")
+                print("[RecordingScreen] Cannot start recording - presenter not initialized")
+                # Show error to user
+                self.show_error("Recording presenter not initialized. Please restart the app.")
         else:
             if self.presenter:
+                print("[RecordingScreen] Stopping recording...")
                 self.presenter.stop_recording()
+
+                # Stop preview updates
+                if self.preview_update_event is not None:
+                    self.preview_update_event.cancel()
+                    self.preview_update_event = None
+                    print("[RecordingScreen] Stopped preview updates")
+            else:
+                print("[RecordingScreen] ✗ ERROR: presenter is None!")
 
     def on_mode_change(self, spinner, text):
         """Handle recording mode change - auto-trigger actions"""
@@ -1946,6 +2017,10 @@ class ProcessScreen(BaseScreen):
         self._add_session_event("Tracking started")
         self._update_session_stats()
 
+        # Start periodic update to fetch events from database and update UI
+        self._last_event_count = 0
+        self._update_event = Clock.schedule_interval(self._refresh_events_from_db, 1.0)
+
     def stop(self):
         """Stop tracking input events"""
         if self.presenter:
@@ -1956,9 +2031,49 @@ class ProcessScreen(BaseScreen):
         self.track_btn.background_color = (0.6, 0.4, 0.75, 1)
         self._add_session_event("Tracking stopped")
 
+        # Cancel periodic update
+        if hasattr(self, '_update_event') and self._update_event is not None:
+            self._update_event.cancel()
+            self._update_event = None
+
         # Save session to history
         if len(self.current_session_events) > 1:
             self._save_session()
+
+    def _refresh_events_from_db(self, dt):
+        """Periodically fetch events from database and update UI"""
+        try:
+            if not self.is_tracking or not self.presenter:
+                return
+
+            # Get recent events from presenter
+            events = self.presenter.get_recent_events(limit=50)
+
+            if events and len(events) > self._last_event_count:
+                # New events detected - update UI
+                new_events = events[self._last_event_count:]
+                for event in new_events[:10]:  # Limit to 10 new events per update to avoid UI freeze
+                    event_text = f"{event['operate_type']}: {event['action']}"
+                    if event.get('content'):
+                        event_text += f" ({event['content']})"
+
+                    # Determine event type for coloring
+                    if event['operate_type'] == 'keyboard':
+                        event_type = "keypress"
+                    elif event['action'] == 'press':
+                        event_type = "click"
+                    else:
+                        event_type = "info"
+
+                    # Only add significant events (skip most moves to reduce clutter)
+                    if event['action'] != 'move' or event.get('content'):
+                        self._add_session_event(event_text, event_type)
+
+                self._last_event_count = len(events)
+                self._update_session_stats()
+
+        except Exception as e:
+            print(f"[ProcessScreen] Error refreshing events: {e}")
 
     def _add_session_event(self, text, event_type="info"):
         """Add event to current session"""
@@ -2010,29 +2125,62 @@ class ProcessScreen(BaseScreen):
     def _save_session(self):
         """Save current session to history (Core: session_analysis.save_session)."""
         try:
-            if len(self.current_session_events) <= 1:
+            # Load events from database instead of using memory
+            events = self.presenter.get_recent_events(limit=1000) if self.presenter else []
+
+            if len(events) <= 1:
+                print("[ProcessScreen] No events to save")
                 return
-            start_time = self.current_session_events[0]["time"]
-            end_time = self.current_session_events[-1]["time"]
+
+            # Convert database events to format expected by core_save_session
+            session_events = []
+            for event in events:
+                import datetime
+                timestamp = datetime.datetime.fromisoformat(event['timestamp'].replace(' ', 'T')) if isinstance(event['timestamp'], str) else datetime.datetime.now()
+                time_str = timestamp.strftime("%H:%M:%S")
+
+                event_type = "keypress" if event['operate_type'] == 'keyboard' else "click"
+                text = f"{event['operate_type']}: {event['action']}"
+                if event.get('content'):
+                    text += f" ({event['content']})"
+
+                session_events.append({
+                    "time": time_str,
+                    "text": text,
+                    "type": event_type
+                })
+
+            if len(session_events) <= 1:
+                return
+
+            start_time = session_events[0]["time"]
+            end_time = session_events[-1]["time"]
+            db_path = get_process_mining_db_path()
+            print(f"[ProcessScreen] Saving session to database: {db_path}")
             core_save_session(
-                self.current_session_events,
+                session_events,
                 start_time,
                 end_time,
-                db_path=PROCESS_MINING_DB_PATH,
+                db_path=db_path,
             )
             self._load_history()
             self.current_session_events = []
             self.session_events.clear_widgets()
             self._update_session_stats()
-            self._add_session_event("Session saved to history", "success")
+            self._add_session_event(f"Session saved to history ({len(session_events)} events)", "success")
+            print(f"[ProcessScreen] Session saved: {len(session_events)} events from {start_time} to {end_time}")
         except Exception as e:
             print(f"[ProcessScreen] Error saving session: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _load_history(self):
         """Load session history from Core (session_analysis.load_sessions)."""
         try:
             self.history_list.clear_widgets()
-            sessions = core_load_sessions(limit=20, db_path=PROCESS_MINING_DB_PATH)
+            db_path = get_process_mining_db_path()
+            print(f"[ProcessScreen] Loading history from database: {db_path}")
+            sessions = core_load_sessions(limit=20, db_path=db_path)
             if not sessions:
                 empty_label = Label(
                     text='No session history yet. Start tracking to record your workflow!',
@@ -2214,7 +2362,7 @@ class ProcessScreen(BaseScreen):
     def _delete_session(self, session_id):
         """Delete a specific session (Core: session_analysis.delete_session)."""
         try:
-            deleted_count = core_delete_session(session_id, db_path=PROCESS_MINING_DB_PATH)
+            deleted_count = core_delete_session(session_id, db_path=get_process_mining_db_path())
             if deleted_count > 0:
                 print(f"[ProcessScreen] Session #{session_id} deleted")
                 self._load_history()
@@ -2229,7 +2377,7 @@ class ProcessScreen(BaseScreen):
     def _delete_all_sessions(self, instance):
         """Delete all sessions (Core: session_analysis.delete_all_sessions)."""
         try:
-            count = core_delete_all_sessions(db_path=PROCESS_MINING_DB_PATH)
+            count = core_delete_all_sessions(db_path=get_process_mining_db_path())
             if count == 0:
                 self._add_session_event("No sessions to delete", "info")
                 return
@@ -2246,7 +2394,7 @@ class ProcessScreen(BaseScreen):
         try:
             result = core_get_session_analysis(
                 session_id, event_count, keystrokes, clicks, start_time, end_time,
-                db_path=PROCESS_MINING_DB_PATH,
+                db_path=get_process_mining_db_path(),
             )
             if not result:
                 self.analysis_content.text = f'No data found for Session #{session_id}'
@@ -2522,14 +2670,17 @@ class MemScreenApp(App):
 
         # Initialize presenters
         try:
+            print("[App] Initializing RecordingPresenter...")
             self.recording_presenter = RecordingPresenter(
                 memory_system=self.memory,
                 db_path=str(app_config.db_path)
             )
             self.recording_presenter.initialize()
-            print("[App] RecordingPresenter initialized")
+            print("[App] ✓ RecordingPresenter initialized successfully")
         except Exception as e:
-            print(f"[App] Failed to initialize RecordingPresenter: {e}")
+            print(f"[App] ✗ Failed to initialize RecordingPresenter: {e}")
+            import traceback
+            traceback.print_exc()
             self.recording_presenter = None
 
         try:
@@ -2542,7 +2693,7 @@ class MemScreenApp(App):
 
         try:
             self.process_mining_presenter = ProcessMiningPresenter(
-                db_path="./db/input_events.db"
+                db_path=get_db_path("input_events.db")
             )
             self.process_mining_presenter.initialize()
             print("[App] ProcessMiningPresenter initialized")
