@@ -178,6 +178,10 @@ class RecordingScreen(BaseScreen):
         self.cv2_available = True  # Track if cv2 is available
         self.preview_failed_count = 0  # Count consecutive preview failures
 
+        # Native floating ball (macOS only)
+        self.floating_ball = None
+        self.use_native_floating_ball = (sys.platform == 'darwin')
+
         layout = BoxLayout(orientation='vertical', spacing=15, padding=25)
 
         # Title
@@ -394,6 +398,186 @@ class RecordingScreen(BaseScreen):
         else:
             self.status_label.text = "Status: Recording..."
 
+        # Show floating ball and minimize main window
+        self._show_floating_ball()
+
+    def _show_floating_ball(self):
+        """Create and show native floating ball, hide main window"""
+        from kivy.core.window import Window
+        from kivy.clock import Clock
+
+        # Try native floating ball first (macOS)
+        if sys.platform == 'darwin':
+            try:
+                from memscreen.ui.floating_ball_native import create_floating_ball
+
+                # Create native floating ball
+                if self.floating_ball is None:
+                    self.floating_ball = create_floating_ball(presenter=self.presenter)
+
+                    # Set callbacks
+                    self.floating_ball.on_stop_callback = self._stop_from_ball
+                    self.floating_ball.on_pause_callback = self._pause_from_ball
+                    self.floating_ball.on_main_window_callback = self._hide_floating_ball  # For closing ball
+                    self.floating_ball.on_show_main_window_callback = self._show_main_window  # For showing main window only
+
+                # Set recording state
+                self.floating_ball.setRecordingState_(True)
+
+                # Minimize main window (keep in Dock to avoid destroying OpenGL context)
+                def minimize_main_window(dt):
+                    try:
+                        Window.minimize()
+                        print("[RecordingScreen] Main window minimized, native floating ball active")
+                    except Exception as e:
+                        print(f"[RecordingScreen] Could not minimize window: {e}")
+
+                Clock.schedule_once(minimize_main_window, 0.2)
+                return
+
+            except Exception as e:
+                print(f"[RecordingScreen] Native floating ball failed: {e}")
+                import traceback
+                traceback.print_exc()
+
+        # Fallback: Shrink window method
+        print("[RecordingScreen] Using window shrinking method")
+        self._show_floating_ball_fallback()
+
+    def _show_floating_ball_fallback(self):
+        """Fallback method: shrink window to show floating ball"""
+        from memscreen.ui.floating_ball import FloatingBallWindow
+        from kivy.core.window import Window
+        from kivy.clock import Clock
+
+        # Save original window size and position for restoration
+        self.original_window_size = Window.size
+        self.original_window_pos = (Window.left, Window.top)
+
+        # Create floating ball if it doesn't exist
+        if self.floating_ball is None:
+            # Create ball widget
+            self.floating_ball = FloatingBallWindow(presenter=self.presenter)
+
+            # Position ball at top-right of window
+            self.floating_ball.pos = (Window.size[0] - 100, Window.size[1] - 100)
+
+            # Connect callback for main window request
+            self.floating_ball.on_main_window_requested = self._hide_floating_ball
+
+            # Add ball to window
+            Window.add_widget(self.floating_ball)
+
+        # Set recording state
+        self.floating_ball.set_recording_state(is_recording=True, is_paused=False)
+
+        # Shrink window to small size and move to corner
+        def shrink_window(dt):
+            try:
+                # Shrink window to just show the ball
+                Window.size = (120, 120)
+
+                # Move to top-right corner of screen
+                try:
+                    import pygame
+                    pygame.init()
+                    info = pygame.display.Info()
+                    screen_width = info.current_w
+                    screen_height = info.current_h
+                    pygame.quit()
+
+                    Window.left = screen_width - 140
+                    Window.top = screen_height - 180
+                except:
+                    # Fallback: just move to some corner
+                    Window.left = Window.system_size[0] - 150
+                    Window.top = 100
+
+                print("[RecordingScreen] Window shrunk to floating ball mode")
+            except Exception as e:
+                print(f"[RecordingScreen] Could not shrink window: {e}")
+                import traceback
+                traceback.print_exc()
+
+        Clock.schedule_once(shrink_window, 0.1)
+
+    def _show_main_window(self):
+        """Restore main window without closing floating ball (for native macOS ball)"""
+        from kivy.core.window import Window
+        from kivy.clock import Clock
+
+        def restore_window(dt):
+            try:
+                # Restore and raise window without closing floating ball
+                Window.restore()
+                Window.raise_window()
+                print("[RecordingScreen] Main window restored (floating ball still active)")
+            except Exception as e:
+                print(f"[RecordingScreen] Could not restore window: {e}")
+                import traceback
+                traceback.print_exc()
+
+        Clock.schedule_once(restore_window, 0.1)
+
+    def _hide_floating_ball(self):
+        """Hide floating ball and restore main window"""
+        from kivy.core.window import Window
+        from kivy.clock import Clock
+
+        # Close floating ball (any type)
+        if hasattr(self, 'floating_ball') and self.floating_ball is not None:
+            try:
+                # Check if it has close method (Tkinter or native)
+                if hasattr(self.floating_ball, 'close'):
+                    self.floating_ball.close()
+                else:
+                    # Fallback: try to remove from window
+                    try:
+                        Window.remove_widget(self.floating_ball)
+                    except:
+                        pass
+
+                self.floating_ball = None
+                print("[RecordingScreen] Floating ball closed")
+            except Exception as e:
+                print(f"[RecordingScreen] Error closing floating ball: {e}")
+
+        # Restore and show main window
+        def restore_window(dt):
+            try:
+                # Show window (if hidden) or restore (if minimized)
+                try:
+                    Window.show()
+                except:
+                    Window.restore()
+
+                Window.raise_window()
+
+                # Restore original size if using fallback method
+                if hasattr(self, 'original_window_size') and self.original_window_size:
+                    Window.size = self.original_window_size
+
+                if hasattr(self, 'original_window_pos') and self.original_window_pos:
+                    Window.left, Window.top = self.original_window_pos
+
+                print("[RecordingScreen] Main window restored")
+            except Exception as e:
+                print(f"[RecordingScreen] Could not restore window: {e}")
+                import traceback
+                traceback.print_exc()
+
+        Clock.schedule_once(restore_window, 0.1)
+
+    def _stop_from_ball(self):
+        """Stop recording from floating ball"""
+        if self.presenter:
+            self.presenter.stop_recording()
+
+    def _pause_from_ball(self):
+        """Toggle pause from floating ball"""
+        # Pause functionality can be implemented here
+        pass
+
     def on_recording_stopped(self):
         """Callback when recording stops"""
         self.is_recording = False
@@ -403,6 +587,9 @@ class RecordingScreen(BaseScreen):
 
         # Keep showing preview after recording
         self.preview_image.opacity = 1
+
+        # Hide floating ball and restore main window
+        self._hide_floating_ball()
 
     def on_frame_captured(self, frame_count, elapsed_time):
         """Callback when a frame is captured"""

@@ -6,13 +6,14 @@
 
 ```
 tests/
-├── DOCKER_TEST.md              # Docker 测试指南
-├── test_performance.py         # 性能测试
-├── test_visual_memory.py       # 视觉记忆测试
-├── test_dynamic_memory.py      # 动态 Memory 测试
-├── test_memory_integration.py  # Memory 集成测试
-├── test_app_integration.py    # 应用集成测试
-└── verify_dynamic_memory.py   # Memory 验证脚本
+├── DOCKER_TEST.md                 # Docker 测试指南
+├── test_performance.py            # 性能测试
+├── test_visual_memory.py          # 视觉记忆测试
+├── test_dynamic_memory.py         # 动态 Memory 测试
+├── test_memory_integration.py     # Memory 集成测试
+├── test_app_integration.py        # 应用集成测试
+├── test_native_floating_ball.py   # macOS 原生悬浮球测试
+└── verify_dynamic_memory.py       # Memory 验证脚本
 ```
 
 ## 🚀 快速开始
@@ -125,6 +126,29 @@ python tests/test_dynamic_memory.py
 预期结果：
 - 所有组件正确集成
 - 数据流正常
+
+### 6. test_native_floating_ball.py
+**目的**: 测试 macOS 原生悬浮球功能 (仅 macOS)
+
+测试内容：
+- ✅ 悬浮球创建和显示
+- ✅ 拖拽功能
+- ✅ 左键点击交互
+- ✅ 右键菜单功能
+- ✅ 跨空间显示
+
+运行方式：
+```bash
+# 直接运行
+python tests/test_native_floating_ball.py
+```
+
+预期结果：
+- 悬浮球出现在屏幕右上角
+- 可以拖拽到任意位置
+- 右键显示完整菜单
+- 左键点击显示主窗口
+- 切换桌面空间时保持可见
 
 ## 🐳 Docker 测试
 

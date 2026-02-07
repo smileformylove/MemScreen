@@ -121,6 +121,7 @@ Everything runs on your machine
   - 🎯 **Custom Region Recording** — Select any area of your screen to record
   - 🤖 **Intelligent Agent** — Auto-classification & smart routing (3-5x faster)
   - 📊 **Dynamic Memory** — 15 categories for intelligent organization
+  - 🔴 **Native Floating Ball** (macOS) — Real floating window for recording control
 
   ### ⚡ Advanced Optimizations (Phase 1-6)
   - 👁️ **Visual Encoder** — SigLIP/CLIP models for accurate visual search
@@ -216,6 +217,11 @@ python start.py
 - **📐 Visual Guides** — Crosshair guides for precise region selection
 - **⏱️ Flexible Intervals** — Set capture frequency (0.5s - 5s)
 - **👁️ Live Preview** — See exactly what's being captured
+- **🔴 Native Floating Ball** (macOS) — Real floating window with drag-and-drop control
+  - **Cross-Space Visibility** — Stays visible across all desktop spaces
+  - **Smart Interaction** — Left-click to show window, right-click for menu
+  - **Recording Status** — Visual feedback (purple/red/yellow indicators)
+  - **Draggable** — Move anywhere on screen
 
 ### 🤖 AI-Powered Understanding
 
@@ -320,6 +326,7 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 - [Docker Test Guide](docs/guides/DOCKER_TEST.md) — Test Docker deployment
 - [Recording Guide](docs/RECORDING_GUIDE.md) — Screen recording features
 - [Audio Recording Guide](docs/AUDIO_RECORDING.md) — Audio capture setup
+- [Floating Ball Guide](docs/FLOATING_BALL.md) — Native floating ball usage (macOS)
 
 **🤖 AI Backend Configuration:**
 - [vLLM Backend](docs/VLLM_BACKEND.md) — High-performance inference backend
@@ -356,11 +363,12 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 
 ## 📝 What's New
 
-### ✨ v0.5.0 — Dynamic Memory System & Code Cleanup (February 2026)
+### ✨ v0.5.0 — Dynamic Memory System & Native Floating Ball (February 2026)
 
 - 🤖 **Intelligent Agent** — Auto-classification & smart routing (3-5x faster, 70% fewer tokens)
 - 📊 **Dynamic Memory** — 15 categories, 7 query intents, smart search
 - 🎯 **Custom Region Recording** — Visual crosshair guides, re-selectable regions
+- 🔴 **Native Floating Ball** (macOS) — Real floating window with cross-space visibility
 - 🧹 **Code Cleanup** — Removed test files, reorganized documentation
 - 📁 **Improved Structure** — Centralized documentation in `docs/` directory
 
