@@ -203,32 +203,35 @@ class RecordingScreen(BaseScreen):
         )
         layout.add_widget(self.status_label)
 
-        # Preview area with static placeholder (disabled to avoid permission prompts)
-        self.preview_box = BoxLayout(size_hint_y=0.65, orientation='vertical')
+        # Preview area - larger and cleaner
+        self.preview_box = BoxLayout(size_hint_y=0.75, orientation='vertical')
         with self.preview_box.canvas.before:
-            Color(0.88, 0.85, 0.92, 1)  # Light purple gray
+            Color(0.95, 0.93, 0.98, 1)  # Very light purple
             self.preview_bg = Rectangle(pos=self.preview_box.pos, size=self.preview_box.size)
         self.preview_box.bind(pos=self._update_preview, size=self._update_preview)
 
-        # Add a placeholder label instead of live preview
-        preview_label = Label(
-            text='📹 Screen Recording\n\nClick "Start Recording" to begin.\n\nPreview will appear during recording.',
-            font_name='chinese',
-            font_size='20',
-            color=(0.4, 0.3, 0.5, 1),
-            halign='center',
-            valign='middle'
-        )
-        self.preview_box.add_widget(preview_label)
-
-        # Hide the preview image widget (will show during recording)
+        # Preview image - shown immediately when preview starts
         self.preview_image = Image(
             size_hint=(1, 1),
             allow_stretch=True,
-            keep_ratio=True,
-            opacity=0  # Hidden initially
+            keep_ratio=False,  # Fill the entire space
+            opacity=0  # Hidden until preview starts
         )
         self.preview_box.add_widget(self.preview_image)
+
+        # Small status label at bottom (not blocking preview)
+        self.preview_status = Label(
+            text='Loading preview...',
+            font_name='chinese',
+            font_size='14',
+            color=(0.5, 0.4, 0.6, 0.8),
+            halign='center',
+            valign='bottom',
+            size_hint_y=None,
+            height=30
+        )
+        self.preview_box.add_widget(self.preview_status)
+
         layout.add_widget(self.preview_box)
 
         # Control Layout: Mode Selection + Record Button (horizontal)
@@ -297,10 +300,9 @@ class RecordingScreen(BaseScreen):
 
         self.add_widget(layout)
 
-        # NOTE: Auto-preview disabled to avoid triggering permission prompts on startup
-        # Preview will start when user clicks "Start Recording" or manually enables it
-        # Clock.schedule_once(self._start_preview, 1)
-        print("[RecordingScreen] Auto-preview disabled. Preview will start when recording begins.")
+        # Enable preview updates
+        Clock.schedule_once(self._start_preview, 1)
+        print("[RecordingScreen] Preview enabled - will show live screen feed")
 
     def _update_preview(self, instance, value):
         self.preview_bg.pos = instance.pos
@@ -312,15 +314,18 @@ class RecordingScreen(BaseScreen):
             self.preview_update_event = Clock.schedule_interval(self._update_preview_frame, 0.1)
 
     def _update_preview_frame(self, dt):
-        """Update preview with current frame (only during recording)"""
-        if self.presenter and self.is_recording and self.cv2_available:
-            # Only show preview during recording
+        """Update preview with current frame"""
+        if self.presenter and self.cv2_available:
+            # Show preview always (not just during recording)
             frame = self.presenter.get_preview_frame()
             if frame is not None:
                 self._display_frame(frame)
                 self.preview_failed_count = 0  # Reset count on success
                 # Show preview image
                 self.preview_image.opacity = 1
+                # Update status to show preview is active
+                if hasattr(self, 'preview_status'):
+                    self.preview_status.text = 'Live preview'
             else:
                 self.preview_failed_count += 1
                 # If preview fails 3 times in a row, disable it
@@ -328,6 +333,8 @@ class RecordingScreen(BaseScreen):
                     print("[RecordingScreen] Too many preview failures, disabling")
                     self.cv2_available = False
                     self.preview_image.opacity = 0  # Hide preview
+                    if hasattr(self, 'preview_status'):
+                        self.preview_status.text = 'Preview unavailable'
 
     def _display_frame(self, frame):
         """Convert OpenCV frame to Kivy texture and display"""
@@ -377,15 +384,15 @@ class RecordingScreen(BaseScreen):
         self.record_btn.text = "Stop Recording"
         self.record_btn.background_color = (0.75, 0.3, 0.4, 1)
 
-        # NOTE: NOT showing preview image - preview is completely disabled to avoid permission prompts
-        # self.preview_image.opacity = 1
+        # Show preview image during recording
+        self.preview_image.opacity = 1
 
         # Show status with audio source info
         audio_source_text = self.audio_spinner.text
         if audio_source_text != 'No Audio':
-            self.status_label.text = f"Status: Recording with {audio_source_text}... (Preview disabled during recording)"
+            self.status_label.text = f"Status: Recording with {audio_source_text}..."
         else:
-            self.status_label.text = "Status: Recording... (Preview disabled during recording)"
+            self.status_label.text = "Status: Recording..."
 
     def on_recording_stopped(self):
         """Callback when recording stops"""
@@ -394,18 +401,42 @@ class RecordingScreen(BaseScreen):
         self.record_btn.background_color = (0.6, 0.4, 0.75, 1)
         self.status_label.text = "Status: Saved"
 
-        # Hide preview image after recording
-        self.preview_image.opacity = 0
+        # Keep showing preview after recording
+        self.preview_image.opacity = 1
 
     def on_frame_captured(self, frame_count, elapsed_time):
         """Callback when a frame is captured"""
         self.frame_label.text = f'Frames: {frame_count}'
-        # Don't update preview during recording to avoid type issues
-        # Preview will update when recording stops
+        self.time_label.text = f'Time: {elapsed_time:.1f}s'
+        print(f"[RecordingScreen] Frame captured: {frame_count} frames, {elapsed_time:.1f}s elapsed")
 
     def on_recording_saved(self, filename, file_size):
         """Callback when recording is saved"""
         self.status_label.text = f"Status: Saved ({file_size / 1024 / 1024:.1f} MB)"
+
+        # Refresh video list to show the new recording
+        # Use a small delay to ensure database commit is complete
+        from kivy.clock import Clock
+        def do_refresh(dt):
+            try:
+                # Get app instance and access video screen
+                from kivy.app import App
+                app = App.get_running_app()
+                if hasattr(app, 'screen_manager'):
+                    video_screen = None
+                    for screen in app.screen_manager.screens:
+                        if isinstance(screen, VideoScreen):
+                            video_screen = screen
+                            break
+
+                    if video_screen:
+                        video_screen.refresh(None)
+                        print(f"[RecordingScreen] Refreshed video list after saving: {filename}")
+            except Exception as e:
+                print(f"[RecordingScreen] Could not refresh video list: {e}")
+
+        # Schedule refresh after 0.5 seconds to ensure database is committed
+        Clock.schedule_once(do_refresh, 0.5)
 
     def on_recording_deleted(self, filename):
         """Callback when recording is deleted"""

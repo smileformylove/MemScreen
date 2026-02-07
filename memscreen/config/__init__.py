@@ -145,6 +145,49 @@ class MemScreenConfig:
             "timezone": {
                 "default": self.DEFAULT_TIMEZONE,
             },
+            # ============================================
+            # NEW OPTIMIZATION FEATURES (Phase 1-6)
+            # ============================================
+            # Vision encoder configuration
+            "vision_encoder": {
+                "enabled": True,
+                "model_type": "siglip",  # Options: "siglip", "clip"
+                "device": "cpu",  # Options: "cpu", "cuda", "mps"
+                "cache_size": 1000,
+            },
+            # Tiered memory configuration
+            "tiered_memory": {
+                "enabled": True,
+                "enable_working_memory": False,  # Phase 1: disabled, Phase 2: enabled
+                "short_term_days": 7,
+                "working_memory_hours": 1,
+                "working_capacity": 100,
+                "short_term_capacity": 1000,
+            },
+            # Conflict resolution configuration
+            "conflict_resolution": {
+                "enabled": True,
+                "similarity_threshold": 0.95,
+                "enable_llm_check": True,
+            },
+            # Multigranular vision memory configuration
+            "multigranular_vision": {
+                "enabled": False,  # Experimental, disabled by default
+                "enable_scene_level": True,
+                "enable_text_level": True,
+            },
+            # Visual QA optimization configuration
+            "vision_qa": {
+                "enabled": True,
+                "max_context_tokens": 3500,
+                "enable_chain_of_thought": True,
+            },
+            # Model routing for visual tasks
+            "model_routing": {
+                "enable_vision_routing": True,
+                "vision_context_threshold": 3,
+                "fusion_weight": 0.6,
+            },
         }
 
     def _load_from_file(self, config_path: Union[str, Path]) -> None:
@@ -388,6 +431,85 @@ class MemScreenConfig:
     def timezone(self) -> str:
         """Get default timezone."""
         return self._config["timezone"]["default"]
+
+    # ============================================
+    # NEW OPTIMIZATION FEATURES PROPERTIES
+    # ============================================
+
+    # Vision encoder properties
+    @property
+    def vision_encoder_enabled(self) -> bool:
+        """Check if vision encoder is enabled."""
+        return self._config.get("vision_encoder", {}).get("enabled", False)
+
+    @property
+    def vision_encoder_model_type(self) -> str:
+        """Get vision encoder model type."""
+        return self._config.get("vision_encoder", {}).get("model_type", "siglip")
+
+    @property
+    def vision_encoder_device(self) -> str:
+        """Get vision encoder device."""
+        return self._config.get("vision_encoder", {}).get("device", "cpu")
+
+    @property
+    def vision_encoder_cache_size(self) -> int:
+        """Get vision encoder cache size."""
+        return self._config.get("vision_encoder", {}).get("cache_size", 1000)
+
+    # Tiered memory properties
+    @property
+    def tiered_memory_enabled(self) -> bool:
+        """Check if tiered memory is enabled."""
+        return self._config.get("tiered_memory", {}).get("enabled", False)
+
+    @property
+    def working_memory_enabled(self) -> bool:
+        """Check if working memory tier is enabled."""
+        return self._config.get("tiered_memory", {}).get("enable_working_memory", False)
+
+    @property
+    def short_term_days(self) -> int:
+        """Get short-term memory duration in days."""
+        return self._config.get("tiered_memory", {}).get("short_term_days", 7)
+
+    @property
+    def working_memory_hours(self) -> int:
+        """Get working memory duration in hours."""
+        return self._config.get("tiered_memory", {}).get("working_memory_hours", 1)
+
+    # Conflict resolution properties
+    @property
+    def conflict_resolution_enabled(self) -> bool:
+        """Check if conflict resolution is enabled."""
+        return self._config.get("conflict_resolution", {}).get("enabled", False)
+
+    @property
+    def similarity_threshold(self) -> float:
+        """Get semantic similarity threshold for conflict detection."""
+        return self._config.get("conflict_resolution", {}).get("similarity_threshold", 0.95)
+
+    # Visual QA properties
+    @property
+    def vision_qa_enabled(self) -> bool:
+        """Check if visual QA optimization is enabled."""
+        return self._config.get("vision_qa", {}).get("enabled", False)
+
+    @property
+    def max_context_tokens(self) -> int:
+        """Get max context tokens for visual QA."""
+        return self._config.get("vision_qa", {}).get("max_context_tokens", 3500)
+
+    # Model routing properties
+    @property
+    def vision_routing_enabled(self) -> bool:
+        """Check if vision routing is enabled."""
+        return self._config.get("model_routing", {}).get("enable_vision_routing", True)
+
+    @property
+    def fusion_weight(self) -> float:
+        """Get fusion weight for hybrid search."""
+        return self._config.get("model_routing", {}).get("fusion_weight", 0.6)
 
     def get_llm_config(self, backend: Optional[str] = None) -> Dict[str, Any]:
         """

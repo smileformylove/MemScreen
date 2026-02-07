@@ -72,6 +72,7 @@ class RecordingPresenter(BasePresenter):
         # Recording state
         self.is_recording = False
         self.recording_thread = None
+        self._save_thread = None  # Thread for saving recording to database
         self.recording_frames = []
         self.recording_start_time = None
 
@@ -357,13 +358,17 @@ class RecordingPresenter(BasePresenter):
 
             # Save the recording with audio
             if self.recording_frames:
-                # Save in background thread
+                # Save in background thread (non-daemon to ensure database save completes)
                 save_thread = threading.Thread(
                     target=self._save_recording,
                     args=(self.recording_frames, audio_file),
-                    daemon=True
+                    daemon=False  # Changed: must complete database save
                 )
                 save_thread.start()
+                print(f"[RecordingPresenter] 📀 Save thread started (non-daemon, will wait for completion)")
+
+                # Store thread reference for waiting on app exit
+                self._save_thread = save_thread
 
             # Notify view
             if self.view:
@@ -590,25 +595,6 @@ class RecordingPresenter(BasePresenter):
                             screenshot = ImageGrab.grab(bbox=self.region_bbox)
                         else:
                             screenshot = ImageGrab.grab()  # Full screen
-                    except Exception as grab_error:
-                        error_msg = str(grab_error).lower()
-                        # Check if it's a permission error
-                        if "permission" in error_msg or "denied" in error_msg or "screen" in error_msg:
-                            # Permission denied - stop recording
-                            print("[RecordingPresenter] Screen recording permission denied during recording")
-                            self._preview_permission_denied = True
-                            self.is_recording = False
-                            # Notify user
-                            if self.view:
-                                self.view.show_error("Screen recording permission denied. Please grant permission in System Settings > Privacy & Security > Screen Recording, then restart the app.")
-                            break  # Exit the recording loop
-                        else:
-                            # Some other error - log and continue
-                            print(f"[Recording] Error capturing frame: {grab_error}")
-                            # Continue to next iteration
-                            last_screenshot_time = current_time
-                            time.sleep(0.1)
-                            continue
 
                         # Convert to numpy array
                         frame_array = np.array(screenshot)
@@ -652,15 +638,31 @@ class RecordingPresenter(BasePresenter):
                         self.frame_count += 1
                         last_screenshot_time = current_time
 
-                    except Exception as e:
-                        print(f"[Recording] Error capturing frame: {e}")
-                        import traceback
-                        traceback.print_exc()
-                        # Continue recording even if one frame fails
+                        # Update view with frame count (every frame for responsiveness)
+                        if self.view:
+                            self.view.on_frame_captured(self.frame_count, elapsed)
 
-                    # Update view with frame count
-                    if self.view and self.frame_count % 10 == 0:
-                        self.view.on_frame_captured(self.frame_count, elapsed)
+                    except Exception as grab_error:
+                        error_msg = str(grab_error).lower()
+                        # Check if it's a permission error
+                        if "permission" in error_msg or "denied" in error_msg or "screen" in error_msg:
+                            # Permission denied - stop recording
+                            print("[RecordingPresenter] Screen recording permission denied during recording")
+                            self._preview_permission_denied = True
+                            self.is_recording = False
+                            # Notify user
+                            if self.view:
+                                self.view.show_error("Screen recording permission denied. Please grant permission in System Settings > Privacy & Security > Screen Recording, then restart the app.")
+                            break  # Exit the recording loop
+                        else:
+                            # Some other error - log and continue
+                            print(f"[Recording] Error capturing frame: {grab_error}")
+                            import traceback
+                            traceback.print_exc()
+                            # Continue to next iteration
+                            last_screenshot_time = current_time
+                            time.sleep(0.1)
+                            continue
 
                 # Sleep a bit to avoid CPU spike
                 time.sleep(0.1)
@@ -723,6 +725,8 @@ class RecordingPresenter(BasePresenter):
             audio_file: Optional path to audio file to merge
         """
         try:
+            print(f"[RecordingPresenter] 🎬 Starting to save recording... ({len(frames)} frames)")
+
             cv2 = get_cv2()
             if cv2 is None:
                 print("[RecordingPresenter] ERROR: cv2 not available for saving recording")
@@ -730,12 +734,15 @@ class RecordingPresenter(BasePresenter):
                 return
 
             if not frames:
+                print("[RecordingPresenter] WARNING: No frames to save")
                 self.show_info("No frames to save")
                 return
 
             # Generate filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = os.path.join(self.output_dir, f"recording_{timestamp}.mp4")
+
+            print(f"[RecordingPresenter] 📁 Saving to file: {filename}")
 
             # Save video
             fps = 1.0 / self.interval
@@ -747,12 +754,16 @@ class RecordingPresenter(BasePresenter):
 
             out.release()
 
+            print(f"[RecordingPresenter] ✅ Video file saved: {filename}")
+
             # Merge audio if provided
             if audio_file and os.path.exists(audio_file):
                 filename = self._merge_audio_video(filename, audio_file)
 
             # Get file size
             file_size = os.path.getsize(filename)
+
+            print(f"[RecordingPresenter] 📊 File size: {file_size / 1024 / 1024:.2f} MB")
 
             # Save to database
             self._save_to_database(filename, len(frames), fps, len(frames) / fps, file_size, audio_file)
@@ -765,9 +776,12 @@ class RecordingPresenter(BasePresenter):
             if self.view:
                 self.view.on_recording_saved(filename, file_size)
 
-            print(f"[RecordingPresenter] Saved recording: {filename}")
+            print(f"[RecordingPresenter] ✅ Recording save complete: {filename}")
 
         except Exception as e:
+            print(f"[RecordingPresenter] ❌ ERROR in _save_recording: {e}")
+            import traceback
+            traceback.print_exc()
             self.handle_error(e, "Failed to save recording")
 
     def _merge_audio_video(self, video_file: str, audio_file: str) -> str:
@@ -830,7 +844,11 @@ class RecordingPresenter(BasePresenter):
         try:
             import json
 
-            conn = sqlite3.connect(self.db_path)
+            print(f"[RecordingPresenter] 📝 Saving to database: {filename}")
+            print(f"[RecordingPresenter]    - frame_count={frame_count}, fps={fps}, duration={duration:.2f}s, size={file_size}")
+
+            # Use check_same_thread=False for multi-threaded access
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
             cursor = conn.cursor()
 
             # Get current timestamp
@@ -847,9 +865,23 @@ class RecordingPresenter(BasePresenter):
             ''', (filename, timestamp, frame_count, fps, duration, file_size, recording_mode, region_bbox, None, audio_file, audio_source_str))
 
             conn.commit()
+
+            # Verify the insert was successful
+            cursor.execute('SELECT rowid FROM recordings WHERE filename = ? ORDER BY rowid DESC LIMIT 1', (filename,))
+            result = cursor.fetchone()
+            if result:
+                print(f"[RecordingPresenter] ✅ Verified in database: rowid={result[0]}")
+            else:
+                print(f"[RecordingPresenter] ⚠️ WARNING: Insert may have failed - not found in database")
+
             conn.close()
 
+            print(f"[RecordingPresenter] ✅ Successfully saved to database: {filename}")
+
         except Exception as e:
+            print(f"[RecordingPresenter] ❌ ERROR saving to database: {e}")
+            import traceback
+            traceback.print_exc()
             self.handle_error(e, "Failed to save to database")
 
     def _add_video_to_memory(self, filename, frame_count, fps):
@@ -1078,3 +1110,26 @@ Be thorough - this information will be used for semantic search."""
 
         except Exception as e:
             self.handle_error(e, f"Failed to delete recording: {filename}")
+
+    def cleanup(self):
+        """
+        Cleanup method to ensure save operations complete before app exits.
+        Call this when shutting down the application.
+        """
+        print("[RecordingPresenter] 🧹 Cleanup started...")
+
+        # Stop recording if active
+        if self.is_recording:
+            print("[RecordingPresenter] Stopping active recording...")
+            self.stop_recording()
+
+        # Wait for save thread to complete
+        if self._save_thread and self._save_thread.is_alive():
+            print("[RecordingPresenter] ⏳ Waiting for save thread to complete (max 30s)...")
+            self._save_thread.join(timeout=30)
+            if self._save_thread.is_alive():
+                print("[RecordingPresenter] ⚠️ WARNING: Save thread still running after 30s timeout")
+            else:
+                print("[RecordingPresenter] ✅ Save thread completed successfully")
+
+        print("[RecordingPresenter] ✅ Cleanup complete")

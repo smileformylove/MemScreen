@@ -118,6 +118,7 @@ class VideoPresenter(BasePresenter):
             List of VideoInfo objects
         """
         try:
+            print(f"[VideoPresenter] 📋 Loading video list from database: {self.db_path}")
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
@@ -127,8 +128,11 @@ class VideoPresenter(BasePresenter):
                 ORDER BY timestamp DESC
             ''')
 
+            all_rows = cursor.fetchall()
+            print(f"[VideoPresenter] 📊 Found {len(all_rows)} total records in database")
+
             videos = []
-            for row in cursor.fetchall():
+            for row in all_rows:
                 filename = row[0]
                 # Only include videos that actually exist
                 if os.path.exists(filename):
@@ -141,16 +145,21 @@ class VideoPresenter(BasePresenter):
                         file_size=row[5] or 0
                     )
                     videos.append(video)
+                    print(f"[VideoPresenter] ✅ Video exists: {os.path.basename(filename)}")
                 else:
                     # Clean up database records for deleted files
-                    print(f"[VideoPresenter] Cleaning up database record for missing file: {filename}")
+                    print(f"[VideoPresenter] 🗑️ Cleaning up database record for missing file: {filename}")
                     cursor.execute('DELETE FROM recordings WHERE filename = ?', (filename,))
                     conn.commit()
 
             conn.close()
+            print(f"[VideoPresenter] 📤 Returning {len(videos)} valid videos")
             return videos
 
         except Exception as e:
+            print(f"[VideoPresenter] ❌ ERROR getting video list: {e}")
+            import traceback
+            traceback.print_exc()
             self.handle_error(e, "Failed to get video list")
             return []
 

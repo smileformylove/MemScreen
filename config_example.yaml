@@ -45,3 +45,47 @@ enable_graph: true
 graph_store:
   provider: "memory"  # Currently only 'memory' is supported
   config: {}
+
+# ============================================
+# NEW OPTIMIZATION FEATURES (Phase 1-6)
+# ============================================
+
+# Vision encoder configuration
+vision_encoder:
+  enabled: true  # Enable visual encoding
+  model_type: "siglip"  # Options: "siglip", "clip"
+  device: "cpu"  # Options: "cpu", "cuda", "mps"
+  cache_size: 1000  # LRU cache size for encoded images
+
+# Tiered memory configuration
+tiered_memory:
+  enabled: true  # Enable tiered memory management
+  enable_working_memory: false  # Enable working memory tier (Phase 2)
+  short_term_days: 7  # Short-term memory duration
+  working_memory_hours: 1  # Working memory duration
+  working_capacity: 100  # Max items in working memory
+  short_term_capacity: 1000  # Max items in short-term memory
+
+# Conflict resolution configuration
+conflict_resolution:
+  enabled: true  # Enable conflict detection
+  similarity_threshold: 0.95  # Semantic similarity threshold
+  enable_llm_check: true  # Enable LLM-based conflict analysis
+
+# Multigranular vision memory configuration
+multigranular_vision:
+  enabled: false  # Enable multi-granular vision (experimental)
+  enable_scene_level: true  # Scene-level descriptions
+  enable_text_level: true  # Text-level extraction
+
+# Visual QA optimization configuration
+vision_qa:
+  enabled: true  # Enable visual QA optimization
+  max_context_tokens: 3500  # Max tokens for 7b model context
+  enable_chain_of_thought: true  # Enable visual CoT
+
+# Model routing for visual tasks
+model_routing:
+  enable_vision_routing: true  # Enable specialized routing for visual QA
+  vision_context_threshold: 3  # Min visual memories for 7b model
+  fusion_weight: 0.6  # Weight for text results in hybrid search (0-1)

@@ -1,112 +1,42 @@
-# Python cache files
+# Python
 __pycache__/
-**/__pycache__/
 *.py[cod]
 *$py.class
-*.pyc
 *.so
-
-# Distribution / packaging
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual environments
 venv/
-venv_build/
 ENV/
-env/
-.venv
+.venv/
 
-# Database files
-db/
+# Database
 *.db
 *.sqlite
 *.sqlite3
+db/
 
-# Logs
-*.log
-logs/
+# Build
+dist/
+build/
+*.egg-info/
 
-# Test databases and artifacts
-test_*.db
-test_*.sqlite
-test_*.sqlite3
-
-# IDE / Editor files
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
-*.bak
-*.backup
-*.tmp
-*.temp
 
-# OS files
+# OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
-# Temporary files
-*.tmp
-*.temp
-tmp/
-*.cache
-
-# Test coverage
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
+# Application specific
 .pytest_cache/
+.coverage
+htmlcov/
+*.log
 
-# Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb
+# Kivy
+.kivy/
 
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# Model files (large)
-*.pth
-*.pt
-*.ckpt
-*.safetensors
-
-# macOS build artifacts
-build_macos/
-dist_macos/
-*.app/
-*.pkg/
-setup_*.py
-setup_temp.py
-MemScreen-*.dmg
+# MemScreen data
+.memscreen/
