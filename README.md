@@ -115,9 +115,15 @@ Everything runs on your machine
 
   **🎉 Featured on Product Hunt, ShipIt & NXGenTools!**
 
-  **🎉 v0.6.0 — Enhanced Memory System & Advanced Optimization!**
+  **🎉 v0.6.0 — Floating Ball Mode & Brand New Experience!**
 
-  ### 🚀 Core Features
+  ### 🚀 Core Features (v0.6.0)
+  - 🔴 **Floating Ball First** — macOS starts with floating ball only, main window minimized
+  - 🎨 **Branded Experience** — Floating ball displays your logo with circular masking
+  - 🖱️ **Simplified Control** — All features accessible via right-click menu
+  - 📱 **Cleaner Interface** — Drag anywhere, left-click to toggle window, right-click for menu
+
+  ### 📦 What's Included
   - 🎯 **Custom Region Recording** — Select any area of your screen to record
   - 🤖 **Intelligent Agent** — Auto-classification & smart routing (3-5x faster)
   - 📊 **Dynamic Memory** — 15 categories for intelligent organization
@@ -131,7 +137,7 @@ Everything runs on your machine
   - 🎬 **Multi-granular Vision** — Scene/Object/Text level understanding
   - 💬 **Visual QA Optimization** — Chain-of-thought for 7b models
 
-  [View Full Changelog](https://github.com/smileformylove/MemScreen/compare/v0.4.0...v0.6.0) • [Optimization Guide](docs/IMPLEMENTATION_SUMMARY.md)
+  [View Full Changelog](https://github.com/smileformylove/MemScreen/compare/v0.5.0...v0.6.0) • [User Guide](docs/USER_GUIDE.md)
 
 </div>
 
