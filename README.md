@@ -10,16 +10,16 @@
   <br/>
 
   [![Product Hunt](https://img.shields.io/badge/Product%20Hunt-Featured-orange?style=for-the-badge&logo=producthunt&logoColor=white&labelColor=FF6154)](https://www.producthunt.com/products/memscreen)
-  [![ShipIt](https://img.shields.io/badge/ShipIt-Published-purple?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMmwwIDdjMi42NyAwIDguMTYgMS4zNCA4IDl2MmMwIDUuNjItNS4zMyA4LTggOGwwLTd6Ii8+PHBhdGggZD0iTTEyIDdsNSA1djZoLTEweiIvPjwvc3ZnPg==&logoColor=white&labelColor=9B59B6)](https://www.shipit.buzz/products/memscreen)
-  [![NXGenTools](https://img.shields.io/badge/NXGenTools-Published-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMmwwIDdjMi42NyAwIDguMTYgMS4zNCA4IDl2MmMwIDUuNjItNS4zMyA4LTggOGwwLTd6Ii8+PC9zdmc+&logoColor=white&labelColor=4285F4)](https://www.nxgntools.com/tools/memscreen)
-  [![100% Local](https://img.shields.io/badge/AI-100%25%20Local-success?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My9vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMjJyczMtOSA5LTktOS05IDkgOS05IDkgOS05IDkgOS05IDkgOSA5LTkgOSA5IDkgOX0iLz48cGF0aCBkPSJNMTIgOHY4Ii8+PHBhdGggZD0iTTEyIDE2aDgiLz48L3N2Zz4=&logoColor=white&labelColor=06D6A0)](https://github.com/smileformylove/MemScreen)
-  [![No Cloud](https://img.shields.io/badge/Privacy-No%20Cloud-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTggMTB2LTRINnY0bTQgNmgtNHY0aDZhMiAyIDAgMCAwIDItMlYyYTIgMiAwIDAgMC0yLTJoLTJ6TDMgMTFWNGEyIDIgMCAwIDEgMi0yaDJIOUkiLz48L3N2Zz4=&logoColor=white&labelColor=457B9D)](https://github.com/smileformylove/MemScreen)
+  [![ShipIt](https://img.shields.io/badge/ShipIt-Published-purple?style=for-the-badge&logoColor=white&labelColor=9B59B6)](https://www.shipit.buzz/products/memscreen)
+  [![NXGenTools](https://img.shields.io/badge/NXGenTools-Published-blue?style=for-the-badge&logoColor=white&labelColor=4285F4)](https://www.nxgntools.com/tools/memscreen)
+  [![100% Local](https://img.shields.io/badge/AI-100%25%20Local-success?style=for-the-badge&logoColor=white&labelColor=06D6A0)](https://github.com/smileformylove/MemScreen)
+  [![No Cloud](https://img.shields.io/badge/Privacy-No%20Cloud-blue?style=for-the-badge&logoColor=white&labelColor=457B9D)](https://github.com/smileformylove/MemScreen)
   [![GitHub Stars](https://img.shields.io/github/stars/smileformylove/MemScreen?style=for-the-badge&logo=github&logoColor=white&labelColor=333&color=blue)](https://github.com/smileformylove/MemScreen/stargazers)
-  [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My9vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0xMCAyMEgyMm0tOCAwaDgiLz48cGF0aCBkPSJNOSAxOWg2Ii8+PHBhdGggZD0iTTEwIDVoNG0tMiAwaDQiLz48L3N2Zz4=)](LICENSE)
+  [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
   [![Python](https://img.shields.io/badge/python-3.8+-green?style=for-the-badge&logo=python&logoColor=white&labelColor=333)](https://www.python.org/downloads/)
-  [![Ollama](https://img.shields.io/badge/ollama-supported-orange?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMmwwIDdjMi42NyAwIDguMTYgMS4zNCA4IDl2MmMwIDUuNjItNS4zMyA4LTggOGwwLTd6Ii8+PC9zdmc+)](https://ollama.com)
-  [![vLLM](https://img.shields.io/badge/vLLM-supported-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMmwwIDdjMi42NyAwIDguMTYgMS4zNCA4IDl2MmMwIDUuNjItNS4zMyA4LTggOGwwLTd6Ii8+PHBhdGggZD0iTTEyIDdsNSA1djZoLTEweiIvPjwvc3ZnPg==)](https://docs.vllm.ai/)
-  [![Version](https://img.shields.io/badge/version-v0.5.0-brightgreen?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My9vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMCIvPjxwYXRoIGQ9Ik0xMiA2djZsNCAzIi8+PC9zdmc+&labelColor=333)](https://github.com/smileformylove/MemScreen/releases/tag/v0.5.0)
+  [![Ollama](https://img.shields.io/badge/ollama-supported-orange?style=for-the-badge)](https://ollama.com)
+  [![vLLM](https://img.shields.io/badge/vLLM-supported-blue?style=for-the-badge)](https://docs.vllm.ai/)
+  [![Version](https://img.shields.io/badge/version-v0.6.0-brightgreen?style=for-the-badge&labelColor=333)](https://github.com/smileformylove/MemScreen/releases/tag/v0.6.0)
 
   **100% Local • 100% Private • AI-Powered Visual Memory System**
 
@@ -115,7 +115,7 @@ Everything runs on your machine
 
   **🎉 Featured on Product Hunt, ShipIt & NXGenTools!**
 
-  **🎉 v0.5.0 — Enhanced Memory System & Advanced Optimization!**
+  **🎉 v0.6.0 — Enhanced Memory System & Advanced Optimization!**
 
   ### 🚀 Core Features
   - 🎯 **Custom Region Recording** — Select any area of your screen to record
@@ -131,7 +131,7 @@ Everything runs on your machine
   - 🎬 **Multi-granular Vision** — Scene/Object/Text level understanding
   - 💬 **Visual QA Optimization** — Chain-of-thought for 7b models
 
-  [View Full Changelog](https://github.com/smileformylove/MemScreen/compare/v0.4.0...v0.5.0) • [Optimization Guide](docs/IMPLEMENTATION_SUMMARY.md)
+  [View Full Changelog](https://github.com/smileformylove/MemScreen/compare/v0.4.0...v0.6.0) • [Optimization Guide](docs/IMPLEMENTATION_SUMMARY.md)
 
 </div>
 
@@ -196,6 +196,13 @@ pip install -r requirements.txt
 # 4️⃣ Launch 🚀
 python start.py
 ```
+
+> **💡 Floating Ball Mode (macOS):**
+> - On macOS, MemScreen starts with a **floating ball** in the top-right corner
+> - The main window stays minimized - use the floating ball to control everything
+> - **Right-click** the ball to access all features (Recording, Videos, AI Chat, etc.)
+> - **Left-click** to show/hide the main window
+> - **Drag** the ball to any position on screen
 
 > **💡 Pro Tip:** Once models are downloaded, MemScreen works **completely offline**.
 
@@ -363,13 +370,22 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 
 ## 📝 What's New
 
+### ✨ v0.6.0 — Floating Ball Mode & UI Polish (February 2026)
+
+- 🔴 **Floating Ball First** — macOS starts with floating ball, main window stays minimized
+- 🎨 **Branded Experience** — Floating ball displays your logo with circular masking
+- 🖱️ **Simplified Control** — All features accessible via right-click menu
+- 📱 **Cleaner Interface** — Drag anywhere, left-click to toggle window, right-click for menu
+- 🧹 **Code Cleanup** — Removed 15+ test/debug files, cleaned up project structure
+- 📚 **Better Docs** — Added comprehensive user guide, updated README
+- 🐛 **Bug Fixes** — Fixed duplicate floating ball issue, improved state management
+
 ### ✨ v0.5.0 — Dynamic Memory System & Native Floating Ball (February 2026)
 
 - 🤖 **Intelligent Agent** — Auto-classification & smart routing (3-5x faster, 70% fewer tokens)
 - 📊 **Dynamic Memory** — 15 categories, 7 query intents, smart search
 - 🎯 **Custom Region Recording** — Visual crosshair guides, re-selectable regions
 - 🔴 **Native Floating Ball** (macOS) — Real floating window with cross-space visibility
-- 🧹 **Code Cleanup** — Removed test files, reorganized documentation
 - 📁 **Improved Structure** — Centralized documentation in `docs/` directory
 
 ### ✨ v0.4.0 — Local AI Agent & Privacy-First Design
@@ -442,7 +458,7 @@ This project is released under the **MIT License** — free to use, modify, and 
 
   Made with ❤️ and 🦉 by [Jixiang Luo](https://github.com/smileformylove)
 
-  **v0.5.0** — Dynamic Memory System & Documentation Reorganization (February 2026)
+  **v0.6.0** — Floating Ball Mode & UI Polish (February 2026)
 
   [📧 Email](mailto:jixiangluo85@gmail.com) • [🐛 Report Bug](https://github.com/smileformylove/MemScreen/issues) • [💬 Discussion](https://github.com/smileformylove/MemScreen/discussions)
 

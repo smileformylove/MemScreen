@@ -18,6 +18,7 @@ from Cocoa import (
     NSBezierPath,
     NSColor,
     NSEvent,
+    NSImage,
     NSPanel,
     NSPoint,
     NSRect,
@@ -51,10 +52,25 @@ class FloatingBallView(NSView):
         self.mouse_dragged_callback = None
         self.right_click_callback = None
         self.mouse_up_callback = None  # For detecting clicks vs drags
+
+        # Load logo image
+        import os
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'assets', 'logo.png')
+        if os.path.exists(logo_path):
+            self.logo_image = NSImage.alloc().initWithContentsOfFile_(logo_path)
+            if self.logo_image is None:
+                print(f"[FloatingBall] Failed to load logo from {logo_path}")
+                self.logo_image = None
+            else:
+                print(f"[FloatingBall] Loaded logo from {logo_path}")
+        else:
+            print(f"[FloatingBall] Logo not found at {logo_path}")
+            self.logo_image = None
+
         return self
 
     def drawRect_(self, rect):
-        """Draw the circular ball"""
+        """Draw the circular ball with logo"""
         bounds = self.bounds()
 
         # Draw outer glow
@@ -63,20 +79,37 @@ class FloatingBallView(NSView):
         glow_color.set()
         glow.fill()
 
-        # Draw main ball (slightly smaller)
-        main_rect = NSRect(NSPoint(2, 2), NSSize(bounds.size.width - 4, bounds.size.height - 4))
-        main = NSBezierPath.bezierPathWithOvalInRect_(main_rect)
-        self.color.set()
-        main.fill()
+        # Create circular clipping path for logo
+        clip_rect = NSRect(NSPoint(2, 2), NSSize(bounds.size.width - 4, bounds.size.height - 4))
+        clip_path = NSBezierPath.bezierPathWithOvalInRect_(clip_rect)
 
-        # Draw highlight
-        highlight_rect = NSRect(NSPoint(bounds.size.width * 0.3, bounds.size.height * 0.3),
-                                NSSize(bounds.size.width * 0.3, bounds.size.height * 0.3))
-        highlight = NSBezierPath.bezierPathWithOvalInRect_(highlight_rect)
-        NSColor.whiteColor().colorWithAlphaComponent_(0.3).set()
-        highlight.fill()
+        # Save graphics state
+        from AppKit import NSGraphicsContext
+        NSGraphicsContext.currentContext().saveGraphicsState()
 
-        # Draw status icon
+        # Clip to circular path
+        clip_path.addClip()
+
+        # Draw logo image (if available)
+        if self.logo_image:
+            # Draw logo filling the circular area
+            self.logo_image.drawInRect_(clip_rect)
+        else:
+            # Fallback: draw solid color if logo not available
+            main = NSBezierPath.bezierPathWithOvalInRect_(clip_rect)
+            self.color.set()
+            main.fill()
+
+        # Restore graphics state
+        NSGraphicsContext.currentContext().restoreGraphicsState()
+
+        # Draw border
+        border_path = NSBezierPath.bezierPathWithOvalInRect_(clip_rect)
+        NSColor.whiteColor().colorWithAlphaComponent_(0.2).set()
+        border_path.setLineWidth_(1.5)
+        border_path.stroke()
+
+        # Draw status icon overlay
         self._draw_status_icon(bounds)
 
     def _draw_status_icon(self, bounds):
@@ -209,6 +242,15 @@ class FloatingBallWindow(NSPanel):
         self.on_pause_callback = None
         self.on_main_window_callback = None
         self.on_show_main_window_callback = None  # New: show main window without closing ball
+        self.on_select_region_callback = None  # New: select region from floating ball
+        self.on_start_recording_callback = None  # New: start recording from floating ball
+        # Additional feature callbacks
+        self.on_show_videos_callback = None  # Show videos screen
+        self.on_show_chat_callback = None  # Show chat screen
+        self.on_show_process_callback = None  # Show process mining screen
+        self.on_show_about_callback = None  # Show about screen
+        self.on_switch_screen_callback = None  # Generic screen switch callback
+        self.on_quit_callback = None  # Quit application
 
         # Drag state
         self.initial_mouse_location = None
@@ -275,7 +317,15 @@ class FloatingBallWindow(NSPanel):
         if self.presenter:
             try:
                 status = self.presenter.get_recording_status()
-                info_text = f"Frames: {status['frame_count']}\nTime: {status['elapsed_time']:.1f}s"
+                mode_info = self.presenter.get_recording_mode()
+                mode_text = f"Mode: {mode_info['mode'].title()}"
+                if mode_info['mode'] == 'region' and mode_info['bbox']:
+                    bbox = mode_info['bbox']
+                    width = bbox[2] - bbox[0]
+                    height = bbox[3] - bbox[1]
+                    mode_text += f" ({width}×{height})"
+
+                info_text = f"{mode_text}\nFrames: {status['frame_count']}\nTime: {status['elapsed_time']:.1f}s"
                 info_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
                     info_text, "", ""
                 )
@@ -286,12 +336,28 @@ class FloatingBallWindow(NSPanel):
 
         menu.addItem_(NSMenuItem.separatorItem())
 
-        # Stop Recording
-        stop_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "⏹ Stop Recording", "stopRecording:", ""
+        # Add "Select Region" menu item (always visible for region mode)
+        select_region_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "🎯 Select Region", "selectRegion:", ""
         )
-        stop_item.setTarget_(self)
-        menu.addItem_(stop_item)
+        select_region_item.setTarget_(self)
+        menu.addItem_(select_region_item)
+
+        # Add "Start Recording" menu item (visible when not recording)
+        if not self.contentView().is_recording:
+            start_recording_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                "⏺ Start Recording", "startRecording:", ""
+            )
+            start_recording_item.setTarget_(self)
+            menu.addItem_(start_recording_item)
+
+        # Stop Recording
+        if self.contentView().is_recording:
+            stop_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                "⏹ Stop Recording", "stopRecording:", ""
+            )
+            stop_item.setTarget_(self)
+            menu.addItem_(stop_item)
 
         # Pause/Resume
         if self.contentView().is_recording:
@@ -302,12 +368,53 @@ class FloatingBallWindow(NSPanel):
             pause_item.setTarget_(self)
             menu.addItem_(pause_item)
 
-        # Main Window
+        menu.addItem_(NSMenuItem.separatorItem())
+
+        # === Main Features Section ===
+
+        # Main Window / Recording
         main_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "🏠 Main Window", "showMainWindow:", ""
+            "🏠 Recording", "showMainWindow:", ""
         )
         main_item.setTarget_(self)
         menu.addItem_(main_item)
+
+        # Videos
+        videos_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "🎬 Videos", "showVideos:", ""
+        )
+        videos_item.setTarget_(self)
+        menu.addItem_(videos_item)
+
+        # Chat
+        chat_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "💬 AI Chat", "showChat:", ""
+        )
+        chat_item.setTarget_(self)
+        menu.addItem_(chat_item)
+
+        # Process Mining
+        process_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "⚡ Process", "showProcess:", ""
+        )
+        process_item.setTarget_(self)
+        menu.addItem_(process_item)
+
+        # About
+        about_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "ℹ️ About", "showAbout:", ""
+        )
+        about_item.setTarget_(self)
+        menu.addItem_(about_item)
+
+        menu.addItem_(NSMenuItem.separatorItem())
+
+        # Quit
+        quit_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "🚪 Quit MemScreen", "quit:", "q"
+        )
+        quit_item.setTarget_(self)
+        menu.addItem_(quit_item)
 
         # Show menu
         menu.popUpMenuPositioningItem_atLocation_inView_(
@@ -328,9 +435,81 @@ class FloatingBallWindow(NSPanel):
             self.on_pause_callback()
 
     def showMainWindow_(self, sender):
-        """Show main window without closing floating ball"""
-        if self.on_show_main_window_callback:
+        """Show main window/recording screen"""
+        # Use the generic screen switch mechanism
+        if self.on_switch_screen_callback:
+            self.on_switch_screen_callback('recording')
+        elif self.on_show_main_window_callback:
             self.on_show_main_window_callback()
+
+    def selectRegion_(self, sender):
+        """Open region selector"""
+        if self.on_select_region_callback:
+            self.on_select_region_callback()
+
+    def startRecording_(self, sender):
+        """Start recording from floating ball"""
+        if self.on_start_recording_callback:
+            self.on_start_recording_callback()
+
+    def showVideos_(self, sender):
+        """Show videos screen"""
+        if self.on_show_videos_callback:
+            self.on_show_videos_callback()
+        elif self.on_switch_screen_callback:
+            self.on_switch_screen_callback('video')
+
+    def showChat_(self, sender):
+        """Show chat screen"""
+        if self.on_show_chat_callback:
+            self.on_show_chat_callback()
+        elif self.on_switch_screen_callback:
+            self.on_switch_screen_callback('chat')
+
+    def showProcess_(self, sender):
+        """Show process mining screen"""
+        if self.on_show_process_callback:
+            self.on_show_process_callback()
+        elif self.on_switch_screen_callback:
+            self.on_switch_screen_callback('process')
+
+    def showAbout_(self, sender):
+        """Show about screen"""
+        if self.on_show_about_callback:
+            self.on_show_about_callback()
+        elif self.on_switch_screen_callback:
+            self.on_switch_screen_callback('about')
+
+    def quit_(self, sender):
+        """Quit MemScreen application"""
+        print("[FloatingBall] Quit requested")
+
+        # Call quit callback first (this should close both ball and main app)
+        if self.on_quit_callback:
+            self.on_quit_callback()
+        elif self.on_main_window_callback:
+            # Fallback to old callback
+            self.on_main_window_callback()
+        else:
+            # Default behavior: just close the ball
+            self.close()
+
+        # Terminate the NSApplication properly
+        try:
+            from AppKit import NSApplication
+            from PyObjCTools import AppHelper
+            app = NSApplication.sharedApplication()
+
+            # Stop the event loop and terminate
+            AppHelper.stopEventLoop()
+            app.stop_(None)
+            app.terminate_(None)
+
+            print("[FloatingBall] Application terminated")
+        except Exception as e:
+            print(f"[FloatingBall] Error terminating: {e}")
+            import sys
+            sys.exit(0)
 
     def setRecordingState_(self, is_recording):
         """Update recording state"""

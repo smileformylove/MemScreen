@@ -4,6 +4,7 @@
 ### time: 2026-02-01             ###
 ### license: MIT                 ###
 
+import os
 from typing import Dict, List, Optional, Union
 
 from ollama import Client
@@ -124,7 +125,33 @@ class OllamaLLM(LLMBase):
         if not self.config.model:
             self.config.model = "qwen2.5vl:7b"
 
+        # Create ollama client
         self.client = Client(host=self.config.ollama_base_url)
+
+        # Fix for macOS system proxy issue: replace the internal httpx client
+        # The ollama library uses httpx which picks up system proxy settings
+        # If the proxy (127.0.0.1:7890) is not running, requests fail with 502
+        try:
+            import httpx
+            import logging
+            logger = logging.getLogger(__name__)
+
+            # Store the base_url from the original client
+            original_base_url = self.client._client.base_url
+
+            # Create a new httpx client with trust_env=False
+            new_httpx_client = httpx.Client(
+                base_url=original_base_url,  # Preserve the base URL
+                trust_env=False,  # Don't read system proxy settings
+                timeout=60.0
+            )
+
+            # Replace the internal client
+            self.client._client = new_httpx_client
+            logger.info("Ollama LLM client patched to bypass system proxy")
+
+        except Exception as e:
+            pass  # Fall back to default client behavior
 
     def _parse_response(self, response, tools):
         """

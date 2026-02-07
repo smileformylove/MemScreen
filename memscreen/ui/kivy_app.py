@@ -64,7 +64,7 @@ Config.set('kivy', 'keyboard_mode', 'system')
 Config.set('kivy', 'keyboard_layout', 'qwerty')
 Config.set('input', 'mouse', 'mouse,disable_multitouch')
 
-Window.title = "MemScreen v0.5.0"
+Window.title = "MemScreen v0.6.0"
 
 # Register Chinese fonts
 linux_fonts = [
@@ -398,8 +398,15 @@ class RecordingScreen(BaseScreen):
         else:
             self.status_label.text = "Status: Recording..."
 
-        # Show floating ball and minimize main window
-        self._show_floating_ball()
+        # NOTE: Don't create floating ball here - it's already created at startup
+        # Just update the existing floating ball's state
+        from kivy.app import App
+        app = App.get_running_app()
+        if hasattr(app, 'floating_ball') and app.floating_ball is not None:
+            app.floating_ball.setRecordingState_(True)
+            print("[RecordingScreen] Updated existing floating ball state to recording")
+
+        # NOTE: We DON'T call _show_floating_ball() to avoid creating duplicate balls
 
     def _show_floating_ball(self):
         """Create and show native floating ball, hide main window"""
@@ -420,19 +427,19 @@ class RecordingScreen(BaseScreen):
                     self.floating_ball.on_pause_callback = self._pause_from_ball
                     self.floating_ball.on_main_window_callback = self._hide_floating_ball  # For closing ball
                     self.floating_ball.on_show_main_window_callback = self._show_main_window  # For showing main window only
+                    self.floating_ball.on_switch_screen_callback = self._switch_screen_from_ball  # For switching screens
+                    self.floating_ball.on_select_region_callback = self._select_region_from_ball  # For selecting region
+                    self.floating_ball.on_start_recording_callback = self._start_recording_from_ball  # For starting recording
+                    self.floating_ball.on_quit_callback = self._quit_from_ball  # For quitting app
 
                 # Set recording state
                 self.floating_ball.setRecordingState_(True)
 
-                # Minimize main window (keep in Dock to avoid destroying OpenGL context)
-                def minimize_main_window(dt):
-                    try:
-                        Window.minimize()
-                        print("[RecordingScreen] Main window minimized, native floating ball active")
-                    except Exception as e:
-                        print(f"[RecordingScreen] Could not minimize window: {e}")
+                # NOTE: DON'T minimize the main window
+                # User wants to see the main window even during recording
+                # The floating ball stays visible for control
+                print("[RecordingScreen] Recording started with floating ball - main window stays visible")
 
-                Clock.schedule_once(minimize_main_window, 0.2)
                 return
 
             except Exception as e:
@@ -505,13 +512,52 @@ class RecordingScreen(BaseScreen):
         """Restore main window without closing floating ball (for native macOS ball)"""
         from kivy.core.window import Window
         from kivy.clock import Clock
+        import subprocess
 
         def restore_window(dt):
             try:
+                # If recording, pause it first
+                was_recording = self.is_recording
+                if was_recording:
+                    print("[RecordingScreen] Pausing recording to show main window")
+                    self._pause_from_ball()
+
                 # Restore and raise window without closing floating ball
                 Window.restore()
                 Window.raise_window()
                 print("[RecordingScreen] Main window restored (floating ball still active)")
+
+                # Additional macOS activation
+                try:
+                    script = '''
+                    tell application "System Events"
+                        set pythonProcs to (every process whose name contains "Python")
+                        repeat with proc in pythonProcs
+                            try
+                                set frontmost of proc to true
+                                set minimized of proc to false
+                            end try
+                        end repeat
+                    end tell
+                    '''
+                    subprocess.run(['osascript', '-e', script],
+                                  capture_output=True, timeout=3)
+                    print("[RecordingScreen] Sent macOS activation command")
+
+                    # Wait and re-raise
+                    import time
+                    time.sleep(0.2)
+                    Window.raise_window()
+
+                except Exception as activate_err:
+                    print(f"[RecordingScreen] macOS activation warning: {activate_err}")
+
+                # Update status
+                if was_recording:
+                    self.status_label.text = "Status: Recording paused (viewing main window)"
+                else:
+                    self.status_label.text = "Status: Ready"
+
             except Exception as e:
                 print(f"[RecordingScreen] Could not restore window: {e}")
                 import traceback
@@ -578,6 +624,52 @@ class RecordingScreen(BaseScreen):
         # Pause functionality can be implemented here
         pass
 
+    def _switch_screen_from_ball(self, screen_name):
+        """Switch screen from floating ball by writing to trigger file"""
+        import os
+        switch_file = os.path.expanduser('~/.memscreen/switch_screen.txt')
+        try:
+            os.makedirs(os.path.dirname(switch_file), exist_ok=True)
+            with open(switch_file, 'w') as f:
+                f.write(screen_name)
+            print(f"[RecordingScreen] Screen switch requested: {screen_name}")
+        except Exception as e:
+            print(f"[RecordingScreen] Failed to request screen switch: {e}")
+
+    def _select_region_from_ball(self):
+        """Request region selection from floating ball by writing to trigger file"""
+        import os
+        region_trigger_file = os.path.expanduser('~/.memscreen/region_trigger.txt')
+        try:
+            os.makedirs(os.path.dirname(region_trigger_file), exist_ok=True)
+            with open(region_trigger_file, 'w') as f:
+                f.write('select')
+            print("[RecordingScreen] Region selection requested")
+        except Exception as e:
+            print(f"[RecordingScreen] Failed to request region selection: {e}")
+
+    def _start_recording_from_ball(self):
+        """Request recording start from floating ball by writing to trigger file"""
+        import os
+        recording_trigger_file = os.path.expanduser('~/.memscreen/recording_trigger.txt')
+        try:
+            os.makedirs(os.path.dirname(recording_trigger_file), exist_ok=True)
+            with open(recording_trigger_file, 'w') as f:
+                f.write('start')
+            print("[RecordingScreen] Recording start requested")
+        except Exception as e:
+            print(f"[RecordingScreen] Failed to request recording start: {e}")
+
+    def _quit_from_ball(self):
+        """Quit app from floating ball"""
+        from kivy.app import App
+        try:
+            app = App.get_running_app()
+            app.stop()
+            print("[RecordingScreen] App quit requested")
+        except Exception as e:
+            print(f"[RecordingScreen] Failed to quit app: {e}")
+
     def on_recording_stopped(self):
         """Callback when recording stops"""
         self.is_recording = False
@@ -588,8 +680,13 @@ class RecordingScreen(BaseScreen):
         # Keep showing preview after recording
         self.preview_image.opacity = 1
 
-        # Hide floating ball and restore main window
-        self._hide_floating_ball()
+        # NOTE: Don't hide floating ball - just update its state
+        # The floating ball should stay visible all the time
+        from kivy.app import App
+        app = App.get_running_app()
+        if hasattr(app, 'floating_ball') and app.floating_ball is not None:
+            app.floating_ball.setRecordingState_(False)
+            print("[RecordingScreen] Updated existing floating ball state to not recording")
 
     def on_frame_captured(self, frame_count, elapsed_time):
         """Callback when a frame is captured"""
@@ -757,10 +854,8 @@ class RecordingScreen(BaseScreen):
         print("[RecordingScreen] Switched to Full Screen mode")
 
     def open_region_selector(self, instance):
-        """Open full-screen overlay for region selection"""
-        from memscreen.ui.region_selector import RegionSelector
-
-        print("[RecordingScreen] Opening region selector...")
+        """Open full-screen overlay for region selection using native macOS selector"""
+        print("[RecordingScreen] Opening native macOS region selector...")
 
         # Check if presenter exists
         if not self.presenter:
@@ -768,35 +863,69 @@ class RecordingScreen(BaseScreen):
             print("[RecordingScreen] ERROR: Presenter not initialized when opening region selector")
             return
 
-        # If overlay exists, close it first to allow reopening
+        # Minimize main window before showing region selector
+        try:
+            from kivy.core.window import Window
+            Window.minimize()
+            print("[RecordingScreen] Main window minimized")
+        except Exception as e:
+            print(f"[RecordingScreen] Could not minimize window: {e}")
+
+        # Clear any existing overlay
         if self.region_selector_overlay is not None:
-            print("[RecordingScreen] Closing existing overlay to reopen")
-            self.region_selector_overlay.close_for_recording()
+            print("[RecordingScreen] Clearing existing overlay")
             self.region_selector_overlay = None
 
         # Show loading status
         self.status_label.text = "Status: Opening region selector..."
 
-        # Create overlay widget in next frame to avoid blocking
-        def create_overlay(dt):
-            try:
-                overlay = RegionSelector(on_selection_callback=self._on_region_selected)
+        # Use native region selector
+        try:
+            from memscreen.ui.native_region_selector import select_region
 
-                # Add overlay to window
-                Window.add_widget(overlay)
-                self.region_selector_overlay = overlay
+            def region_callback(bbox):
+                """Handle region selection from native selector"""
+                if bbox is None:
+                    # User cancelled the selection (ESC pressed)
+                    print("[RecordingScreen] Region selection cancelled")
 
-                self.status_label.text = "Status: Drag to select region (press ESC to exit)..."
-                print("[RecordingScreen] Region selector opened")
-            except Exception as e:
-                self.status_label.text = f"Status: Error - {str(e)}"
-                print(f"[RecordingScreen] ERROR opening region selector: {e}")
-                import traceback
-                traceback.print_exc()
-                self.region_selector_overlay = None
+                    # Reset to Full Screen mode
+                    if self.presenter:
+                        self.presenter.set_recording_mode('fullscreen')
+                        self.status_label.text = "Status: Full Screen mode (cancelled)"
+                        self.mode_spinner.text = 'Full Screen'
+                    else:
+                        self.status_label.text = "Status: Ready"
 
-        # Schedule overlay creation to avoid blocking UI
-        Clock.schedule_once(create_overlay)
+                    print("[RecordingScreen] Reset to fullscreen mode")
+
+                elif bbox and self.presenter:
+                    # Set presenter to region mode
+                    self.presenter.set_recording_mode('region', bbox=bbox)
+
+                    # Update status to show current selection
+                    width = bbox[2] - bbox[0]
+                    height = bbox[3] - bbox[1]
+                    self.status_label.text = f"Status: Region {width}×{height}px - Ready to record"
+
+                    print(f"[RecordingScreen] Region selected: {bbox}")
+                    # NOTE: Keep main window minimized, only floating ball visible
+
+                else:
+                    # Selection too small or other error
+                    print("[RecordingScreen] Invalid selection")
+                    self.status_label.text = "Status: Selection too small, please try again"
+
+            # Show native region selector (non-blocking)
+            print("[RecordingScreen] Launching native region selector...")
+            selector = select_region(region_callback)
+            self.status_label.text = "Status: Drag to select region (press ESC to exit)..."
+
+        except Exception as e:
+            self.status_label.text = f"Status: Error - {str(e)}"
+            print(f"[RecordingScreen] ERROR opening region selector: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _on_region_selected(self, bbox):
         """
@@ -2684,7 +2813,7 @@ class AboutScreen(BaseScreen):
         author_box = self._create_section_box("About MemScreen", [
             ("Developer", "Jixiang Luo"),
             ("Email", "jixiangluo85@gmail.com"),
-            ("Version", "v0.5.0"),
+            ("Version", "v0.6.0"),
             ("License", "MIT License - Copyright 2026")
         ])
         main_layout.add_widget(author_box)
@@ -2780,7 +2909,7 @@ class MemScreenApp(App):
         from kivy.core.window import Window
         from kivy.resources import resource_add_path
 
-        Window.title = "MemScreen v0.5.0"
+        Window.title = "MemScreen v0.6.0"
 
         # Set app icon to prevent Kivy from overriding it with default icon
         # Get project root for icon path
@@ -3065,6 +3194,7 @@ class MemScreenApp(App):
 
         # Screen manager
         self.sm = ScreenManager()
+        self.screen_manager = self.sm  # Also set screen_manager for compatibility
 
         # Disable ScreenManager border and set background
         from kivy.core.window import Window
@@ -3075,6 +3205,9 @@ class MemScreenApp(App):
         if self.recording_presenter:
             recording_screen.set_presenter(self.recording_presenter)
         self.sm.add_widget(recording_screen)
+
+        # Save reference for later use (e.g., floating ball callbacks)
+        self.recording_screen = recording_screen
 
         self.chat_presenter = None
         try:
@@ -3147,11 +3280,219 @@ class MemScreenApp(App):
         if self.process_mining_presenter:
             process_screen.set_presenter(self.process_mining_presenter)
         self.sm.add_widget(process_screen)
-        self.sm.add_widget(AboutScreen(name='settings', memory_system=self.memory))
+        self.sm.add_widget(AboutScreen(name='about', memory_system=self.memory))
 
         root.add_widget(self.sm)
 
+        # Expose screen_manager for floating ball navigation
+        self.screen_manager = self.sm
+
+        # Start screen switch monitor for floating ball requests
+        self._switch_file_path = os.path.expanduser('~/.memscreen/switch_screen.txt')
+        self._region_trigger_file = os.path.expanduser('~/.memscreen/region_trigger.txt')
+        self._recording_trigger_file = os.path.expanduser('~/.memscreen/recording_trigger.txt')
+        self._last_switch_check = 0
+        from kivy.clock import Clock
+        Clock.schedule_interval(self._check_screen_switch_request, 0.5)
+        import logging
+        logging.info(f"[App] Screen switch monitor started")
+        sys.stderr.write(f"[App] ✓ Screen switch monitor started - checking {self._switch_file_path} every 0.5s\n")
+        sys.stderr.flush()
+
         return root
+
+    def _check_screen_switch_request(self, dt):
+        """Check if floating ball requested a screen switch or region selection"""
+        self._last_switch_check = getattr(self, '_last_switch_check', 0) + 1
+        if self._last_switch_check % 10 == 0:  # Log every 5 seconds
+            sys.stderr.write(f"[App] Tick: Screen switch monitor running (check #{self._last_switch_check})\n")
+            sys.stderr.flush()
+
+        try:
+            # Check screen switch request
+            if os.path.exists(self._switch_file_path):
+                with open(self._switch_file_path, 'r') as f:
+                    requested_screen = f.read().strip()
+
+                sys.stderr.write(f"[App] Found switch request file: {requested_screen}\n")
+                sys.stderr.flush()
+
+                valid_screens = ['recording', 'chat', 'video', 'process', 'settings', 'about']
+                if requested_screen in valid_screens:
+                    if hasattr(self, 'screen_manager') and self.screen_manager:
+                        current_screen = self.screen_manager.current
+                        sys.stderr.write(f"[App] Current screen: {current_screen}, Requested: {requested_screen}\n")
+                        sys.stderr.flush()
+
+                        if current_screen != requested_screen:
+                            sys.stderr.write(f"[App] Switching to {requested_screen}\n")
+                            sys.stderr.flush()
+                            self._switch(requested_screen)
+
+                            # Restore window from minimized state and bring to front
+                            try:
+                                from kivy.core.window import Window
+                                # Deminiaturize if minimized
+                                Window.restore()
+                                # Raise window to front
+                                Window.raise_window()
+                                sys.stderr.write(f"[App] Window restored and raised for {requested_screen}\n")
+                                sys.stderr.flush()
+
+                                # Additional macOS-specific window activation
+                                try:
+                                    import subprocess
+                                    script = '''
+                                    tell application "System Events"
+                                        set pythonProcs to (every process whose name contains "Python")
+                                        repeat with proc in pythonProcs
+                                            try
+                                                set frontmost of proc to true
+                                                -- Also try to un-minimize if minimized
+                                                set minimized of proc to false
+                                            end try
+                                        end repeat
+                                    end tell
+                                    '''
+                                    result = subprocess.run(['osascript', '-e', script],
+                                                          capture_output=True, text=True, timeout=3)
+                                    sys.stderr.write(f"[App] Sent macOS activation command (un-minimize)\n")
+                                    sys.stderr.flush()
+
+                                    # Extra wait and re-activate
+                                    import time
+                                    time.sleep(0.2)
+
+                                    # Force window to front using Kivy API
+                                    Window.raise_window()
+
+                                except Exception as activate_err:
+                                    sys.stderr.write(f"[App] macOS activation warning: {activate_err}\n")
+                                    sys.stderr.flush()
+
+                            except Exception as e:
+                                sys.stderr.write(f"[App] Could not restore/raise window: {e}\n")
+                                import traceback
+                                traceback.print_exc()
+                                sys.stderr.flush()
+
+                try:
+                    os.remove(self._switch_file_path)
+                    sys.stderr.write(f"[App] Deleted switch request file\n")
+                    sys.stderr.flush()
+                except Exception as e:
+                    sys.stderr.write(f"[App] Could not delete switch file: {e}\n")
+                    sys.stderr.flush()
+
+            # Check region selection trigger
+            if os.path.exists(self._region_trigger_file):
+                sys.stderr.write(f"[App] Found region selection trigger - using native selector\n")
+                sys.stderr.flush()
+
+                # Minimize main window
+                try:
+                    from kivy.core.window import Window
+                    Window.minimize()
+                    sys.stderr.write(f"[App] Minimized main window for region selection\n")
+                    sys.stderr.flush()
+                except Exception as e:
+                    sys.stderr.write(f"[App] Could not minimize window: {e}\n")
+                    sys.stderr.flush()
+
+                # Use native region selector
+                try:
+                    from memscreen.ui.native_region_selector import select_region
+
+                    def region_callback(bbox):
+                        """Handle region selection"""
+                        if bbox:
+                            sys.stderr.write(f"[App] Region selected: {bbox}\n")
+                            sys.stderr.flush()
+                            # Update presenter if on recording screen
+                            if hasattr(self, 'screen_manager') and self.screen_manager:
+                                recording_screen = self.screen_manager.get_screen('recording')
+                                if hasattr(recording_screen, 'presenter') and recording_screen.presenter:
+                                    recording_screen.presenter.set_recording_mode('region', bbox=bbox)
+                                    sys.stderr.write(f"[App] Updated presenter with region mode\n")
+                                    sys.stderr.flush()
+                        else:
+                            sys.stderr.write(f"[App] Region selection cancelled\n")
+                            sys.stderr.flush()
+                            # Reset to fullscreen mode
+                            if hasattr(self, 'screen_manager') and self.screen_manager:
+                                recording_screen = self.screen_manager.get_screen('recording')
+                                if hasattr(recording_screen, 'presenter') and recording_screen.presenter:
+                                    recording_screen.presenter.set_recording_mode('fullscreen')
+                                    sys.stderr.write(f"[App] Reset to fullscreen mode\n")
+                                    sys.stderr.flush()
+
+                    # Show native region selector
+                    sys.stderr.write(f"[App] Opening native macOS region selector\n")
+                    sys.stderr.flush()
+                    selector = select_region(region_callback)
+
+                except Exception as e:
+                    sys.stderr.write(f"[App] Error opening native selector: {e}\n")
+                    sys.stderr.flush()
+                    import traceback
+                    traceback.print_exc()
+
+                try:
+                    os.remove(self._region_trigger_file)
+                    sys.stderr.write(f"[App] Deleted region trigger file\n")
+                    sys.stderr.flush()
+                except Exception as e:
+                    sys.stderr.write(f"[App] Could not delete region trigger file: {e}\n")
+                    sys.stderr.flush()
+
+            # Check recording trigger
+            if os.path.exists(self._recording_trigger_file):
+                sys.stderr.write(f"[App] Found recording trigger - starting recording\n")
+                sys.stderr.flush()
+
+                # Start recording on recording screen
+                if hasattr(self, 'screen_manager') and self.screen_manager:
+                    recording_screen = self.screen_manager.get_screen('recording')
+                    sys.stderr.write(f"[App] Got recording screen: {recording_screen}\n")
+                    sys.stderr.flush()
+
+                    if hasattr(recording_screen, 'record_btn'):
+                        # Restore window first (it's minimized at startup)
+                        from kivy.core.window import Window
+                        Window.restore()
+                        Window.raise_window()
+                        sys.stderr.write(f"[App] Restored window for recording\n")
+                        sys.stderr.flush()
+
+                        # Check if already recording
+                        if hasattr(recording_screen, 'is_recording') and recording_screen.is_recording:
+                            sys.stderr.write(f"[App] Already recording, skipping\n")
+                            sys.stderr.flush()
+                        else:
+                            # Call toggle_recording directly with the button instance
+                            recording_screen.toggle_recording(recording_screen.record_btn)
+                            sys.stderr.write(f"[App] Started recording via toggle_recording call\n")
+                            sys.stderr.flush()
+                    else:
+                        sys.stderr.write(f"[App] ERROR: recording_screen has no record_btn attribute\n")
+                        sys.stderr.flush()
+                else:
+                    sys.stderr.write(f"[App] ERROR: screen_manager not found\n")
+                    sys.stderr.flush()
+
+                try:
+                    os.remove(self._recording_trigger_file)
+                    sys.stderr.write(f"[App] Deleted recording trigger file\n")
+                    sys.stderr.flush()
+                except Exception as e:
+                    sys.stderr.write(f"[App] Could not delete recording trigger file: {e}\n")
+                    sys.stderr.flush()
+
+        except Exception as e:
+            sys.stderr.write(f"[App] Error checking screen switch request: {e}\n")
+            sys.stderr.flush()
+            import traceback
+            traceback.print_exc()
 
     def _switch(self, screen_name):
         self.sm.current = screen_name
@@ -3165,6 +3506,17 @@ class MemScreenApp(App):
                 btn.state = 'normal'
                 btn.background_color = (0.3, 0.28, 0.35, 1)  # Darker purple for normal
                 btn.color = (0.9, 0.9, 0.9, 1)
+
+        # Auto-refresh video list when switching to video screen
+        if screen_name == 'video':
+            from kivy.clock import Clock
+            def refresh_video_screen(dt):
+                if hasattr(self, 'screen_manager') and self.screen_manager:
+                    video_screen = self.screen_manager.get_screen('video')
+                    if hasattr(video_screen, 'refresh'):
+                        video_screen.refresh(None)
+                        print(f"[App] Auto-refreshed video list")
+            Clock.schedule_once(refresh_video_screen, 0.2)
 
     def on_stop(self):
         """Clean up presenters when app closes"""
@@ -3189,54 +3541,91 @@ class MemScreenApp(App):
     def on_start(self):
         print("[App] Started - Light purple theme, all black text")
 
-        # Request attention to bring window to front on macOS
-        try:
-            Window.request_attention(window_attention="normal")
-            print("[App] ✓ Window attention requested")
-        except Exception as e:
-            print(f"[App] ⚠ Could not request attention: {e}")
+        # NEW: Start with floating ball only on macOS
+        if sys.platform == 'darwin':
+            from kivy.clock import Clock
+            def show_floating_ball_only(dt):
+                try:
+                    from memscreen.ui.floating_ball_native import create_floating_ball
+
+                    # Create floating ball
+                    self.floating_ball = create_floating_ball(presenter=self.recording_presenter)
+
+                    # Set callbacks using recording_screen's methods
+                    self.floating_ball.on_stop_callback = self.recording_screen._stop_from_ball
+                    self.floating_ball.on_pause_callback = self.recording_screen._pause_from_ball
+                    self.floating_ball.on_main_window_callback = self.recording_screen._hide_floating_ball
+                    self.floating_ball.on_show_main_window_callback = self.recording_screen._show_main_window
+                    self.floating_ball.on_switch_screen_callback = self.recording_screen._switch_screen_from_ball
+                    self.floating_ball.on_select_region_callback = self.recording_screen._select_region_from_ball
+                    self.floating_ball.on_start_recording_callback = self.recording_screen._start_recording_from_ball
+                    self.floating_ball.on_quit_callback = self.recording_screen._quit_from_ball
+
+                    # Set initial state (not recording)
+                    self.floating_ball.setRecordingState_(False)
+
+                    print("[App] ✓ Floating ball created at startup")
+
+                    # Hide/minimize main window
+                    Window.minimize()
+                    print("[App] ✓ Main window minimized - floating ball only mode")
+
+                except Exception as e:
+                    print(f"[App] ✗ Failed to create floating ball: {e}")
+                    import traceback
+                    traceback.print_exc()
+
+            # Schedule floating ball creation after window is ready
+            Clock.schedule_once(show_floating_ball_only, 0.5)
+        else:
+            # Non-macOS: show main window normally
+            try:
+                Window.request_attention(window_attention="normal")
+                print("[App] ✓ Window attention requested")
+            except Exception as e:
+                print(f"[App] ⚠ Could not request attention: {e}")
 
         # Activate this app using osascript (macOS only)
-        # IMPORTANT: Delay activation to ensure window is fully created first
-        if sys.platform == 'darwin':
-            import subprocess
-            from kivy.clock import Clock
-
-            def activate_app(dt):
-                """Activate the app after window is fully created"""
-                try:
-                    # Always use the .app bundle name for activation
-                    app_name = "MemScreen"
-
-                    # Try to activate the app
-                    result = subprocess.run(
-                        ['osascript', '-e', f'tell application "{app_name}" to activate'],
-                        capture_output=True,
-                        timeout=2
-                    )
-                    if result.returncode == 0:
-                        print(f"[App] ✓ App activated using osascript ({app_name})")
-                    else:
-                        # Try using bundle ID as fallback
-                        result = subprocess.run(
-                            ['osascript', '-e', 'tell application id "com.smileformylove.MemScreen" to activate'],
-                            capture_output=True,
-                            timeout=2
-                        )
-                        if result.returncode == 0:
-                            print(f"[App] ✓ App activated using bundle ID")
-                        else:
-                            print(f"[App] ⚠ Could not activate app via osascript (stderr: {result.stderr.decode()})")
-                except Exception as e:
-                    print(f"[App] ⚠ Activation failed: {e}")
-
-            # Schedule activation with more aggressive delays
-            # macOS needs more time for window to be fully created and registered
-            Clock.schedule_once(activate_app, 0.5)
-            Clock.schedule_once(activate_app, 1.5)
-            Clock.schedule_once(activate_app, 2.5)
-            Clock.schedule_once(activate_app, 3.5)
-            Clock.schedule_once(activate_app, 5.0)
+        # NOTE: Disabled activation to keep main window minimized in floating-ball-only mode
+        # if sys.platform == 'darwin':
+        #     import subprocess
+        #     from kivy.clock import Clock
+        #
+        #     def activate_app(dt):
+        #         """Activate the app after window is fully created"""
+        #         try:
+        #             # Always use the .app bundle name for activation
+        #             app_name = "MemScreen"
+        #
+        #             # Try to activate the app
+        #             result = subprocess.run(
+        #                 ['osascript', '-e', f'tell application "{app_name}" to activate'],
+        #                 capture_output=True,
+        #                 timeout=2
+        #             )
+        #             if result.returncode == 0:
+        #                 print(f"[App] ✓ App activated using osascript ({app_name})")
+        #             else:
+        #                 # Try using bundle ID as fallback
+        #                 result = subprocess.run(
+        #                     ['osascript', '-e', 'tell application id "com.smileformylove.MemScreen" to activate'],
+        #                     capture_output=True,
+        #                     timeout=2
+        #                 )
+        #                 if result.returncode == 0:
+        #                     print(f"[App] ✓ App activated using bundle ID")
+        #                 else:
+        #                     print(f"[App] ⚠ Could not activate app via osascript (stderr: {result.stderr.decode()})")
+        #         except Exception as e:
+        #             print(f"[App] ⚠ Activation failed: {e}")
+        #
+        #     # Schedule activation with more aggressive delays
+        #     # macOS needs more time for window to be fully created and registered
+        #     Clock.schedule_once(activate_app, 0.5)
+        #     Clock.schedule_once(activate_app, 1.5)
+        #     Clock.schedule_once(activate_app, 2.5)
+        #     Clock.schedule_once(activate_app, 3.5)
+        #     Clock.schedule_once(activate_app, 5.0)
 
         # Ensure Ollama service is running
         print("[App] Checking Ollama service...")
