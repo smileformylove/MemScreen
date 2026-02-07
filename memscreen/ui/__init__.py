@@ -7,5 +7,6 @@
 """MemScreen UI module"""
 
 from .kivy_app import MemScreenApp
+from .floating_ball import FloatingBallWindow
 
-__all__ = ["MemScreenApp"]
+__all__ = ["MemScreenApp", "FloatingBallWindow"]
