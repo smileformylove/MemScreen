@@ -147,7 +147,32 @@ Everything runs on your machine
 
 Get up and running in **3 minutes** — **no API keys, no cloud, no signup!**
 
-### 📦 Option 1: Download Pre-built App (Easiest)
+### 🚀 One-Click Install (Recommended)
+
+**Fastest way** - Fully automated setup for macOS & Linux!
+
+```bash
+# Clone and install everything automatically
+git clone https://github.com/smileformylove/MemScreen.git && cd MemScreen
+./install.sh
+
+# Launch
+./run.sh
+```
+
+✅ **Automatically handles:**
+- Python version check
+- Virtual environment creation
+- Dependency installation
+- Ollama setup
+- AI model download
+- Configuration files
+
+📚 **See:** [Quick Start Guide](docs/QUICK_START.md) for detailed instructions
+
+---
+
+### 📦 Option 2: Download Pre-built App (Easiest)
 
 **For macOS users** - Download and run without installing dependencies!
 
@@ -167,9 +192,9 @@ Get up and running in **3 minutes** — **no API keys, no cloud, no signup!**
 
 ---
 
-### 🐳 Option 2: Docker (Recommended)
+### 🐳 Option 3: Docker
 
-**Easiest way** - No dependencies to install!
+**Isolated environment** - No dependencies to install!
 
 ```bash
 # 1️⃣ Clone and start
@@ -185,7 +210,9 @@ docker-compose -f setup/docker/docker-compose.yml logs -f memscreen
 
 ---
 
-### 💻 Option 3: Local Installation
+### 💻 Option 4: Manual Installation
+
+**Full control** - Install step by step
 
 ```bash
 # 1️⃣ Install Ollama
@@ -197,6 +224,8 @@ ollama pull mxbai-embed-large     # Text embeddings
 
 # 3️⃣ Install MemScreen
 git clone https://github.com/smileformylove/MemScreen.git && cd MemScreen
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # 4️⃣ Launch 🚀
