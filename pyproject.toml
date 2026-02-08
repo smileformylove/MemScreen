@@ -31,6 +31,7 @@ classifiers = [
 keywords = ["ai", "screen-recording", "vision-language", "memory", "local-ai", "ocr", "productivity"]
 
 dependencies = [
+    "kivy[base]>=2.3.0",
     "torch>=2.0.0",
     "torchvision>=0.15.0",
     "pydantic>=2.0.0",
@@ -59,6 +60,11 @@ dev = [
     "pytest>=7.0.0",
     "black>=23.0.0",
     "flake8>=6.0.0",
+]
+macos = [
+    "pyobjc>=10.0.0",
+    "pyobjc-framework-Cocoa>=10.0.0",
+    "pyobjc-framework-Quartz>=10.0.0",
 ]
 vllm = [
     "vllm>=0.6.0",

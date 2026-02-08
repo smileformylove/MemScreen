@@ -411,3 +411,367 @@ def ensure_ollama_running():
     except Exception as e:
         logger.error(f"Failed to start Ollama service: {e}")
         return False
+
+
+# ==========================================
+# Screen Detection and Selection Utilities
+# ==========================================
+
+import sys
+from typing import List, Dict, Tuple, Optional
+from dataclasses import dataclass
+
+
+@dataclass
+class ScreenInfo:
+    """Information about a screen/monitor."""
+    index: int  # Screen index (0-based)
+    name: str  # Human-readable name
+    width: int  # Screen width in pixels
+    height: int  # Screen height in pixels
+    x: int  # Screen X position (for multi-monitor setups)
+    y: int  # Screen Y position (for multi-monitor setups)
+    is_primary: bool  # Whether this is the primary/main screen
+
+    @property
+    def bbox(self) -> Tuple[int, int, int, int]:
+        """Get bounding box as (left, top, right, bottom) tuple."""
+        return (self.x, self.y, self.x + self.width, self.y + self.height)
+
+    def __str__(self) -> str:
+        """String representation of screen info."""
+        primary_marker = " (Primary)" if self.is_primary else ""
+        return f"{self.name}{primary_marker} - {self.width}x{self.height} at ({self.x}, {self.y})"
+
+
+def get_screens() -> List[ScreenInfo]:
+    """
+    Get list of all available screens/monitors.
+
+    Returns:
+        List of ScreenInfo objects, one for each screen
+    """
+    if sys.platform == 'darwin':
+        return _get_screens_macos()
+    elif sys.platform == 'win32':
+        return _get_screens_windows()
+    elif sys.platform.startswith('linux'):
+        return _get_screens_linux()
+    else:
+        logger.warning(f"[ScreenUtils] Unsupported platform: {sys.platform}")
+        return _get_screens_fallback()
+
+
+def _get_screens_macos() -> List[ScreenInfo]:
+    """Get screens on macOS using Cocoa/NSScreen."""
+    try:
+        from Cocoa import NSScreen
+
+        screens = []
+        all_screens = NSScreen.screens()
+
+        if not all_screens:
+            logger.warning("[ScreenUtils] No screens detected via NSScreen")
+            return _get_screens_fallback()
+
+        main_screen = NSScreen.mainScreen()
+
+        for idx, screen in enumerate(all_screens):
+            frame = screen.frame()
+            # Note: Cocoa uses bottom-left origin, PIL uses top-left origin
+            # Get Cocoa coordinates (bottom-left origin)
+            cocoa_x = int(frame.origin.x)
+            cocoa_y = int(frame.origin.y)  # Bottom edge in Cocoa coordinates
+            width = int(frame.size.width)
+            height = int(frame.size.height)
+
+            # Convert Cocoa coordinates to PIL coordinates
+            # In PIL/ImageGrab: (0, 0) is top-left of main screen, y increases downward
+            # Cocoa: y=0 at bottom, increases upward
+            # PIL: y=0 at top, increases downward
+
+            # For the main screen (or screens above it):
+            # PIL_y = main_height - cocoa_y - height
+            # This puts the screen's bottom (cocoa_y) at the correct PIL position
+
+            # Get the main screen dimensions
+            main_frame = main_screen.frame()
+            main_height = int(main_frame.size.height)
+
+            # Calculate PIL coordinates
+            x = cocoa_x  # X is the same in both systems
+
+            # Y conversion: PIL_top = main_height - cocoa_bottom
+            # where cocoa_bottom is the screen's bottom edge in Cocoa coordinates
+            # But cocoa_y is the bottom edge, so:
+            y = main_height - cocoa_y - height
+
+            # Debug output
+            logger.debug(f"[ScreenUtils] Screen {idx + 1}: Cocoa=({cocoa_x}, {cocoa_y}), "
+                        f"PIL=({x}, {y}), size=({width}×{height})")
+
+            is_primary = (screen == main_screen)
+            name = f"Screen {idx + 1}"
+
+            screens.append(ScreenInfo(
+                index=idx,
+                name=name,
+                width=width,
+                height=height,
+                x=x,
+                y=y,
+                is_primary=is_primary
+            ))
+
+        logger.info(f"[ScreenUtils] Detected {len(screens)} screen(s) on macOS")
+        for screen in screens:
+            logger.info(f"  - {screen}")
+
+        return screens
+
+    except ImportError as e:
+        logger.warning(f"[ScreenUtils] Failed to import Cocoa: {e}")
+        return _get_screens_fallback()
+    except Exception as e:
+        logger.error(f"[ScreenUtils] Error getting screens on macOS: {e}")
+        return _get_screens_fallback()
+
+
+def _get_screens_windows() -> List[ScreenInfo]:
+    """Get screens on Windows using win32api."""
+    try:
+        import win32api
+
+        screens = []
+        idx = 0
+
+        try:
+            # Try to enumerate monitors using win32api
+            monitor_handles = win32api.EnumDisplayMonitors()
+
+            # Get primary screen info first
+            primary_width = win32api.GetSystemMetrics(0)
+            primary_height = win32api.GetSystemMetrics(1)
+
+            # Note: This is a simplified implementation
+            # A more complete implementation would use EnumDisplayMonitors
+            # with a callback to get each monitor's rect
+            screens.append(ScreenInfo(
+                index=0,
+                name="Screen 1",
+                width=primary_width,
+                height=primary_height,
+                x=0,
+                y=0,
+                is_primary=True
+            ))
+
+            logger.info(f"[ScreenUtils] Detected {len(screens)} screen(s) on Windows")
+            for screen in screens:
+                logger.info(f"  - {screen}")
+
+            return screens
+
+        except Exception as e:
+            logger.error(f"[ScreenUtils] Error enumerating monitors: {e}")
+            return _get_screens_fallback()
+
+    except ImportError:
+        logger.warning("[ScreenUtils] win32api not available, using fallback")
+        return _get_screens_fallback()
+
+
+def _get_screens_linux() -> List[ScreenInfo]:
+    """Get screens on Linux using Xlib or XRandR."""
+    try:
+        # Try using Xlib
+        from Xlib.display import Display
+
+        display = Display()
+        screen = display.screen()
+        width = screen.width_in_pixels
+        height = screen.height_in_pixels
+
+        screens = [ScreenInfo(
+            index=0,
+            name="Screen 1",
+            width=width,
+            height=height,
+            x=0,
+            y=0,
+            is_primary=True
+        )]
+
+        logger.info(f"[ScreenUtils] Detected {len(screens)} screen(s) on Linux")
+        for screen in screens:
+            logger.info(f"  - {screen}")
+
+        return screens
+
+    except ImportError:
+        logger.warning("[ScreenUtils] Xlib not available, trying XRandR")
+        try:
+            # Try using XRandR via subprocess
+            import subprocess
+            import re
+
+            result = subprocess.run(
+                ['xrandr'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                screens = []
+                idx = 0
+                connected_pattern = re.compile(r'^(\S+) connected')
+
+                for line in result.stdout.split('\n'):
+                    match = connected_pattern.match(line)
+                    if match:
+                        name = match.group(1)
+                        # Parse resolution from line like "HDMI-1 connected 1920x1080+0+0"
+                        res_match = re.search(r'(\d+)x(\d+)\+(\d+)\+(\d+)', line)
+                        if res_match:
+                            width = int(res_match.group(1))
+                            height = int(res_match.group(2))
+                            x = int(res_match.group(3))
+                            y = int(res_match.group(4))
+
+                            is_primary = 'primary' in line
+                            display_name = f"{name}"
+
+                            screens.append(ScreenInfo(
+                                index=idx,
+                                name=display_name,
+                                width=width,
+                                height=height,
+                                x=x,
+                                y=y,
+                                is_primary=is_primary
+                            ))
+                            idx += 1
+
+                if screens:
+                    logger.info(f"[ScreenUtils] Detected {len(screens)} screen(s) via XRandR")
+                    for screen in screens:
+                        logger.info(f"  - {screen}")
+                    return screens
+
+        except Exception as e:
+            logger.error(f"[ScreenUtils] Error using XRandR: {e}")
+
+        return _get_screens_fallback()
+
+
+def _get_screens_fallback() -> List[ScreenInfo]:
+    """Fallback method to get screen info using PIL."""
+    try:
+        from PIL import ImageGrab
+
+        # Get screen size by capturing a test image
+        test_img = ImageGrab.grab()
+        width, height = test_img.size
+
+        screens = [ScreenInfo(
+            index=0,
+            name="Screen 1",
+            width=width,
+            height=height,
+            x=0,
+            y=0,
+            is_primary=True
+        )]
+
+        logger.info(f"[ScreenUtils] Fallback: Detected {len(screens)} screen(s)")
+        for screen in screens:
+            logger.info(f"  - {screen}")
+
+        return screens
+
+    except Exception as e:
+        logger.error(f"[ScreenUtils] Fallback also failed: {e}")
+        # Last resort: return a default screen
+        return [ScreenInfo(
+            index=0,
+            name="Default Screen",
+            width=1920,
+            height=1080,
+            x=0,
+            y=0,
+            is_primary=True
+        )]
+
+
+def get_screen_by_index(screen_index: int) -> Optional[ScreenInfo]:
+    """
+    Get screen information by index.
+
+    Args:
+        screen_index: The screen index (0-based)
+
+    Returns:
+        ScreenInfo object or None if index is invalid
+    """
+    screens = get_screens()
+    if 0 <= screen_index < len(screens):
+        return screens[screen_index]
+    return None
+
+
+def get_primary_screen() -> Optional[ScreenInfo]:
+    """
+    Get the primary/main screen.
+
+    Returns:
+        ScreenInfo object for the primary screen or None
+    """
+    screens = get_screens()
+    for screen in screens:
+        if screen.is_primary:
+            return screen
+    # Fallback to first screen
+    return screens[0] if screens else None
+
+
+def get_screen_names() -> List[str]:
+    """
+    Get list of screen names for UI display.
+
+    Returns:
+        List of screen name strings
+    """
+    screens = get_screens()
+    return [screen.name for screen in screens]
+
+
+def get_all_screen_bboxes() -> List[Tuple[int, int, int, int]]:
+    """
+    Get bounding boxes for all screens.
+
+    Returns:
+        List of (left, top, right, bottom) tuples
+    """
+    screens = get_screens()
+    return [screen.bbox for screen in screens]
+
+
+def get_combined_screen_bbox() -> Tuple[int, int, int, int]:
+    """
+    Get bounding box that encompasses all screens.
+
+    Returns:
+        (left, top, right, bottom) tuple covering all screens
+    """
+    screens = get_screens()
+
+    if not screens:
+        return (0, 0, 1920, 1080)
+
+    min_x = min(s.x for s in screens)
+    min_y = min(s.y for s in screens)
+    max_x = max(s.x + s.width for s in screens)
+    max_y = max(s.y + s.height for s in screens)
+
+    return (min_x, min_y, max_x, max_y)

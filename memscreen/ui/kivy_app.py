@@ -3155,7 +3155,7 @@ class MemScreenApp(App):
             ('chat', 'Chat'),
             ('video', 'Videos'),
             ('process', 'Process'),
-            ('settings', 'About'),
+            ('about', 'About'),
         ]:
             btn = ToggleButton(
                 text=label,
@@ -3367,7 +3367,7 @@ class MemScreenApp(App):
                 sys.stderr.write(f"[App] Found switch request file: {requested_screen}\n")
                 sys.stderr.flush()
 
-                valid_screens = ['recording', 'chat', 'video', 'process', 'settings', 'about']
+                valid_screens = ['recording', 'chat', 'video', 'process', 'about']
                 if requested_screen in valid_screens:
                     if hasattr(self, 'screen_manager') and self.screen_manager:
                         current_screen = self.screen_manager.current
@@ -3449,37 +3449,65 @@ class MemScreenApp(App):
                     sys.stderr.write(f"[App] Could not minimize window: {e}\n")
                     sys.stderr.flush()
 
-                # Use native region selector
+                # Use native region selector (synchronous - blocks until selection done)
                 try:
                     from memscreen.ui.native_region_selector import select_region
 
                     def region_callback(bbox):
                         """Handle region selection"""
-                        if bbox:
-                            sys.stderr.write(f"[App] Region selected: {bbox}\n")
-                            sys.stderr.flush()
-                            # Update presenter if on recording screen
-                            if hasattr(self, 'screen_manager') and self.screen_manager:
-                                recording_screen = self.screen_manager.get_screen('recording')
-                                if hasattr(recording_screen, 'presenter') and recording_screen.presenter:
-                                    recording_screen.presenter.set_recording_mode('region', bbox=bbox)
-                                    sys.stderr.write(f"[App] Updated presenter with region mode\n")
-                                    sys.stderr.flush()
-                        else:
+                        # Get recording screen for UI updates
+                        recording_screen = None
+                        if hasattr(self, 'screen_manager') and self.screen_manager:
+                            recording_screen = self.screen_manager.get_screen('recording')
+
+                        if bbox is None:
+                            # User cancelled the selection (ESC pressed)
                             sys.stderr.write(f"[App] Region selection cancelled\n")
                             sys.stderr.flush()
-                            # Reset to fullscreen mode
-                            if hasattr(self, 'screen_manager') and self.screen_manager:
-                                recording_screen = self.screen_manager.get_screen('recording')
-                                if hasattr(recording_screen, 'presenter') and recording_screen.presenter:
-                                    recording_screen.presenter.set_recording_mode('fullscreen')
-                                    sys.stderr.write(f"[App] Reset to fullscreen mode\n")
-                                    sys.stderr.flush()
 
-                    # Show native region selector
-                    sys.stderr.write(f"[App] Opening native macOS region selector\n")
+                            # Reset to Full Screen mode
+                            if recording_screen and hasattr(recording_screen, 'presenter') and recording_screen.presenter:
+                                recording_screen.presenter.set_recording_mode('fullscreen')
+                                if hasattr(recording_screen, 'status_label'):
+                                    recording_screen.status_label.text = "Status: Full Screen mode (cancelled)"
+                                if hasattr(recording_screen, 'mode_spinner'):
+                                    recording_screen.mode_spinner.text = 'Full Screen'
+                            elif recording_screen and hasattr(recording_screen, 'status_label'):
+                                recording_screen.status_label.text = "Status: Ready"
+
+                            sys.stderr.write(f"[App] Reset to fullscreen mode\n")
+                            sys.stderr.flush()
+
+                        elif bbox and recording_screen:
+                            # Set presenter to region mode
+                            if hasattr(recording_screen, 'presenter') and recording_screen.presenter:
+                                recording_screen.presenter.set_recording_mode('region', bbox=bbox)
+
+                                # Update status to show current selection
+                                width = bbox[2] - bbox[0]
+                                height = bbox[3] - bbox[1]
+                                if hasattr(recording_screen, 'status_label'):
+                                    recording_screen.status_label.text = f"Status: Region {width}×{height}px - Ready to record"
+                                if hasattr(recording_screen, 'mode_spinner'):
+                                    recording_screen.mode_spinner.text = 'Region'
+
+                            sys.stderr.write(f"[App] Region selected: {bbox}\n")
+                            sys.stderr.flush()
+
+                        else:
+                            # Selection too small or other error
+                            sys.stderr.write(f"[App] Invalid selection\n")
+                            sys.stderr.flush()
+                            if recording_screen and hasattr(recording_screen, 'status_label'):
+                                recording_screen.status_label.text = "Status: Selection too small, please try again"
+
+                    sys.stderr.write(f"[App] Opening native macOS region selector (synchronous)\n")
                     sys.stderr.flush()
+
+                    # This blocks until user selects region or cancels
                     selector = select_region(region_callback)
+                    sys.stderr.write(f"[App] Region selector closed\n")
+                    sys.stderr.flush()
 
                 except Exception as e:
                     sys.stderr.write(f"[App] Error opening native selector: {e}\n")

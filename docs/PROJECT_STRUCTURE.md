@@ -1,269 +1,173 @@
-# MemScreen 项目结构说明
+# MemScreen 项目结构
 
-## 📂 目录组织
+## 目录结构
 
 ```
 MemScreen/
-├── 📱 memscreen/              # 核心源代码
-│   ├── agent/               # AI代理系统
-│   ├── audio/               # 音频录制
-│   ├── config/              # 配置管理
-│   ├── embeddings/          # 向量嵌入
-│   ├── graph/               # 知识图谱
-│   ├── llm/                 # 大模型接口
-│   ├── memory/              # 记忆系统
-│   ├── presenters/          # MVP模式层
-│   ├── services/            # 后台服务
-│   ├── skills/              # Agent技能
-│   ├── storage/             # 数据存储
-│   ├── ui/                  # 用户界面
-│   ├── utils/               # 工具函数
-│   └── vector_store/        # 向量数据库
+├── start.py                 # 应用启动入口
+├── config_example.yaml      # 配置文件示例
+├── README.md               # 项目说明
+├── LICENSE                 # MIT 许可证
 │
-├── 🎨 assets/               # 资源文件
-│   ├── logo.png
-│   └── favicon.png
+├── memscreen/              # 主代码包
+│   ├── ui/                # UI 组件
+│   ├── presenters/        # 业务逻辑 (MVP架构)
+│   ├── memory/            # 记忆系统
+│   ├── llm/               # LLM集成
+│   ├── audio/             # 音频录制
+│   ├── prompts/           # Prompt模板
+│   ├── embeddings/        # 向量嵌入
+│   ├── vector_store/      # 向量数据库
+│   ├── config/            # 配置管理
+│   └── utils/             # 工具函数
 │
-├── 📚 docs/                 # 文档目录
-│   ├── history/             # 历史文档
-│   ├── guides/              # 用户指南
-│   ├── INSTALLATION.md      # 安装指南
-│   └── PROJECT_STRUCTURE.md # 本文件
+├── tests/                 # 测试文件
+│   ├── test_hybrid_vision.py
+│   ├── test_integration.py
+│   ├── test_recording_flow.py
+│   ├── test_*.py
+│   └── README.md
 │
-├── ⚙️ setup/                # 安装和配置
-│   ├── bin/                 # 可执行脚本
-│   │   ├── run_ui.sh        # UI启动脚本
-│   │   └── README.md
-│   ├── install/             # 安装脚本
-│   │   ├── install_ubuntu.sh     # Ubuntu安装
-│   │   ├── install_macos.sh      # macOS安装
-│   │   ├── uninstall_ubuntu.sh   # Ubuntu卸载
-│   │   ├── package_source.sh     # 源码打包
-│   │   ├── cleanup_project.sh    # 项目清理
-│   │   └── README.md
-│   ├── docker/              # Docker配置
-│   │   ├── docker-compose.yml
-│   │   └── README.md
-│   └── tools/               # 工具脚本
-│       └── optimize_models.py
+├── examples/              # 示例代码
+│   ├── demo_optimization.py       # 优化功能演示
+│   ├── demo_chat_integration.py
+│   ├── demo_dynamic_memory.py
+│   ├── demo_intelligent_agent.py
+│   └── demo_visual_agent.py
 │
-├── 🧪 tests/                # 测试文件
-│   └── test_*.py
+├── docs/                  # 文档
+│   ├── integration_guide.py        # 集成指南
+│   ├── IMPLEMENTATION_SUMMARY.md   # 实施总结
+│   └── *.md
 │
-├── 📦 releases/             # 发布包
-│
-├── 📖 examples/             # 示例代码
-│
-├── 📄 start.py              # 应用入口
-├── 📖 README.md             # 项目说明
-├── 📜 LICENSE                # MIT许可证
-└── ⚙️ config_example.yaml   # 配置示例
+├── setup/                 # 安装和打包脚本
+├── assets/                # 资源文件
+└── .github/               # GitHub Actions
 ```
 
-## 📝 文件说明
+## 数据目录
 
-### 核心文件
+用户数据存储在 `~/.memscreen/`：
 
-| 文件 | 说明 |
-|------|------|
-| `start.py` | 应用程序入口点 |
-| `README.md` | 项目说明文档 |
-| `LICENSE` | MIT开源许可证 |
-| `config_example.yaml` | 配置文件示例 |
+```
+~/.memscreen/
+├── db/                    # 数据库文件
+│   ├── screen_capture.db  # 录制元数据
+│   ├── memories.db        # 记忆数据
+│   └── chroma.sqlite3     # 向量数据库
+│
+├── videos/                # 录制的视频
+├── audio/                 # 音频文件
+└── logs/                  # 日志文件
+```
 
-### 配置目录 (setup/)
-
-#### 可执行脚本 (bin/)
-| 脚本 | 说明 |
-|------|------|
-| `run_ui.sh` | 主UI启动脚本（从源码运行） |
-
-#### 安装脚本 (install/)
-| 脚本 | 用途 |
-|------|------|
-| `install_ubuntu.sh` | Ubuntu自动安装脚本 |
-| `install_macos.sh` | macOS安装脚本 |
-| `uninstall_ubuntu.sh` | Ubuntu卸载脚本 |
-| `package_source.sh` | 创建分发包 |
-| `cleanup_project.sh` | 清理项目目录 |
-
-#### Docker配置 (docker/)
-| 文件 | 说明 |
-|------|------|
-| `docker-compose.yml` | Docker编排配置 |
-
-#### 工具脚本 (tools/)
-| 脚本 | 说明 |
-|------|------|
-| `optimize_models.py` | 模型优化工具 |
-
-### 主要目录
-
-- **memscreen/** - 核心Python代码
-- **assets/** - 图片、图标等资源
-- **docs/** - 所有文档
-- **tests/** - 测试文件
-- **examples/** - 示例代码
-- **releases/** - 发布包
-- **setup/** - 统一的安装配置目录
-
-## 🎯 快速开始
-
-### 开发者
+## 启动方式
 
 ```bash
-# 1. 创建虚拟环境
-python3 -m venv venv
-source venv/bin/activate
-
-# 2. 安装依赖
-pip install -r requirements.txt  # 如果有的话
-
-# 3. 运行应用
+# 方式1：直接运行
 python start.py
+
+# 方式2：使用脚本
+./run.sh
+
+# 方式3：打包的 .app (macOS)
+open dist/MemScreen.app
 ```
 
-### Docker用户
+## 运行测试
 
 ```bash
-# 使用Docker Compose启动
-docker-compose -f setup/docker/docker-compose.yml up -d
+# 运行所有测试
+python -m pytest tests/
+
+# 运行特定测试
+python tests/test_hybrid_vision.py
+
+# 运行集成测试
+python tests/test_integration.py
+
+# 运行演示
+python examples/demo_optimization.py
 ```
 
-### Ubuntu用户
+## 配置文件
+
+复制 `config_example.yaml` 到 `~/.memscreen/config.yaml` 并根据需要修改：
 
 ```bash
-# 使用安装脚本
-cd setup/install
-./install_ubuntu.sh
+mkdir -p ~/.memscreen
+cp config_example.yaml ~/.memscreen/config.yaml
 ```
 
-## 🧹 保持项目整洁
+## 主要模块说明
 
-### 清理临时文件
+### UI 层 (memscreen/ui/)
+- `kivy_app.py`: 主应用程序，包含所有屏幕
+- `components.py`: 可复用UI组件
 
-```bash
-./setup/install/cleanup_project.sh
-```
+### 业务逻辑层 (memscreen/presenters/)
+- `recording_presenter.py`: 录制功能
+- `video_presenter.py`: 视频管理
+- `chat_presenter.py`: 聊天功能
+- `process_mining_presenter.py`: 流程挖掘
 
-这将删除：
-- Python缓存
-- 构建产物
-- 临时文件
-- 重复的脚本
+### 记忆系统 (memscreen/memory/)
+- `memory.py`: 基础记忆系统
+- `enhanced_memory.py`: 增强记忆（包含6阶段优化）
+- `tiered_memory_manager.py`: 分层记忆管理
+- `conflict_resolver.py`: 冲突检测和解决
 
-### .gitignore
+### LLM集成 (memscreen/llm/)
+- `ollama_llm.py`: Ollama LLM
+- `model_router.py`: 模型路由
 
-项目包含完整的 `.gitignore` 文件，确保不会提交不必要的文件：
-- `__pycache__/`
-- `*.pyc`
-- `venv/`
-- `db/*.db`
-- `*.tar.gz`
+### 向量存储 (memscreen/vector_store/)
+- `chroma_store.py`: ChromaDB 集成
+- `multimodal_chroma.py`: 多模态向量存储
 
-## 📦 分发包
+## 优化功能（6个阶段）
 
-### 创建分发包
+1. **视觉编码器** (memscreen/embeddings/vision_encoder.py)
+   - SigLIP/CLIP 模型支持
+   - 视觉哈希计算
+   - 特征提取
 
-```bash
-./setup/install/package_source.sh
-```
+2. **多模态搜索** (memscreen/memory/hybrid_retriever.py)
+   - 文本+视觉双路检索
+   - RRF 融合排序
 
-生成的文件：`MemScreen-0.5.0-ubuntu-installer.tar.gz`
+3. **分层记忆管理** (memscreen/memory/tiered_memory_manager.py)
+   - Working Memory (1小时)
+   - Short-term Memory (1-7天)
+   - Long-term Memory (7天+)
 
-### 分发包位置
+4. **冲突检测** (memscreen/memory/conflict_resolver.py)
+   - 三级冲突检测
+   - 智能冲突解决
 
-建议将分发包放在 `releases/` 目录：
+5. **多粒度视觉记忆** (memscreen/memory/multigranular_vision_memory.py)
+   - Scene/Object/Text 三级表示
+   - 时序事件检测
 
-```bash
-mkdir -p releases
-./setup/install/package_source.sh
-mv MemScreen-*.tar.gz releases/
-```
+6. **视觉问答优化** (memscreen/prompts/vision_qa_prompts.py)
+   - 查询类型分类
+   - 视觉推理链
+   - 7b 模型优化
 
-## 🔧 开发工作流
+## 开发指南
 
-### 修改代码后
+### 添加新功能
+1. 在对应模块创建文件
+2. 编写单元测试到 `tests/`
+3. 更新文档
+4. 提交 PR
 
-1. **清理临时文件**
-   ```bash
-   ./setup/install/cleanup_project.sh
-   ```
+### 代码风格
+- 遵循 PEP 8
+- 使用类型注解
+- 添加文档字符串
+- 编写测试
 
-2. **运行测试**
-   ```bash
-   python -m pytest tests/
-   ```
+## 许可证
 
-3. **创建新分发包**
-   ```bash
-   ./setup/install/package_source.sh
-   ```
-
-### 修改文档后
-
-文档都放在 `docs/` 目录下，保持统一的文档结构：
-- `docs/guides/` - 用户指南
-- `docs/history/` - 历史文档
-
-### 修改配置后
-
-- 示例配置：`config_example.yaml`
-- 用户配置：`~/.config/MemScreen/config.yaml`
-
-## 📂 推荐的文件组织
-
-### 源代码
-- Python代码: `memscreen/`
-- 资源文件: `assets/`
-- 测试: `tests/`
-
-### 文档
-- 用户文档: `docs/`
-- 示例: `examples/`
-- 配置: `setup/`
-
-### 配置
-- **setup/bin/** - 可执行启动脚本（用户日常使用）
-- **setup/install/** - 维护和安装脚本（开发者/安装时使用）
-- **setup/docker/** - Docker配置（容器化部署）
-- **setup/tools/** - 工具脚本（开发辅助）
-
-## 💡 维护建议
-
-### 定期清理
-
-每周或发布版本后运行：
-```bash
-./setup/install/cleanup_project.sh
-```
-
-### 版本发布前
-
-1. 清理项目
-2. 更新版本号
-3. 创建分发包
-4. 更新文档
-5. 提交到Git
-
-### 文件命名规范
-
-- 启动脚本: `run*.sh` (放在setup/bin/目录)
-- 维护脚本: `*_ubuntu.sh`, `package_*.sh`, `cleanup_*.sh` (放在setup/install/目录)
-- 文档: `*.md` (放在docs/目录)
-- 配置: `config_*.yaml`
-- 分发包: `MemScreen-VERSION-*.tar.gz`
-
-## 🎯 总结
-
-整理后的项目结构清晰明了：
-- ✅ 核心代码集中在 `memscreen/`
-- ✅ 文档统一在 `docs/`
-- ✅ 所有配置统一在 `setup/`
-- ✅ 可执行脚本在 `setup/bin/`（用户启动）
-- ✅ 安装脚本在 `setup/install/`（开发者使用）
-- ✅ Docker配置在 `setup/docker/`（容器部署）
-- ✅ 测试在 `tests/`
-- ✅ 根目录整洁，只保留必要文件
-
-项目现在更易于维护和分发！
+MIT License - 详见 LICENSE 文件

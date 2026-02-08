@@ -187,8 +187,12 @@ class FloatingBallView(NSView):
 
     def rightMouseDown_(self, event):
         """Handle right click - show menu"""
+        print("[FloatingBallView] rightMouseDown_ called!")
         if self.right_click_callback:
+            print("[FloatingBallView] Calling right_click_callback...")
             self.right_click_callback(event)
+        else:
+            print("[FloatingBallView] WARNING: right_click_callback is None!")
 
     def mouseUp_(self, event):
         """Handle mouse up - detect click vs drag"""
@@ -312,6 +316,8 @@ class FloatingBallWindow(NSPanel):
 
     def _on_right_click(self, event):
         """Handle right click - show context menu"""
+        print("[FloatingBall] Right click detected, showing menu...")
+        print(f"[FloatingBall] on_select_region_callback is: {self.on_select_region_callback}")
         from AppKit import NSMenu, NSMenuItem
 
         menu = NSMenu.alloc().init()
@@ -323,6 +329,19 @@ class FloatingBallWindow(NSPanel):
                 status = self.presenter.get_recording_status()
                 mode_info = self.presenter.get_recording_mode()
                 mode_text = f"Mode: {mode_info['mode'].title()}"
+
+                # Add screen info if in fullscreen-single mode
+                if mode_info['mode'] == 'fullscreen-single' and mode_info['screen_index'] is not None:
+                    try:
+                        from memscreen.utils import get_screen_by_index
+                        screen_info = get_screen_by_index(mode_info['screen_index'])
+                        if screen_info:
+                            mode_text += f" ({screen_info.name})"
+                        else:
+                            mode_text += f" (Screen {mode_info['screen_index'] + 1})"
+                    except:
+                        mode_text += f" (Screen {mode_info['screen_index'] + 1})"
+
                 if mode_info['mode'] == 'region' and mode_info['bbox']:
                     bbox = mode_info['bbox']
                     width = bbox[2] - bbox[0]
@@ -345,7 +364,50 @@ class FloatingBallWindow(NSPanel):
             "🎯 Select Region", "selectRegion:", ""
         )
         select_region_item.setTarget_(self)
+        print(f"[FloatingBall] Created Select Region menu item, target={self}, action=selectRegion:")
         menu.addItem_(select_region_item)
+
+        # Add Screen Selection submenu
+        try:
+            from memscreen.utils import get_screens
+            screens = get_screens()
+
+            if len(screens) > 1:
+                # Create submenu for screen selection
+                screen_menu = NSMenu.alloc().init()
+
+                # "All Screens" option
+                all_screens_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                    "🖥 All Screens", "selectScreen:", ""
+                )
+                all_screens_item.setTarget_(self)
+                all_screens_item.setTag_(-1)  # -1 for all screens
+                screen_menu.addItem_(all_screens_item)
+
+                screen_menu.addItem_(NSMenuItem.separatorItem())
+
+                # Individual screen options
+                for idx, screen in enumerate(screens):
+                    screen_name = screen.name
+                    if screen.is_primary:
+                        screen_name += " (Primary)"
+
+                    screen_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                        f"🖥 {screen_name}", "selectScreen:", ""
+                    )
+                    screen_item.setTarget_(self)
+                    screen_item.setTag_(idx)  # Store screen index
+                    screen_menu.addItem_(screen_item)
+
+                # Add submenu to main menu
+                screen_submenu_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                    "🖥 Select Screen", "", ""
+                )
+                screen_submenu_item.setSubmenu_(screen_menu)
+                menu.addItem_(screen_submenu_item)
+
+        except Exception as e:
+            print(f"[FloatingBall] Error getting screens for menu: {e}")
 
         # Add "Start Recording" menu item (visible when not recording)
         if not self.contentView().is_recording:
@@ -448,13 +510,48 @@ class FloatingBallWindow(NSPanel):
 
     def selectRegion_(self, sender):
         """Open region selector"""
+        print("[FloatingBall] selectRegion_ called!")
         if self.on_select_region_callback:
+            print("[FloatingBall] Calling on_select_region_callback...")
             self.on_select_region_callback()
+        else:
+            print("[FloatingBall] WARNING: on_select_region_callback is None!")
 
     def startRecording_(self, sender):
         """Start recording from floating ball"""
         if self.on_start_recording_callback:
             self.on_start_recording_callback()
+
+    def selectScreen_(self, sender):
+        """Select screen for recording"""
+        screen_tag = sender.tag()  # Get screen index from menu item tag
+
+        if not self.presenter:
+            print("[FloatingBall] No presenter available for screen selection")
+            return
+
+        try:
+            if screen_tag == -1:
+                # All screens selected
+                self.presenter.set_recording_mode('fullscreen')
+                print("[FloatingBall] Screen selection changed to: All Screens")
+            else:
+                # Specific screen selected
+                screen_index = int(screen_tag)
+                self.presenter.set_recording_mode('fullscreen-single', screen_index=screen_index)
+
+                # Get screen info for logging
+                from memscreen.utils import get_screen_by_index
+                screen_info = get_screen_by_index(screen_index)
+                if screen_info:
+                    print(f"[FloatingBall] Screen selection changed to: {screen_info.name}")
+                else:
+                    print(f"[FloatingBall] Screen selection changed to: Screen {screen_index + 1}")
+
+        except Exception as e:
+            print(f"[FloatingBall] Error selecting screen: {e}")
+            import traceback
+            traceback.print_exc()
 
     def showVideos_(self, sender):
         """Show videos screen"""
@@ -556,30 +653,34 @@ def create_floating_ball(presenter=None, position=None):
 
     Args:
         presenter: RecordingPresenter instance
-        position: Initial position as (x, y) tuple, defaults to top-right of current screen
+        position: Initial position as (x, y) tuple, defaults to top-right of primary screen
 
     Returns:
         FloatingBallWindow instance
     """
-    # Get screen size - use the screen where mouse is currently located
+    # Get screen size - use primary screen to ensure visibility
     from Cocoa import NSScreen, NSEvent
 
-    # Get mouse location to determine which screen the user is using
-    mouse_location = NSEvent.mouseLocation()
+    # Always use primary screen to ensure the ball is visible
+    # This prevents the ball from being on a disconnected screen
+    target_screen = NSScreen.mainScreen()
 
-    # Find the screen containing the mouse pointer
-    target_screen = None
-    for screen in NSScreen.screens():
-        screen_frame = screen.frame()
-        # Check if mouse is within this screen's bounds
-        if (screen_frame.origin.x <= mouse_location.x <= screen_frame.origin.x + screen_frame.size.width and
-            screen_frame.origin.y <= mouse_location.y <= screen_frame.origin.y + screen_frame.size.height):
-            target_screen = screen
-            break
-
-    # Fallback to main screen if no screen found (shouldn't happen)
-    if target_screen is None:
-        target_screen = NSScreen.mainScreen()
+    # Optional: Try to use the screen where mouse is, but fallback to primary
+    try:
+        mouse_location = NSEvent.mouseLocation()
+        for screen in NSScreen.screens():
+            screen_frame = screen.frame()
+            if (screen_frame.origin.x <= mouse_location.x <= screen_frame.origin.x + screen_frame.size.width and
+                screen_frame.origin.y <= mouse_location.y <= screen_frame.origin.y + screen_frame.size.height):
+                # Mouse is on this screen, check if it's the primary screen
+                if screen == target_screen:
+                    # Use this screen (it's the primary one)
+                    break
+                # If mouse is on non-primary screen, still use primary screen
+                # to avoid visibility issues when screen is disconnected
+                break
+    except Exception as e:
+        print(f"[FloatingBall] Error detecting mouse position: {e}, using primary screen")
 
     screen_frame = target_screen.frame()
 
@@ -587,13 +688,23 @@ def create_floating_ball(presenter=None, position=None):
     ball_size = 80
     margin = 20
 
-    # Default position: top-right corner of the target screen
-    # IMPORTANT: Need to account for screen's origin (not always 0,0)
+    # Default position: top-right corner of the primary screen
+    # IMPORTANT: Use screen's visible frame to account for menu bar and dock
     if position is None:
         x = screen_frame.origin.x + screen_frame.size.width - ball_size - margin
         y = screen_frame.origin.y + screen_frame.size.height - ball_size - margin
+
+        # Ensure position is within screen bounds (safety check)
+        # Handle case where screen coordinates might be negative (secondary screens)
+        if x < screen_frame.origin.x:
+            x = screen_frame.origin.x + margin
+        if y < screen_frame.origin.y:
+            y = screen_frame.origin.y + margin
     else:
         x, y = position
+        # Clamp to screen bounds for safety
+        x = max(screen_frame.origin.x + margin, min(x, screen_frame.origin.x + screen_frame.size.width - ball_size - margin))
+        y = max(screen_frame.origin.y + margin, min(y, screen_frame.origin.y + screen_frame.size.height - ball_size - margin))
 
     # Create window
     content_rect = NSRect(NSPoint(x, y), NSSize(ball_size, ball_size))

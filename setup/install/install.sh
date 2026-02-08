@@ -4,6 +4,10 @@
 
 set -e
 
+# Change to project root directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$SCRIPT_DIR" || exit 1
+
 echo "🦉 MemScreen v0.6.0 - Quick Installation"
 echo "=========================================="
 echo ""
@@ -26,7 +30,8 @@ fi
 PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
 echo "✓ Found Python $PYTHON_VERSION"
 
-if [ $(echo "$PYTHON_VERSION 3.8" | awk '{print ($1 < $2)}') -eq 1 ]; then
+# Use Python to compare versions
+if ! python3 -c "import sys; sys.exit(0 if tuple(map(int, '$PYTHON_VERSION'.split('.'))) >= (3, 8) else 1)" 2>/dev/null; then
     echo "❌ Python 3.8+ is required (current: $PYTHON_VERSION)"
     exit 1
 fi
@@ -56,7 +61,7 @@ echo "✓ pip upgraded"
 # Install dependencies
 echo ""
 echo "📚 Installing dependencies..."
-pip install -r requirements.txt
+pip install -e .
 echo "✓ Dependencies installed"
 
 # Check Ollama
@@ -119,10 +124,10 @@ fi
 # Create config
 echo ""
 echo "⚙️  Creating configuration..."
-if [ ! -f "config.yaml" ]; then
-    if [ -f "config_example.yaml" ]; then
-        cp config_example.yaml config.yaml
-        echo "✓ Created config.yaml from template"
+if [ ! -f "config/config.yaml" ]; then
+    if [ -f "config/config_example.yaml" ]; then
+        cp config/config_example.yaml config/config.yaml
+        echo "✓ Created config/config.yaml from template"
     else
         echo "✓ config.yaml already exists"
     fi
@@ -145,12 +150,13 @@ echo "✅ Installation complete!"
 echo ""
 echo "🚀 Quick Start:"
 echo "   source venv/bin/activate"
-echo "   python start.py"
+echo "   python setup/start.py"
 echo ""
 echo "📚 Documentation:"
+echo "   - Installation Guide: docs/guides/INSTALLATION.md"
 echo "   - User Guide: docs/USER_GUIDE.md"
 echo "   - README: README.md"
-echo "   - Changelog: CHANGELOG.md"
+echo "   - Platform-Specific: docs/guides/INSTALL_<PLATFORM>.md"
 echo ""
 echo "🔧 Troubleshooting:"
 echo "   - Ensure Ollama is running: ollama serve"

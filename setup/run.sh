@@ -4,13 +4,13 @@
 
 set -e
 
-MEMSCREEN_DIR="$(cd "$(dirname "$0")" && pwd)"
+MEMSCREEN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VENV_DIR="$MEMSCREEN_DIR/venv"
 
 # Check if virtual environment exists
 if [ ! -d "$VENV_DIR" ]; then
     echo "📦 Virtual environment not found. Running quick install..."
-    bash "$MEMSCREEN_DIR/install.sh"
+    bash "$MEMSCREEN_DIR/install/install.sh"
 fi
 
 # Activate virtual environment
@@ -54,4 +54,4 @@ fi
 echo ""
 echo "🚀 Launching MemScreen v0.6.0..."
 echo ""
-python "$MEMSCREEN_DIR/start.py" "$@"
+python "$MEMSCREEN_DIR/setup/start.py" "$@"

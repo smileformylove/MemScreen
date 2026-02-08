@@ -147,17 +147,42 @@ Everything runs on your machine
 
 Get up and running in **3 minutes** — **no API keys, no cloud, no signup!**
 
-### 🚀 One-Click Install (Recommended)
+### 🚀 Source Code Installation (Recommended)
 
-**Fastest way** - Fully automated setup for macOS & Linux!
+**Best for developers and users who want the latest features**
 
 ```bash
-# Clone and install everything automatically
+# 1. Clone repository
 git clone https://github.com/smileformylove/MemScreen.git && cd MemScreen
-./install.sh
 
-# Launch
-./run.sh
+# 2. Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# 3. Install dependencies
+pip install -e .
+
+# 4. Launch 🚀
+python setup/start.py
+```
+
+✅ **That's it!** MemScreen will start and guide you through the rest.
+
+📚 **Platform-Specific Guides:**
+- 🍎 [macOS Installation](docs/guides/INSTALL_MACOS.md)
+- 🐧 [Linux Installation](docs/guides/INSTALL_LINUX.md)
+- 🪟 [Windows Installation](docs/guides/INSTALL_WINDOWS.md)
+
+---
+
+### 🤖 Automated Installation (Optional)
+
+**For fully automated setup**
+
+```bash
+git clone https://github.com/smileformylove/MemScreen.git && cd MemScreen
+./setup/install/install.sh  # macOS & Linux
+setup\install\install.bat   # Windows
 ```
 
 ✅ **Automatically handles:**
@@ -166,71 +191,21 @@ git clone https://github.com/smileformylove/MemScreen.git && cd MemScreen
 - Dependency installation
 - Ollama setup
 - AI model download
-- Configuration files
-
-📚 **See:** [Quick Start Guide](docs/QUICK_START.md) for detailed instructions
 
 ---
 
-### 📦 Option 2: Download Pre-built App (Easiest)
-
-**For macOS users** - Download and run without installing dependencies!
-
-```bash
-# 1️⃣ Download the latest DMG from [Releases](https://github.com/smileformylove/MemScreen/releases)
-
-# 2️⃣ Open DMG and drag MemScreen.app to Applications
-
-# 3️⃣ Launch and grant permissions when prompted:
-#     - Screen Recording (required)
-#     - Accessibility (required for process tracking)
-#     - Microphone (optional, for audio recording)
-```
-
-✅ **Pros:** No Python/dependencies installation, standalone app
-📚 **See:** [Installation Guide](docs/INSTALLATION.md) for platform-specific instructions
-
----
-
-### 🐳 Option 3: Docker
+### 🐋 Docker Installation
 
 **Isolated environment** - No dependencies to install!
 
 ```bash
-# 1️⃣ Clone and start
-git clone https://github.com/smileformylove/MemScreen.git && cd MemScreen
-docker-compose -f setup/docker/docker-compose.yml up -d
-
-# 2️⃣ Check logs
-docker-compose -f setup/docker/docker-compose.yml logs -f memscreen
+cd setup/docker
+docker-compose up --build
 ```
 
-✅ **Pros:** Auto-installs everything, isolated environment
-📚 **See:** [Docker Guide](docs/DOCKER.md) for advanced options
+📚 **See:** [Docker Guide](docs/guides/DOCKER_TEST.md) for advanced options
 
 ---
-
-### 💻 Option 4: Manual Installation
-
-**Full control** - Install step by step
-
-```bash
-# 1️⃣ Install Ollama
-brew install ollama  # macOS (visit ollama.com for Linux/Windows)
-
-# 2️⃣ Download AI Models (one-time, ~3GB)
-ollama pull qwen2.5vl:3b          # Vision model
-ollama pull mxbai-embed-large     # Text embeddings
-
-# 3️⃣ Install MemScreen
-git clone https://github.com/smileformylove/MemScreen.git && cd MemScreen
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# 4️⃣ Launch 🚀
-python start.py
-```
 
 > **💡 Floating Ball Mode (macOS):**
 > - On macOS, MemScreen starts with a **floating ball** in the top-right corner
@@ -411,9 +386,10 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 - 🎨 **Branded Experience** — Floating ball displays your logo with circular masking
 - 🖱️ **Simplified Control** — All features accessible via right-click menu
 - 📱 **Cleaner Interface** — Drag anywhere, left-click to toggle window, right-click for menu
-- 🧹 **Code Cleanup** — Removed 15+ test/debug files, cleaned up project structure
-- 📚 **Better Docs** — Added comprehensive user guide, updated README
-- 🐛 **Bug Fixes** — Fixed duplicate floating ball issue, improved state management
+- 🎯 **Region Selection** — Native macOS region selector with visual feedback
+- 🧹 **Project Cleanup** — Reorganized structure: docs/, config/, setup/, tests/
+- 📚 **Better Documentation** — Centralized docs, updated README, cleanup guides
+- 🐛 **Bug Fixes** — Fixed duplicate floating ball, improved state management, coordinate issues
 
 ### ✨ v0.5.0 — Dynamic Memory System & Native Floating Ball (February 2026)
 
@@ -441,10 +417,11 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 
 ```
 MemScreen/
-├── start.py                 # Application entry point
-├── config_example.yaml      # Configuration template
+├── LICENSE                  # MIT License
+├── README.md                # This file
+├── pyproject.toml           # Python configuration
 │
-├── memscreen/              # Main package
+├── memscreen/              # Main application package
 │   ├── ui/                # UI components (Kivy)
 │   ├── presenters/        # Business logic (MVP)
 │   ├── memory/            # Memory system
@@ -452,9 +429,26 @@ MemScreen/
 │   ├── audio/             # Audio recording
 │   └── ...
 │
-├── tests/                 # Test files
-├── examples/              # Demo scripts
-└── docs/                  # Documentation
+├── config/                 # Configuration files
+│   └── config_example.yaml
+│
+├── docs/                   # Documentation (31 files)
+│   ├── guides/            # User guides
+│   ├── history/           # Development history
+│   ├── cleanup/           # Maintenance docs
+│   └── ...
+│
+├── setup/                  # Installation & build
+│   ├── install/           # Installation scripts
+│   ├── docker/            # Docker files
+│   ├── tools/             # Build tools
+│   ├── start.py           # Application entry point
+│   ├── run.sh/run.bat     # Run scripts
+│   └── MANIFEST.in
+│
+├── tests/                  # Test suite
+├── examples/               # Demo scripts
+└── assets/                 # Application assets
 ```
 
 **User data** is stored in `~/.memscreen/`:
@@ -462,7 +456,7 @@ MemScreen/
 - Videos: `~/.memscreen/videos/`
 - Logs: `~/.memscreen/logs/`
 
-📖 **See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for detailed documentation.**
+📖 **See [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) for detailed documentation.**
 
 ---
 

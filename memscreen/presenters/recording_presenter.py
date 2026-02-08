@@ -92,6 +92,7 @@ class RecordingPresenter(BasePresenter):
         # Recording mode support
         self.recording_mode = 'fullscreen'  # fullscreen, region
         self.region_bbox = None  # (left, top, right, bottom) or None
+        self.screen_index = None  # Index of screen to record (None = all screens/primary)
 
         # Services (lazy loaded)
         self.region_config = None
@@ -398,12 +399,13 @@ class RecordingPresenter(BasePresenter):
 
     def set_recording_mode(self, mode: str, **kwargs) -> bool:
         """
-        Set recording mode (fullscreen or region).
+        Set recording mode (fullscreen, fullscreen-single, or region).
 
         Args:
-            mode: 'fullscreen' or 'region'
+            mode: 'fullscreen', 'fullscreen-single', or 'region'
             **kwargs:
                 - bbox: region bbox tuple (for 'region' mode)
+                - screen_index: screen index (for 'fullscreen-single' mode)
 
         Returns:
             True if mode set successfully
@@ -412,13 +414,26 @@ class RecordingPresenter(BasePresenter):
             self.recording_mode = mode
 
             if mode == 'fullscreen':
+                # Capture all screens combined
                 self.region_bbox = None
-                print("[RecordingPresenter] Mode set to: Full Screen")
+                self.screen_index = None
+                print("[RecordingPresenter] Mode set to: Full Screen (all screens)")
+
+            elif mode == 'fullscreen-single':
+                # Capture a specific screen
+                screen_index = kwargs.get('screen_index')
+                if screen_index is not None:
+                    self.screen_index = int(screen_index)
+                    self.region_bbox = None
+                    print(f"[RecordingPresenter] Mode set to: Full Screen {self.screen_index + 1}")
+                else:
+                    raise ValueError("screen_index is required for fullscreen-single mode")
 
             elif mode == 'region':
                 bbox = kwargs.get('bbox')
                 if bbox and len(bbox) == 4:
                     self.region_bbox = tuple(bbox)
+                    self.screen_index = None
                     print(f"[RecordingPresenter] Mode set to: Custom Region {bbox}")
                 else:
                     raise ValueError("Invalid bbox for region mode")
@@ -437,11 +452,12 @@ class RecordingPresenter(BasePresenter):
         Get current recording mode information.
 
         Returns:
-            Dict with mode and bbox
+            Dict with mode, bbox, and screen_index
         """
         return {
             'mode': self.recording_mode,
-            'bbox': self.region_bbox
+            'bbox': self.region_bbox,
+            'screen_index': self.screen_index
         }
 
 
@@ -465,12 +481,27 @@ class RecordingPresenter(BasePresenter):
 
             from PIL import ImageGrab
 
-            # Capture screen with region support
+            # Capture screen with region and screen selection support
             try:
                 if self.region_bbox:
+                    # Custom region mode
                     screenshot = ImageGrab.grab(bbox=self.region_bbox)
+                elif self.screen_index is not None:
+                    # Single screen mode - get screen bbox from screen utils
+                    try:
+                        from memscreen.utils import get_screen_by_index
+                        screen_info = get_screen_by_index(self.screen_index)
+                        if screen_info:
+                            screenshot = ImageGrab.grab(bbox=screen_info.bbox)
+                        else:
+                            print(f"[RecordingPresenter] Invalid screen index {self.screen_index}, falling back to all screens")
+                            screenshot = ImageGrab.grab()
+                    except Exception as screen_error:
+                        print(f"[RecordingPresenter] Error getting screen bbox: {screen_error}, falling back to all screens")
+                        screenshot = ImageGrab.grab()
                 else:
-                    screenshot = ImageGrab.grab()  # Full screen
+                    # Full screen mode (all screens)
+                    screenshot = ImageGrab.grab()
             except Exception as grab_error:
                 error_msg = str(grab_error).lower()
                 # Check if it's a permission error
@@ -502,6 +533,34 @@ class RecordingPresenter(BasePresenter):
             self.handle_error(e, "Failed to capture preview frame")
             return None
             return None
+
+    def get_available_screens(self) -> list:
+        """
+        Get list of available screens for multi-monitor recording.
+
+        Returns:
+            List of screen dictionaries with index, name, width, height
+        """
+        try:
+            from memscreen.utils import get_screens
+
+            screens = get_screens()
+            screen_list = []
+
+            for screen in screens:
+                screen_list.append({
+                    'index': screen.index,
+                    'name': screen.name,
+                    'width': screen.width,
+                    'height': screen.height,
+                    'is_primary': screen.is_primary
+                })
+
+            return screen_list
+
+        except Exception as e:
+            self.handle_error(e, "Failed to get available screens")
+            return []
 
     def get_recordings_list(self) -> list:
         """
@@ -590,11 +649,26 @@ class RecordingPresenter(BasePresenter):
                 time_since_last_shot = current_time - last_screenshot_time
                 if time_since_last_shot >= self.interval:
                     try:
-                        # Capture screen with region support
+                        # Capture screen with region and screen selection support
                         if self.region_bbox:
+                            # Custom region mode
                             screenshot = ImageGrab.grab(bbox=self.region_bbox)
+                        elif self.screen_index is not None:
+                            # Single screen mode - get screen bbox from screen utils
+                            try:
+                                from memscreen.utils import get_screen_by_index
+                                screen_info = get_screen_by_index(self.screen_index)
+                                if screen_info:
+                                    screenshot = ImageGrab.grab(bbox=screen_info.bbox)
+                                else:
+                                    print(f"[RecordingPresenter] Invalid screen index {self.screen_index}, falling back to all screens")
+                                    screenshot = ImageGrab.grab()
+                            except Exception as screen_error:
+                                print(f"[RecordingPresenter] Error getting screen bbox: {screen_error}, falling back to all screens")
+                                screenshot = ImageGrab.grab()
                         else:
-                            screenshot = ImageGrab.grab()  # Full screen
+                            # Full screen mode (all screens)
+                            screenshot = ImageGrab.grab()
 
                         # Convert to numpy array
                         frame_array = np.array(screenshot)
