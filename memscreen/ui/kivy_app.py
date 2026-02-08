@@ -3299,6 +3299,56 @@ class MemScreenApp(App):
         sys.stderr.write(f"[App] ✓ Screen switch monitor started - checking {self._switch_file_path} every 0.5s\n")
         sys.stderr.flush()
 
+        # Create floating ball on macOS (moved from on_start which may not be called)
+        if sys.platform == 'darwin':
+            def create_floating_ball_after_build(dt):
+                # Prevent duplicate creation
+                if hasattr(self, 'floating_ball') and self.floating_ball is not None:
+                    sys.stderr.write("[App] Floating ball already exists, skipping creation\n")
+                    sys.stderr.flush()
+                    return
+
+                try:
+                    from memscreen.ui.floating_ball_native import create_floating_ball
+
+                    # Create floating ball
+                    self.floating_ball = create_floating_ball(presenter=self.recording_presenter)
+
+                    # Set callbacks using recording_screen's methods
+                    self.floating_ball.on_stop_callback = self.recording_screen._stop_from_ball
+                    self.floating_ball.on_pause_callback = self.recording_screen._pause_from_ball
+                    self.floating_ball.on_main_window_callback = self.recording_screen._hide_floating_ball
+                    self.floating_ball.on_show_main_window_callback = self.recording_screen._show_main_window
+                    self.floating_ball.on_switch_screen_callback = self.recording_screen._switch_screen_from_ball
+                    self.floating_ball.on_select_region_callback = self.recording_screen._select_region_from_ball
+                    self.floating_ball.on_start_recording_callback = self.recording_screen._start_recording_from_ball
+                    self.floating_ball.on_quit_callback = self.recording_screen._quit_from_ball
+
+                    # Set initial state (not recording)
+                    self.floating_ball.setRecordingState_(False)
+
+                    sys.stderr.write("[App] ✓ Floating ball created at startup (from build)\n")
+                    sys.stderr.flush()
+
+                    # Hide/minimize main window
+                    try:
+                        from kivy.core.window import Window
+                        Window.minimize()
+                        sys.stderr.write("[App] ✓ Main window minimized - floating ball only mode\n")
+                        sys.stderr.flush()
+                    except Exception as e:
+                        sys.stderr.write(f"[App] ⚠ Could not minimize window: {e}\n")
+                        sys.stderr.flush()
+
+                except Exception as e:
+                    sys.stderr.write(f"[App] ✗ Failed to create floating ball: {e}\n")
+                    sys.stderr.flush()
+                    import traceback
+                    traceback.print_exc()
+
+            # Schedule floating ball creation after window is fully built
+            Clock.schedule_once(create_floating_ball_after_build, 1.0)
+
         return root
 
     def _check_screen_switch_request(self, dt):
@@ -3541,44 +3591,12 @@ class MemScreenApp(App):
     def on_start(self):
         print("[App] Started - Light purple theme, all black text")
 
-        # NEW: Start with floating ball only on macOS
-        if sys.platform == 'darwin':
-            from kivy.clock import Clock
-            def show_floating_ball_only(dt):
-                try:
-                    from memscreen.ui.floating_ball_native import create_floating_ball
+        # NOTE: Floating ball creation moved to build() method to avoid duplicate creation
+        # on_start() may not be called reliably in all Kivy versions
+        # The floating ball is now created in build() after Clock.schedule_once with 1.0s delay
 
-                    # Create floating ball
-                    self.floating_ball = create_floating_ball(presenter=self.recording_presenter)
-
-                    # Set callbacks using recording_screen's methods
-                    self.floating_ball.on_stop_callback = self.recording_screen._stop_from_ball
-                    self.floating_ball.on_pause_callback = self.recording_screen._pause_from_ball
-                    self.floating_ball.on_main_window_callback = self.recording_screen._hide_floating_ball
-                    self.floating_ball.on_show_main_window_callback = self.recording_screen._show_main_window
-                    self.floating_ball.on_switch_screen_callback = self.recording_screen._switch_screen_from_ball
-                    self.floating_ball.on_select_region_callback = self.recording_screen._select_region_from_ball
-                    self.floating_ball.on_start_recording_callback = self.recording_screen._start_recording_from_ball
-                    self.floating_ball.on_quit_callback = self.recording_screen._quit_from_ball
-
-                    # Set initial state (not recording)
-                    self.floating_ball.setRecordingState_(False)
-
-                    print("[App] ✓ Floating ball created at startup")
-
-                    # Hide/minimize main window
-                    Window.minimize()
-                    print("[App] ✓ Main window minimized - floating ball only mode")
-
-                except Exception as e:
-                    print(f"[App] ✗ Failed to create floating ball: {e}")
-                    import traceback
-                    traceback.print_exc()
-
-            # Schedule floating ball creation after window is ready
-            Clock.schedule_once(show_floating_ball_only, 0.5)
-        else:
-            # Non-macOS: show main window normally
+        # Non-macOS: show main window normally
+        if sys.platform != 'darwin':
             try:
                 Window.request_attention(window_attention="normal")
                 print("[App] ✓ Window attention requested")

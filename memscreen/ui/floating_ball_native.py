@@ -222,6 +222,10 @@ class FloatingBallWindow(NSPanel):
         self.setBackgroundColor_(NSColor.clearColor())
         self.setMovableByWindowBackground_(True)
 
+        # CRITICAL: Ensure this is a child window of the application, not another window
+        # This allows it to move anywhere on screen, not just within parent window bounds
+        self.setParentWindow_(None)  # Explicitly set no parent window
+
         # Configure panel behavior to stay visible across all spaces
         self.setFloatingPanel_(True)  # Keep floating above other windows
         self.setBecomesKeyOnlyIfNeeded_(True)  # Don't steal focus
@@ -552,23 +556,42 @@ def create_floating_ball(presenter=None, position=None):
 
     Args:
         presenter: RecordingPresenter instance
-        position: Initial position as (x, y) tuple, defaults to top-right of screen
+        position: Initial position as (x, y) tuple, defaults to top-right of current screen
 
     Returns:
         FloatingBallWindow instance
     """
-    # Get screen size
-    from Cocoa import NSScreen
-    screen_frame = NSScreen.mainScreen().frame()
+    # Get screen size - use the screen where mouse is currently located
+    from Cocoa import NSScreen, NSEvent
+
+    # Get mouse location to determine which screen the user is using
+    mouse_location = NSEvent.mouseLocation()
+
+    # Find the screen containing the mouse pointer
+    target_screen = None
+    for screen in NSScreen.screens():
+        screen_frame = screen.frame()
+        # Check if mouse is within this screen's bounds
+        if (screen_frame.origin.x <= mouse_location.x <= screen_frame.origin.x + screen_frame.size.width and
+            screen_frame.origin.y <= mouse_location.y <= screen_frame.origin.y + screen_frame.size.height):
+            target_screen = screen
+            break
+
+    # Fallback to main screen if no screen found (shouldn't happen)
+    if target_screen is None:
+        target_screen = NSScreen.mainScreen()
+
+    screen_frame = target_screen.frame()
 
     # Ball size
     ball_size = 80
     margin = 20
 
-    # Default position: top-right corner
+    # Default position: top-right corner of the target screen
+    # IMPORTANT: Need to account for screen's origin (not always 0,0)
     if position is None:
-        x = screen_frame.size.width - ball_size - margin
-        y = screen_frame.size.height - ball_size - margin
+        x = screen_frame.origin.x + screen_frame.size.width - ball_size - margin
+        y = screen_frame.origin.y + screen_frame.size.height - ball_size - margin
     else:
         x, y = position
 
@@ -593,6 +616,11 @@ def create_floating_ball(presenter=None, position=None):
     window.makeKeyAndOrderFront_(None)
     window.setLevel_(NSWindowLevelFloating)  # Ensure window level is set
 
-    print(f"[FloatingBall] Created native floating ball at ({x}, {y})")
+    # Debug info
+    screen_name = "Main Screen" if target_screen == NSScreen.mainScreen() else "Secondary Screen"
+    print(f"[FloatingBall] Created native floating ball at ({x}, {y}) on {screen_name}")
+    print(f"[FloatingBall] Screen frame: origin=({screen_frame.origin.x}, {screen_frame.origin.y}), "
+          f"size=({screen_frame.size.width}, {screen_frame.size.height})")
+    print(f"[FloatingBall] Mouse was at: ({mouse_location.x}, {mouse_location.y})")
 
     return window
