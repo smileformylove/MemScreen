@@ -407,6 +407,23 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 
 ---
 
+## 🗺️ Todo
+
+**🎯 Upcoming Features**
+
+- ⌨️ **Global Hotkey Binding** — System-wide shortcuts for quick access
+- 🖥️ **CLI Tool** — Command-line interface for power users
+- 👁️ **Visual Memory Optimization** — Advanced visual encoding & retrieval improvements
+- 🔌 **Plugin System** — Extensible architecture for custom integrations
+- 🌐 **Multi-device Sync** — Sync across multiple machines
+- 📱 **Mobile Apps** — iOS and Android companions
+
+---
+
+**💡 Have a suggestion?** Join the discussion at [GitHub Discussions](https://github.com/smileformylove/MemScreen/discussions)!
+
+---
+
 ## ⭐ Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=smileformylove/MemScreen&type=Date)](https://star-history.com/#smileformylove/MemScreen&Date)
