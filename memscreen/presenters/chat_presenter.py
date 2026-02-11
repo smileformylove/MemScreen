@@ -575,9 +575,11 @@ Respond naturally without mentioning your model provider or technical details.""
                 assistant_msg = ChatMessage("assistant", cached_response)
                 self.conversation_history.append(assistant_msg)
 
-                # Notify view
+                # Notify view (Kivy + API stream/SSE)
                 if self.view:
                     self.view.on_message_added("assistant", cached_response)
+                    self.view.on_response_chunk(cached_response)
+                    self.view.on_response_completed(cached_response)
 
                 return True
 
@@ -605,9 +607,11 @@ Respond naturally without mentioning your model provider or technical details.""
             assistant_msg = ChatMessage("assistant", response_text)
             self.conversation_history.append(assistant_msg)
 
-            # Notify view
+            # Notify view (both for Kivy and for API stream/SSE)
             if self.view:
                 self.view.on_message_added("assistant", response_text)
+                self.view.on_response_chunk(response_text)
+                self.view.on_response_completed(response_text)
 
             # Log classification info
             handler = result.get("handler", "unknown")
@@ -826,6 +830,7 @@ Respond naturally without mentioning your model provider or technical details.""
                 print(f"[ChatPresenter] ⚡ Using smart_search (category-based)")
                 results = self.memory_system.smart_search(
                     query=query,
+                    user_id="screenshot",
                     limit=self._smart_search_limit  # Only get top 5
                 )
             else:

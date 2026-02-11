@@ -31,6 +31,8 @@ classifiers = [
 keywords = ["ai", "screen-recording", "vision-language", "memory", "local-ai", "ocr", "productivity"]
 
 dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.22.0",
     "kivy[base]>=2.3.0",
     "torch>=2.0.0",
     "torchvision>=0.15.0",
