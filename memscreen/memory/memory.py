@@ -44,7 +44,7 @@ from ..llm import LlmFactory
 from ..embeddings import EmbedderFactory
 from ..vector_store import VectorStoreFactory
 from ..storage import SQLiteManager
-from ..prompts import (
+from ..prompts_core import (
     PROCEDURAL_MEMORY_SYSTEM_PROMPT,
     get_update_memory_messages,
 )

@@ -175,6 +175,36 @@ python setup/start.py
 
 ---
 
+### 🖥️ Dual frontends: Kivy (default) + Flutter (optional)
+
+MemScreen supports **two frontends**; the default is the **Kivy UI** (launched with `python setup/start.py`).
+
+- **Kivy** — Default. Run `python setup/start.py` (or `setup/run.sh`). No extra steps.
+- **Flutter** — Optional alternative UI that talks to MemScreen over HTTP. Use when you prefer a Flutter desktop/mobile client.
+
+**To use the Flutter frontend:**
+
+1. **Start the API** (backend must run in the project Conda env `MemScreen`):
+   ```bash
+   conda activate MemScreen
+   python -m memscreen.api
+   # or: python setup/start_api.py
+   ```
+   API runs at `http://127.0.0.1:8765` by default (see [docs/API_HTTP.md](docs/API_HTTP.md)).
+
+2. **Run the Flutter app** from the Flutter project directory:
+   ```bash
+   cd frontend/flutter
+   flutter pub get && flutter run
+   ```
+   On macOS, use `flutter run -d macos` after `flutter create . --project-name memscreen_flutter` if needed.
+
+**Flutter app includes:** Chat (streaming, model switch, history), Process (session list, analysis, delete; **save session** manually or **keyboard/mouse tracking** → save from tracking), Recording (**fullscreen / single screen / region**, duration & interval), Video list, Settings & About. Connection can be retried or API URL reconfigured from the top bar when the backend is unreachable.
+
+See [docs/FLUTTER.md](docs/FLUTTER.md) for Flutter dependencies, configuration (API base URL), and development notes.
+
+---
+
 ### 🤖 Automated Installation (Optional)
 
 **For fully automated setup**
@@ -455,11 +485,15 @@ MemScreen/
 │   ├── cleanup/           # Maintenance docs
 │   └── ...
 │
+├── frontend/
+│   └── flutter/           # Optional Flutter UI (see docs/FLUTTER.md)
+│
 ├── setup/                  # Installation & build
 │   ├── install/           # Installation scripts
 │   ├── docker/            # Docker files
 │   ├── tools/             # Build tools
 │   ├── start.py           # Application entry point
+│   ├── start_api.py       # API-only entry (for Flutter frontend)
 │   ├── run.sh/run.bat     # Run scripts
 │   └── MANIFEST.in
 │

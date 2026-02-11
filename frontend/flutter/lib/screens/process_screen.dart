@@ -1,0 +1,572 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../api/process_api.dart';
+import '../app_state.dart';
+
+/// 单条事件约定：type (keypress/click/info)、text、time（与 API_HTTP.md / CORE_API 一致）
+class SessionEvent {
+  SessionEvent({this.type = 'info', this.text = '', this.time = ''});
+  String type;
+  String text;
+  String time;
+
+  Map<String, dynamic> toJson() => {'type': type, 'text': text, 'time': time};
+}
+
+class ProcessScreen extends StatefulWidget {
+  const ProcessScreen({super.key});
+
+  @override
+  State<ProcessScreen> createState() => _ProcessScreenState();
+}
+
+class _ProcessScreenState extends State<ProcessScreen> {
+  List<ProcessSession> _sessions = [];
+  TrackingStatus? _trackingStatus;
+  bool _loading = true;
+  Timer? _trackingPollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _trackingPollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final api = context.read<AppState>().processApi;
+      final list = await api.getSessions();
+      final status = await api.getTrackingStatus();
+      if (mounted) {
+        setState(() {
+          _sessions = list;
+          _trackingStatus = status;
+          _loading = false;
+        });
+        if (status.isTracking) _startTrackingPoll();
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _startTrackingPoll() {
+    _trackingPollTimer?.cancel();
+    _trackingPollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      try {
+        final status = await context.read<AppState>().processApi.getTrackingStatus();
+        if (mounted) setState(() => _trackingStatus = status);
+        if (!status.isTracking) _trackingPollTimer?.cancel();
+      } catch (_) {}
+    });
+  }
+
+  Future<void> _startTracking() async {
+    try {
+      await context.read<AppState>().processApi.startTracking();
+      if (mounted) {
+        setState(() => _trackingStatus = TrackingStatus(isTracking: true, eventCount: 0));
+        _startTrackingPoll();
+      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已开始采集键盘/鼠标')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('开始采集失败: $e')));
+    }
+  }
+
+  Future<void> _stopTracking() async {
+    try {
+      await context.read<AppState>().processApi.stopTracking();
+      _trackingPollTimer?.cancel();
+      if (mounted) {
+        setState(() => _trackingStatus = TrackingStatus(isTracking: false, eventCount: _trackingStatus?.eventCount ?? 0));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已停止采集')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('停止采集失败: $e')));
+    }
+  }
+
+  Future<void> _saveFromTracking() async {
+    try {
+      final result = await context.read<AppState>().processApi.saveSessionFromTracking();
+      _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已保存 ${result.eventsSaved} 条事件 (${result.startTime} — ${result.endTime})')),
+        );
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
+    }
+  }
+
+  Future<void> _deleteSession(int id) async {
+    try {
+      await context.read<AppState>().processApi.deleteSession(id.toString());
+      _load();
+    } catch (_) {}
+  }
+
+  Future<void> _deleteAll() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清空所有会话'),
+        content: const Text('确定要删除全部流程分析会话吗？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('确定')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      try {
+        await context.read<AppState>().processApi.deleteAllSessions();
+        _load();
+      } catch (_) {}
+    }
+  }
+
+  void _openSaveSession() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => _SaveSessionSheet(
+        onSaved: () {
+          Navigator.of(ctx).pop();
+          _load();
+        },
+        onCancel: () => Navigator.of(ctx).pop(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('流程分析'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline),
+            tooltip: '保存会话',
+            onPressed: _openSaveSession,
+          ),
+          if (_sessions.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete_sweep),
+              onPressed: _deleteAll,
+            ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // 键盘/鼠标采集（与 Kivy 一致）
+                  Card(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(_trackingStatus?.isTracking == true ? Icons.touch_app : Icons.keyboard),
+                              const SizedBox(width: 8),
+                              Text(
+                                '键盘/鼠标采集',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _trackingStatus?.isTracking == true
+                                ? '采集中 · ${_trackingStatus!.eventCount} 条事件（后端本机）'
+                                : '在后端机器上采集键盘与鼠标事件，保存为流程会话。需辅助功能权限。',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              if (_trackingStatus?.isTracking != true)
+                                FilledButton.icon(
+                                  onPressed: _startTracking,
+                                  icon: const Icon(Icons.play_arrow),
+                                  label: const Text('开始采集'),
+                                )
+                              else ...[
+                                OutlinedButton.icon(
+                                  onPressed: _stopTracking,
+                                  icon: const Icon(Icons.stop),
+                                  label: const Text('停止采集'),
+                                ),
+                                const SizedBox(width: 8),
+                                FilledButton.icon(
+                                  onPressed: _saveFromTracking,
+                                  icon: const Icon(Icons.save),
+                                  label: const Text('保存当前会话'),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_sessions.isEmpty)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text('暂无会话，可通过「开始采集」或「保存会话」添加。'),
+                      ),
+                    )
+                  else
+                    ...List.generate(_sessions.length, (i) {
+                      final s = _sessions[i];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          title: Text('${s.startTime} — ${s.endTime}'),
+                          subtitle: Text('事件: ${s.eventCount}  按键: ${s.keystrokes}  点击: ${s.clicks}'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.analytics),
+                                onPressed: () => _openAnalysis(context, s.id),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline),
+                                onPressed: () => _deleteSession(s.id),
+                              ),
+                            ],
+                          ),
+                          onTap: () => _openAnalysis(context, s.id),
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Future<void> _openAnalysis(BuildContext context, int sessionId) async {
+    final api = context.read<AppState>().processApi;
+    try {
+      final analysis = await api.getSessionAnalysis(sessionId.toString());
+      if (!context.mounted) return;
+      if (analysis == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法加载分析')));
+        }
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (ctx) => ProcessAnalysisScreen(sessionId: sessionId, analysis: analysis),
+        ),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('加载分析失败: $e')));
+      }
+    }
+  }
+}
+
+/// 单行事件编辑：type 下拉 + text/time 输入
+class _EventRow extends StatefulWidget {
+  const _EventRow({super.key, required this.event, required this.onRemove});
+
+  final SessionEvent event;
+  final VoidCallback onRemove;
+
+  @override
+  State<_EventRow> createState() => _EventRowState();
+}
+
+class _EventRowState extends State<_EventRow> {
+  late final TextEditingController _textController;
+  late final TextEditingController _timeController;
+
+  @override
+  void initState() {
+    super.initState();
+    _textController = TextEditingController(text: widget.event.text);
+    _timeController = TextEditingController(text: widget.event.time);
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _timeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final e = widget.event;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 100,
+              child: DropdownButtonFormField<String>(
+                value: e.type,
+                decoration: const InputDecoration(isDense: true),
+                items: const [
+                  DropdownMenuItem(value: 'info', child: Text('info')),
+                  DropdownMenuItem(value: 'keypress', child: Text('keypress')),
+                  DropdownMenuItem(value: 'click', child: Text('click')),
+                ],
+                onChanged: (v) {
+                  if (v != null) e.type = v;
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                decoration: const InputDecoration(hintText: 'text', isDense: true),
+                controller: _textController,
+                onChanged: (v) => e.text = v,
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 90,
+              child: TextField(
+                decoration: const InputDecoration(hintText: 'time', isDense: true),
+                controller: _timeController,
+                onChanged: (v) => e.time = v,
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.remove_circle_outline),
+              onPressed: widget.onRemove,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 保存会话：收集 start_time、end_time、events，调用 POST /process/sessions
+class _SaveSessionSheet extends StatefulWidget {
+  const _SaveSessionSheet({required this.onSaved, required this.onCancel});
+
+  final VoidCallback onSaved;
+  final VoidCallback onCancel;
+
+  @override
+  State<_SaveSessionSheet> createState() => _SaveSessionSheetState();
+}
+
+class _SaveSessionSheetState extends State<_SaveSessionSheet> {
+  late final TextEditingController _startController;
+  late final TextEditingController _endController;
+  final List<SessionEvent> _events = [];
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    final start = now.subtract(const Duration(hours: 1));
+    _startController = TextEditingController(text: _formatTime(start));
+    _endController = TextEditingController(text: _formatTime(now));
+  }
+
+  @override
+  void dispose() {
+    _startController.dispose();
+    _endController.dispose();
+    super.dispose();
+  }
+
+  static String _formatTime(DateTime t) {
+    return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}';
+  }
+
+  void _addEvent() {
+    setState(() {
+      _events.add(SessionEvent(
+        type: 'info',
+        text: '',
+        time: _formatTime(DateTime.now()),
+      ));
+    });
+  }
+
+  void _removeEvent(int i) {
+    setState(() => _events.removeAt(i));
+  }
+
+  Future<void> _submit(BuildContext context) async {
+    final startTime = _startController.text.trim();
+    final endTime = _endController.text.trim();
+    if (startTime.isEmpty || endTime.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请填写开始、结束时间')));
+      return;
+    }
+    final api = context.read<AppState>().processApi;
+    final eventsJson = _events.map((e) => e.toJson()).toList();
+    try {
+      await api.saveSession(
+        events: eventsJson,
+        startTime: startTime,
+        endTime: endTime,
+      );
+      if (!context.mounted) return;
+      widget.onSaved();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('会话已保存')));
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.3,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Text('保存会话', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              Flexible(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            decoration: const InputDecoration(labelText: '开始时间', hintText: 'HH:MM:SS'),
+                            controller: _startController,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: TextField(
+                            decoration: const InputDecoration(labelText: '结束时间', hintText: 'HH:MM:SS'),
+                            controller: _endController,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Text('事件 (type / text / time)', style: Theme.of(context).textTheme.bodySmall),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: _addEvent,
+                          icon: const Icon(Icons.add),
+                          label: const Text('添加事件'),
+                        ),
+                      ],
+                    ),
+                    ...List.generate(_events.length, (i) {
+                      final e = _events[i];
+                      return _EventRow(
+                        key: ValueKey(i),
+                        event: e,
+                        onRemove: () => _removeEvent(i),
+                      );
+                    }),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(onPressed: widget.onCancel, child: const Text('取消')),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: () => _submit(context),
+                          child: const Text('保存'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class ProcessAnalysisScreen extends StatelessWidget {
+  const ProcessAnalysisScreen({super.key, required this.sessionId, required this.analysis});
+
+  final int sessionId;
+  final ProcessAnalysis analysis;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('会话 $sessionId 分析')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('事件数: ${analysis.eventCount}  按键: ${analysis.keystrokes}  点击: ${analysis.clicks}'),
+            Text('时间: ${analysis.startTime} — ${analysis.endTime}'),
+            const SizedBox(height: 16),
+            if (analysis.categories.isNotEmpty) ...[
+              Text('分类', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
+              ...analysis.categories.entries.map((e) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text('${e.key}: ${e.value}'),
+                  )),
+              const SizedBox(height: 16),
+            ],
+            if (analysis.patterns.isNotEmpty) ...[
+              Text('模式', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
+              ...analysis.patterns.entries.map((e) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text('${e.key}: ${e.value}'),
+                  )),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}

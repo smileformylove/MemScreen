@@ -12,6 +12,7 @@ and intelligently dispatch them to appropriate handlers.
 """
 
 import asyncio
+import json
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Callable
@@ -554,6 +555,14 @@ Provide helpful assistance."""
 
         return {"success": False, "error": "LLM not available"}
 
+    def _metadata_value_for_store(self, value: Any) -> Any:
+        """Convert metadata value to Chroma-safe type (str, int, float, bool, None)."""
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, (list, dict)):
+            return json.dumps(value, ensure_ascii=False)
+        return str(value)
+
     async def _store_with_classification(
         self,
         input_text: str,
@@ -563,19 +572,21 @@ Provide helpful assistance."""
         """Store the interaction in memory with classification metadata"""
         try:
             if hasattr(self.memory_system, 'add'):
-                metadata = {
+                raw = {
                     "category": classification.category.value,
                     "confidence": classification.confidence,
                     "subcategories": classification.subcategories,
                     "result": result,
                     "timestamp": datetime.now().isoformat()
                 }
-                metadata.update(classification.metadata)
+                raw.update(classification.metadata)
+                metadata = {k: self._metadata_value_for_store(v) for k, v in raw.items()}
 
-                # Add to memory
+                # Add to memory (user_id required by memory API)
                 self.memory_system.add(
                     input_text,
-                    metadata=metadata
+                    user_id="api_chat",
+                    metadata=metadata,
                 )
                 logger.debug("[Agent] Interaction stored in memory")
         except Exception as e:

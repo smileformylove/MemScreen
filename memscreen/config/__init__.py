@@ -141,6 +141,12 @@ class MemScreenConfig:
                 "chat_input_height": self.CHAT_INPUT_HEIGHT,
                 "preview_update_interval": self.PREVIEW_UPDATE_INTERVAL,
             },
+            # API server (for Flutter / other frontends; default off)
+            "api": {
+                "enabled": False,
+                "host": "127.0.0.1",
+                "port": 8765,
+            },
             # Timezone configuration
             "timezone": {
                 "default": self.DEFAULT_TIMEZONE,
@@ -264,6 +270,17 @@ class MemScreenConfig:
 
         if vllm_reasoning_model := os.getenv("MEMSCREEN_VLLM_REASONING_MODEL"):
             self._config["vllm"]["reasoning_model"] = vllm_reasoning_model
+
+        # API server
+        if api_port := os.getenv("MEMSCREEN_API_PORT"):
+            try:
+                self._config["api"]["port"] = int(api_port)
+            except ValueError:
+                pass
+        if api_host := os.getenv("MEMSCREEN_API_HOST"):
+            self._config["api"]["host"] = api_host
+        if os.getenv("MEMSCREEN_API_ENABLED", "").lower() in ("1", "true", "yes"):
+            self._config["api"]["enabled"] = True
 
     def _get_defaults_dict(self) -> Dict[str, Any]:
         """Get defaults as a dictionary."""
@@ -420,6 +437,22 @@ class MemScreenConfig:
     def chat_input_height(self) -> int:
         """Get chat input height."""
         return self._config["ui"]["chat_input_height"]
+
+    # API server properties
+    @property
+    def api_enabled(self) -> bool:
+        """Whether API server is enabled (for Flutter etc.)."""
+        return self._config["api"]["enabled"]
+
+    @property
+    def api_host(self) -> str:
+        """API server bind host."""
+        return self._config["api"]["host"]
+
+    @property
+    def api_port(self) -> int:
+        """API server bind port."""
+        return int(self._config["api"]["port"])
 
     @property
     def preview_update_interval(self) -> int:

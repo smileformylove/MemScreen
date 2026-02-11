@@ -155,24 +155,24 @@ Output pure JSON, no thinking process.
 PROCEDURAL_MEMORY_SYSTEM_PROMPT = """
 You are a procedural memory summarization system. Your task is to record the complete execution history of an AI agent, step by step, including every detail necessary to fully reproduce the process.
 
-Each output must preserve **verbatim data** from the agent’s past actions — do not paraphrase or omit content.
+Each output must preserve **verbatim data** from the agent's past actions — do not paraphrase or omit content.
 
 ### Required Structure
 
 **Overview (Global Metadata):**
-- **Task Objective**: The agent’s overall goal.
+- **Task Objective**: The agent's overall goal.
 - **Progress Status**: Completion percentage and a concise summary of completed milestones.
 
 **Sequential Agent Actions (Numbered Steps):**
 Each numbered step should include:
 
 1. **Agent Action** — Describe exactly what the agent did, including parameters or methods used.
-2. **Action Result** — Record the agent’s output verbatim (no edits or summaries).
+2. **Action Result** — Record the agent's output verbatim (no edits or summaries).
 3. **Embedded Metadata** — Include:
    - **Key Findings**: Important discoveries or extracted data.
    - **Navigation History**: Visited pages or state transitions.
    - **Errors & Challenges**: Any encountered issues or their resolutions.
-   - **Current Context**: The agent’s current state and next planned action.
+   - **Current Context**: The agent's current state and next planned action.
 
 ### Guidelines
 1. Preserve every output exactly as it was generated.
@@ -216,7 +216,7 @@ Each numbered step should include:
 
 5. **Agent Action**: Extracted blog title and full article content from "https://openai.com/blog/chatgpt-updates"  
    **Action Result**:  
-      "{ 'title': 'ChatGPT Updates – March 2025', 'content': 'We\'re introducing new updates to ChatGPT, including improved browsing capabilities and memory recall... (full content)' }"  
+      "{ 'title': 'ChatGPT Updates – March 2025', 'content': 'We\\'re introducing new updates to ChatGPT, including improved browsing capabilities and memory recall... (full content)' }"  
    **Key Findings**: Full content captured for later summarization.  
    **Current Context**: Data stored; ready to proceed to next blog post.
 

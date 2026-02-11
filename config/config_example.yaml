@@ -33,6 +33,13 @@ ui:
   chat_input_height: 3
   preview_update_interval: 1000  # milliseconds
 
+# API server (for Flutter / other frontends; default off)
+# Start with: python -m memscreen.api  or  python setup/start_api.py
+api:
+  enabled: false
+  host: "127.0.0.1"
+  port: 8765
+
 # Timezone configuration
 timezone:
   default: "US/Pacific"

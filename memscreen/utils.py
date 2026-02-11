@@ -13,7 +13,7 @@ import logging
 import platform
 import shutil
 
-from .prompts import FACT_RETRIEVAL_PROMPT
+from .prompts_core import FACT_RETRIEVAL_PROMPT
 
 logger = logging.getLogger(__name__)
 

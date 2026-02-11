@@ -40,3 +40,11 @@ htmlcov/
 
 # MemScreen data
 .memscreen/
+
+# Flutter (frontend/flutter)
+frontend/flutter/.dart_tool/
+frontend/flutter/.packages
+frontend/flutter/build/
+frontend/flutter/*.iml
+frontend/flutter/.flutter-plugins
+frontend/flutter/.flutter-plugins-dependencies
