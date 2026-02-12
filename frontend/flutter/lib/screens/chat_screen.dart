@@ -20,13 +20,12 @@ class _ChatScreenState extends State<ChatScreen> {
   String _currentReply = '';
   bool _loading = false;
   StreamSubscription? _streamSub;
-  String? _currentModel;
+  String? _selectedContext;
 
   @override
   void initState() {
     super.initState();
     _loadHistory();
-    _loadModel();
   }
 
   @override
@@ -45,22 +44,21 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (_) {}
   }
 
-  Future<void> _loadModel() async {
-    final api = context.read<AppState>().chatApi;
-    try {
-      final m = await api.getCurrentModel();
-      if (mounted) setState(() => _currentModel = m);
-    } catch (_) {}
-  }
-
   Future<void> _send(bool stream) async {
     final text = _inputController.text.trim();
     if (text.isEmpty || _loading) return;
     _inputController.clear();
+
+    // Build message with context
+    String messageToSend = text;
+    if (_selectedContext != null && _selectedContext != 'no_context') {
+      messageToSend = '[Context: $_selectedContext]\n$text';
+    }
+
     setState(() {
       _history = [..._history, ChatHistoryMessage(role: 'user', content: text)];
       _currentReply = '';
-      _loading = true;
+      _loading = false;
     });
     _scrollToBottom();
 
@@ -75,7 +73,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 _currentReply += text;
                 break;
               case ChatStreamError(:final msg):
-                _currentReply = '错误: $msg';
+                _currentReply = 'Error: $msg';
                 _loading = false;
                 break;
               case ChatStreamDone(:final full):
@@ -95,7 +93,7 @@ class _ChatScreenState extends State<ChatScreen> {
         if (!mounted) return;
         setState(() {
           if (reply.error != null) {
-            _history = [..._history, ChatHistoryMessage(role: 'assistant', content: '错误: ${reply.error}')];
+            _history = [..._history, ChatHistoryMessage(role: 'assistant', content: 'Error: ${reply.error}')];
           } else if (reply.reply != null) {
             _history = [..._history, ChatHistoryMessage(role: 'assistant', content: reply.reply!)];
           }
@@ -106,7 +104,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _history = [..._history, ChatHistoryMessage(role: 'assistant', content: '请求失败: $e')];
+          _history = [..._history, ChatHistoryMessage(role: 'assistant', content: 'Request failed: $e')];
           _loading = false;
         });
       }
@@ -131,16 +129,35 @@ class _ChatScreenState extends State<ChatScreen> {
     return Column(
       children: [
         AppBar(
-          title: const Text('对话'),
+          title: const Text('Chat'),
           actions: [
-            if (_currentModel != null) Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Center(child: Text(_currentModel!, style: theme.textTheme.bodySmall)),
-            ),
-            IconButton(
-              icon: const Icon(Icons.settings),
-              onPressed: () => _showModelPicker(context),
-            ),
+            // Context selector
+            if (_selectedContext != null)
+              PopupMenuButton<String>(
+                tooltip: 'Context',
+                icon: const Icon(Icons.link),
+                onSelected: (context) => setState(() => _selectedContext = context),
+                itemBuilder: (context) => [
+                  PopupMenuItem(value: 'no_context', child: Text('No Context')),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'video_context',
+                    enabled: false, // TODO: Fetch from video list
+                    child: Text('From Video'),
+                  ),
+                  PopupMenuItem(
+                    value: 'session_context',
+                    enabled: false, // TODO: Fetch from process sessions
+                    child: Text('From Session'),
+                  ),
+                ],
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Clear context',
+                onPressed: () => setState(() => _selectedContext = null),
+              ),
           ],
         ),
         Expanded(
@@ -170,8 +187,13 @@ class _ChatScreenState extends State<ChatScreen> {
               Expanded(
                 child: TextField(
                   controller: _inputController,
-                  decoration: const InputDecoration(hintText: '输入消息...', border: OutlineInputBorder()),
-                  maxLines: 2,
+                  decoration: InputDecoration(
+                    hintText: _selectedContext != null
+                        ? 'Enter message with context...'
+                        : 'Enter a message...',
+                    border: const OutlineInputBorder(),
+                  ),
+                  textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _send(true),
                 ),
               ),
@@ -185,42 +207,6 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ],
     );
-  }
-
-  Future<void> _showModelPicker(BuildContext context) async {
-    final api = context.read<AppState>().chatApi;
-    List<String> models = [];
-    try {
-      models = await api.getModels();
-    } catch (_) {}
-    if (!context.mounted) return;
-    final chosen = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('选择模型'),
-        content: SizedBox(
-          width: 280,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: models.length,
-            itemBuilder: (_, i) {
-              final m = models[i];
-              return ListTile(
-                title: Text(m),
-                selected: m == _currentModel,
-                onTap: () => Navigator.of(ctx).pop(m),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-    if (chosen != null) {
-      try {
-        await api.setModel(chosen);
-        setState(() => _currentModel = chosen);
-      } catch (_) {}
-    }
   }
 }
 

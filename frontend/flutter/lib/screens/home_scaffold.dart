@@ -20,11 +20,11 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   int _index = 0;
 
   static const _tabs = [
-    (icon: Icons.chat, label: '对话'),
-    (icon: Icons.account_tree, label: '流程'),
-    (icon: Icons.fiber_manual_record, label: '录制'),
-    (icon: Icons.video_library, label: '视频'),
-    (icon: Icons.settings, label: '设置'),
+    (icon: Icons.chat, label: 'Chat'),
+    (icon: Icons.account_tree, label: 'Process'),
+    (icon: Icons.fiber_manual_record, label: 'Record'),
+    (icon: Icons.video_library, label: 'Videos'),
+    (icon: Icons.settings, label: 'Settings'),
   ];
 
   @override
@@ -102,8 +102,8 @@ class _ConnectionBanner extends StatelessWidget {
               Expanded(
                 child: Text(
                   isConnecting
-                      ? '正在连接后端…'
-                      : (state.message ?? '后端未连接'),
+                      ? 'Connecting to backend...'
+                      : (state.message ?? 'Backend not connected'),
                   style: theme.textTheme.bodySmall,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -112,11 +112,11 @@ class _ConnectionBanner extends StatelessWidget {
               if (!isConnecting) ...[
                 TextButton(
                   onPressed: () => appState.checkConnection(),
-                  child: const Text('重试'),
+                  child: const Text('Retry'),
                 ),
                 TextButton(
                   onPressed: () => _showConfigDialog(context, appState),
-                  child: const Text('配置 API'),
+                  child: const Text('Config API'),
                 ),
               ],
             ],
@@ -133,7 +133,7 @@ class _ConnectionBanner extends StatelessWidget {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('API 地址'),
+        title: const Text('API URL'),
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(
@@ -144,7 +144,7 @@ class _ConnectionBanner extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () {
@@ -154,7 +154,7 @@ class _ConnectionBanner extends StatelessWidget {
                 appState.reconnectWithBaseUrl(url);
               }
             },
-            child: const Text('确定'),
+            child: const Text('OK'),
           ),
         ],
       ),

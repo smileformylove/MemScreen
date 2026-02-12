@@ -534,6 +534,9 @@ Provide helpful assistance."""
             if self.memory_system and hasattr(self.memory_system, 'get_context_for_response'):
                 context_data = self.memory_system.get_context_for_response(
                     input_text,
+                    user_id=context.get('user_id'),
+                    agent_id=context.get('agent_id'),
+                    run_id=context.get('run_id'),
                     **context.get('filters', {})
                 )
 

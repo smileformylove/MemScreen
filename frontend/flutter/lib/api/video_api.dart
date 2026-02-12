@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'api_client.dart';
 
 class VideoApi {
@@ -21,6 +22,55 @@ class VideoApi {
       fileSize: m['file_size'] as int? ?? 0,
     );
   }
+
+  Future<bool> play(String filename) async {
+    try {
+      // Expand ~ to home directory if present
+      String path = filename;
+      if (path.startsWith('~')) {
+        final home = Platform.environment['HOME'] ?? '';
+        path = path.replaceFirst('~', home);
+      }
+
+      print('[VideoApi] Attempting to play: $path');
+
+      // Check if file exists
+      final file = File(path);
+      if (!await file.exists()) {
+        print('[VideoApi] File does not exist: $path');
+        return false;
+      }
+
+      // Get file size for verification
+      final size = await file.length();
+      print('[VideoApi] File size: $size bytes');
+
+      if (size == 0) {
+        print('[VideoApi] File is empty!');
+        return false;
+      }
+
+      // Try qlmanage (Quick Look) as it's more reliable in sandboxed apps
+      // Falls back to 'open' if Quick Look fails
+      var result = await Process.run('qlmanage', ['-p', path]);
+
+      // If qlmanage fails, try regular open command
+      if (result.exitCode != 0) {
+        result = await Process.run('open', ['-W', path]);
+      }
+
+      print('[VideoApi] Playback result:');
+      print('  - Exit code: ${result.exitCode}');
+      print('  - Stdout: ${result.stdout}');
+      print('  - Stderr: ${result.stderr}');
+
+      // open should return 0 on success
+      return result.exitCode == 0;
+    } catch (e) {
+      print('[VideoApi] Error playing video: $e');
+      return false;
+    }
+  }
 }
 
 class VideoItem {
@@ -31,6 +81,7 @@ class VideoItem {
     required this.fps,
     required this.duration,
     required this.fileSize,
+    this.isPlaying = false,
   });
   final String filename;
   final String timestamp;
@@ -38,4 +89,5 @@ class VideoItem {
   final num fps;
   final num duration;
   final int fileSize;
+  bool isPlaying;
 }

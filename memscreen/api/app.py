@@ -108,11 +108,16 @@ async def chat_stream(body: ChatMessageBody):
     presenter.set_view(stream_view)
 
     def run_stream():
-        ok = presenter.send_message(user_message=body.message, use_agent=None)
-        if not ok:
-            chunk_queue.put({"error": "Failed to start stream"})
+        # Use send_message_sync for reliable, simple flow (same as Kivy)
+        def on_done(ai_text: str, error_text: Optional[str]):
+            if error_text:
+                chunk_queue.put({"error": error_text})
+            else:
+                # Send full response as one chunk
+                chunk_queue.put(ai_text)
             chunk_queue.put(SENTINEL)
-        presenter.set_view(None)
+
+        presenter.send_message_sync(body.message, on_done=on_done)
 
     loop = asyncio.get_event_loop()
     loop.run_in_executor(_executor, run_stream)

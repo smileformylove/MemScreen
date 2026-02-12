@@ -1,4 +1,4 @@
-# MemScreen 快速安装指南
+# MemScreen 快速启动指南
 
 ## 🚀 三种安装方式
 
@@ -14,8 +14,11 @@ git clone https://github.com/smileformylove/MemScreen.git && cd MemScreen
 chmod +x install.sh
 ./install.sh
 
-# 启动应用
-./run.sh
+# 启动应用（默认 Kivy UI）
+python start.py
+
+# 或启动 Flutter UI（可选）
+./scripts/start_flutter.sh
 ```
 
 **安装脚本会自动：**
@@ -27,11 +30,14 @@ chmod +x install.sh
 - ✅ 创建配置文件
 - ✅ 创建数据目录
 
+---
+
 ### 方式 2: 手动安装
 
 适用于：**所有平台（Windows/macOS/Linux）**
 
 #### 1️⃣ 安装 Python
+
 确保安装了 **Python 3.8 或更高版本**
 
 ```bash
@@ -88,9 +94,17 @@ ollama pull mxbai-embed-large     # 嵌入模型 (~500MB)
 
 #### 5️⃣ 启动应用
 
+**默认 Kivy UI（推荐）：**
 ```bash
 python start.py
 ```
+
+**可选 Flutter UI：**
+```bash
+./start_flutter.sh
+```
+
+---
 
 ### 方式 3: Docker 运行（最简单）
 
@@ -106,29 +120,36 @@ docker-compose -f setup/docker/docker-compose.yml up -d
 
 ---
 
-## 🎯 开发者设置
+## 🎯 Flutter 前端（可选）
 
-如果你是开发者，想贡献代码：
+MemScreen 支持双前端架构：
 
-```bash
-# 克隆项目
-git clone https://github.com/smileformylove/MemScreen.git && cd MemScreen
+### 默认：Kivy UI
+- 原生 Python 桌面应用
+- 使用 `python start.py` 启动
+- macOS 悬浮球模式
+- 完整功能支持
 
-# 运行开发环境设置脚本
-chmod +x setup-dev.sh
-./setup-dev.sh
+### 可选：Flutter UI
+- 跨平台桌面/移动客户端
+- 通过 HTTP 与后端通信
+- **启动方式：**
+  ```bash
+  ./start_flutter.sh
+  ```
+- 自动处理：
+  - 激活虚拟环境
+  - 启动 API 后端
+  - 安装 Flutter 依赖
+  - 启动 Flutter 应用
+- **功能特性：**
+  - 📱 Chat 界面（流式对话、模型切换、历史记录）
+  - 📊 Process 分析（会话列表、分析、删除）
+  - 🎥 Recording（全屏/单屏/区域录制）
+  - 🎬 Videos（视频列表、播放、删除）
+  - ⚙️ Settings（API 配置、关于信息）
 
-# 运行测试
-pytest tests/
-
-# 代码格式化
-black memscreen/
-
-# 类型检查
-mypy memscreen/
-```
-
-详见：[开发者指南](CONTRIBUTING.md)
+详见：[Flutter 文档](FLUTTER.md)
 
 ---
 
@@ -154,6 +175,7 @@ source venv/bin/activate
 
 # Windows
 venv\Scripts\activate
+
 # 如果遇到 PowerShell 执行策略限制：
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
@@ -190,7 +212,7 @@ pip install --upgrade pip
 pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
-### Q6: 悬浮球不显示（macOS）
+### Q6: 悬浮球不显示（macOS Kivy）
 ```bash
 # 确保已授予屏幕录制权限
 # 系统偏好设置 → 隐私与安全性 → 屏幕录制
@@ -198,6 +220,18 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 重启应用
 python start.py
+```
+
+### Q7: Flutter 连接后端失败
+```bash
+# 确保后端正在运行
+# 后端默认运行在 http://127.0.0.1:8765
+
+# 检查后端状态
+curl http://127.0.0.1:8765/health
+
+# 在 Flutter 中重新配置 API URL
+# Settings → API URL → 输入正确的地址
 ```
 
 ---
@@ -220,15 +254,19 @@ ollama list
 ollama list | grep qwen2.5vl
 ollama list | grep mxbai-embed-large
 
-# 运行应用
+# 运行应用（Kivy）
 python start.py
+
+# 或运行应用（Flutter）
+./start_flutter.sh
 ```
 
 ---
 
-## 🎓 下一步
+## 📚 下一步
 
 - 📖 阅读 [用户指南](USER_GUIDE.md)
+- 📱 查看 [Flutter 文档](FLUTTER.md)
 - 📚 查看 [完整文档](../README.md)
 - 💬 加入 [讨论区](https://github.com/smileformylove/MemScreen/discussions)
 - 🐛 [报告问题](https://github.com/smileformylove/MemScreen/issues)

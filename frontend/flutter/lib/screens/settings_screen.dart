@@ -10,18 +10,18 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('设置')),
+      appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
           const SizedBox(height: 8),
           ListTile(
             leading: const Icon(Icons.link),
-            title: const Text('API 地址'),
+            title: const Text('API URL'),
             subtitle: Text(context.watch<AppState>().config.baseUrl),
             onTap: () {
-              // URL 修改在连接失败时通过 ConnectionGate 配置
+              // URL modification via ConnectionGate when backend unreachable
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('请在后端不可达时使用「配置 API 地址」修改')),
+                const SnackBar(content: Text('Use "Config API" when backend is unreachable to modify')),
               );
             },
           ),
@@ -55,7 +55,7 @@ class SettingsScreen extends StatelessWidget {
           const Divider(),
           ListTile(
             leading: const Icon(Icons.info_outline),
-            title: const Text('关于'),
+            title: const Text('About'),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (ctx) => const AboutScreen(),
@@ -74,7 +74,7 @@ class AboutScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('关于')),
+      appBar: AppBar(title: const Text('About')),
       body: const Padding(
         padding: EdgeInsets.all(24),
         child: Column(
@@ -85,9 +85,9 @@ class AboutScreen extends StatelessWidget {
             Text('版本: 0.1.0'),
             SizedBox(height: 16),
             Text(
-              'MemScreen 的可选 Flutter 前端，与 Kivy 默认 UI 并存。'
-              '需先启动 MemScreen API（conda activate MemScreen 后 python -m memscreen.api），'
-              '再运行本应用。',
+              'Optional Flutter frontend for MemScreen, coexisting with the default Kivy UI. '
+              'Start MemScreen API first (conda activate MemScreen, then python -m memscreen.api), '
+              'then run this app.',
             ),
           ],
         ),

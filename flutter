@@ -1,0 +1,24 @@
+#!/bin/bash
+# Quick start command for MemScreen Flutter
+# Just type 'flutter' to start everything
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Check if start_flutter.sh exists and run it
+if [ -f "$SCRIPT_DIR/start_flutter.sh" ]; then
+    exec "$SCRIPT_DIR/start_flutter.sh"
+else
+    echo "❌ Error: start_flutter.sh not found!"
+    echo "📍 Current directory: $SCRIPT_DIR"
+    echo ""
+    echo "Please run from the project root directory:"
+    echo " ./start_flutter.sh"
+    echo ""
+    echo "Or use the full script directly:"
+    echo "  ./start_flutter.sh"
+    echo ""
+    echo "Or add this alias to your shell for convenience:"
+    echo "  echo 'alias flutter=\"$(dirname \"$0\")/start_flutter.sh\"' >> ~/.bashrc  # or ~/.zshrc"
+    echo "  source ~/.bashrc  # to reload in current shell"
+    exit 1
+fi

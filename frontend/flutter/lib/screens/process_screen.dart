@@ -78,9 +78,9 @@ class _ProcessScreenState extends State<ProcessScreen> {
         setState(() => _trackingStatus = TrackingStatus(isTracking: true, eventCount: 0));
         _startTrackingPoll();
       }
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已开始采集键盘/鼠标')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Started tracking keyboard/mouse')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('开始采集失败: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to start tracking: $e')));
     }
   }
 
@@ -88,12 +88,30 @@ class _ProcessScreenState extends State<ProcessScreen> {
     try {
       await context.read<AppState>().processApi.stopTracking();
       _trackingPollTimer?.cancel();
+
+      // Auto-save session when stopping tracking
+      try {
+        final result = await context.read<AppState>().processApi.saveSessionFromTracking();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Stopped tracking. Saved ${result.eventsSaved} events (${result.startTime} — ${result.endTime})')),
+          );
+        }
+        // Reload sessions to show the newly saved one
+        _load();
+      } catch (saveError) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Stopped tracking but failed to save: $saveError')),
+          );
+        }
+      }
+
       if (mounted) {
         setState(() => _trackingStatus = TrackingStatus(isTracking: false, eventCount: _trackingStatus?.eventCount ?? 0));
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已停止采集')));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('停止采集失败: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to stop tracking: $e')));
     }
   }
 
@@ -103,11 +121,11 @@ class _ProcessScreenState extends State<ProcessScreen> {
       _load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已保存 ${result.eventsSaved} 条事件 (${result.startTime} — ${result.endTime})')),
+          SnackBar(content: Text('Saved ${result.eventsSaved} events (${result.startTime} — ${result.endTime})')),
         );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save: $e')));
     }
   }
 
@@ -122,11 +140,11 @@ class _ProcessScreenState extends State<ProcessScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('清空所有会话'),
-        content: const Text('确定要删除全部流程分析会话吗？'),
+        title: const Text('Clear All Sessions'),
+        content: const Text('Are you sure you want to delete all process analysis sessions?'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('确定')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Confirm')),
         ],
       ),
     );
@@ -156,11 +174,11 @@ class _ProcessScreenState extends State<ProcessScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('流程分析'),
+        title: const Text('Process Analysis'),
         actions: [
           IconButton(
             icon: const Icon(Icons.add_circle_outline),
-            tooltip: '保存会话',
+            tooltip: 'Save session',
             onPressed: _openSaveSession,
           ),
           if (_sessions.isNotEmpty)
@@ -190,7 +208,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
                               Icon(_trackingStatus?.isTracking == true ? Icons.touch_app : Icons.keyboard),
                               const SizedBox(width: 8),
                               Text(
-                                '键盘/鼠标采集',
+                                'Keyboard/Mouse Tracking',
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
                             ],
@@ -198,8 +216,8 @@ class _ProcessScreenState extends State<ProcessScreen> {
                           const SizedBox(height: 8),
                           Text(
                             _trackingStatus?.isTracking == true
-                                ? '采集中 · ${_trackingStatus!.eventCount} 条事件（后端本机）'
-                                : '在后端机器上采集键盘与鼠标事件，保存为流程会话。需辅助功能权限。',
+                                ? 'Tracking · ${_trackingStatus!.eventCount} events (local backend)'
+                                : 'Track keyboard and mouse events on the backend machine and save as process sessions. Requires accessibility permissions.',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                           const SizedBox(height: 12),
@@ -209,21 +227,15 @@ class _ProcessScreenState extends State<ProcessScreen> {
                                 FilledButton.icon(
                                   onPressed: _startTracking,
                                   icon: const Icon(Icons.play_arrow),
-                                  label: const Text('开始采集'),
+                                  label: const Text('Start Tracking'),
                                 )
-                              else ...[
-                                OutlinedButton.icon(
+                              else
+                                FilledButton.icon(
                                   onPressed: _stopTracking,
                                   icon: const Icon(Icons.stop),
-                                  label: const Text('停止采集'),
+                                  label: const Text('Stop & Save'),
+                                  style: FilledButton.styleFrom(backgroundColor: Colors.orange),
                                 ),
-                                const SizedBox(width: 8),
-                                FilledButton.icon(
-                                  onPressed: _saveFromTracking,
-                                  icon: const Icon(Icons.save),
-                                  label: const Text('保存当前会话'),
-                                ),
-                              ],
                             ],
                           ),
                         ],
@@ -234,7 +246,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
                     const Center(
                       child: Padding(
                         padding: EdgeInsets.all(24),
-                        child: Text('暂无会话，可通过「开始采集」或「保存会话」添加。'),
+                        child: Text('No sessions yet. Add sessions by "Start Tracking" or "Save Session".'),
                       ),
                     )
                   else
@@ -244,7 +256,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
                           title: Text('${s.startTime} — ${s.endTime}'),
-                          subtitle: Text('事件: ${s.eventCount}  按键: ${s.keystrokes}  点击: ${s.clicks}'),
+                          subtitle: Text('Events: ${s.eventCount}  Keystrokes: ${s.keystrokes}  Clicks: ${s.clicks}'),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -275,7 +287,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
       if (!context.mounted) return;
       if (analysis == null) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法加载分析')));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to load analysis')));
         }
         return;
       }
@@ -286,7 +298,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
       );
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('加载分析失败: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load analysis: $e')));
       }
     }
   }
@@ -427,7 +439,7 @@ class _SaveSessionSheetState extends State<_SaveSessionSheet> {
     final startTime = _startController.text.trim();
     final endTime = _endController.text.trim();
     if (startTime.isEmpty || endTime.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请填写开始、结束时间')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill in start and end time')));
       return;
     }
     final api = context.read<AppState>().processApi;
@@ -440,10 +452,10 @@ class _SaveSessionSheetState extends State<_SaveSessionSheet> {
       );
       if (!context.mounted) return;
       widget.onSaved();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('会话已保存')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Session saved')));
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save: $e')));
       }
     }
   }
@@ -462,7 +474,7 @@ class _SaveSessionSheetState extends State<_SaveSessionSheet> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(height: 8),
-              Text('保存会话', style: Theme.of(context).textTheme.titleLarge),
+              Text('Save Session', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 16),
               Flexible(
                 child: ListView(
@@ -473,14 +485,14 @@ class _SaveSessionSheetState extends State<_SaveSessionSheet> {
                       children: [
                         Expanded(
                           child: TextField(
-                            decoration: const InputDecoration(labelText: '开始时间', hintText: 'HH:MM:SS'),
+                            decoration: const InputDecoration(labelText: 'Start Time', hintText: 'HH:MM:SS'),
                             controller: _startController,
                           ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
                           child: TextField(
-                            decoration: const InputDecoration(labelText: '结束时间', hintText: 'HH:MM:SS'),
+                            decoration: const InputDecoration(labelText: 'End Time', hintText: 'HH:MM:SS'),
                             controller: _endController,
                           ),
                         ),
@@ -489,12 +501,12 @@ class _SaveSessionSheetState extends State<_SaveSessionSheet> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        Text('事件 (type / text / time)', style: Theme.of(context).textTheme.bodySmall),
+                        Text('Events (type / text / time)', style: Theme.of(context).textTheme.bodySmall),
                         const Spacer(),
                         TextButton.icon(
                           onPressed: _addEvent,
                           icon: const Icon(Icons.add),
-                          label: const Text('添加事件'),
+                          label: const Text('Add Event'),
                         ),
                       ],
                     ),
@@ -510,11 +522,11 @@ class _SaveSessionSheetState extends State<_SaveSessionSheet> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        TextButton(onPressed: widget.onCancel, child: const Text('取消')),
+                        TextButton(onPressed: widget.onCancel, child: const Text('Cancel')),
                         const SizedBox(width: 8),
                         FilledButton(
                           onPressed: () => _submit(context),
-                          child: const Text('保存'),
+                          child: const Text('Save'),
                         ),
                       ],
                     ),
@@ -538,35 +550,178 @@ class ProcessAnalysisScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('会话 $sessionId 分析')),
+      appBar: AppBar(title: Text('Session $sessionId Analysis')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('事件数: ${analysis.eventCount}  按键: ${analysis.keystrokes}  点击: ${analysis.clicks}'),
-            Text('时间: ${analysis.startTime} — ${analysis.endTime}'),
+            // 统计概览卡片
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.analytics, size: 20, color: Colors.blue),
+                        const SizedBox(width: 8),
+                        Text('Statistics', style: Theme.of(context).textTheme.titleMedium),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _StatRow(
+                      icon: Icons.event,
+                      label: 'Total Events',
+                      value: analysis.eventCount.toString(),
+                    ),
+                    const SizedBox(height: 8),
+                    _StatRow(
+                      icon: Icons.keyboard,
+                      label: 'Keystrokes',
+                      value: analysis.keystrokes.toString(),
+                    ),
+                    const SizedBox(height: 8),
+                    _StatRow(
+                      icon: Icons.touch_app,
+                      label: 'Mouse Clicks',
+                      value: analysis.clicks.toString(),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(Icons.schedule, size: 18, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${analysis.startTime} — ${analysis.endTime}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 16),
-            if (analysis.categories.isNotEmpty) ...[
-              Text('分类', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 4),
-              ...analysis.categories.entries.map((e) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text('${e.key}: ${e.value}'),
-                  )),
+
+            // 分类统计卡片
+            if (analysis.categories.isNotEmpty)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.category, size: 20, color: Colors.green),
+                          const SizedBox(width: 8),
+                          Text('Categories', style: Theme.of(context).textTheme.titleMedium),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: analysis.categories.entries.map((e) => Chip(
+                          label: Text('${e.key}: ${e.value}'),
+                          backgroundColor: Colors.green.shade50,
+                          labelStyle: TextStyle(color: Colors.green.shade900),
+                        )).toList(),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            if (analysis.categories.isNotEmpty && analysis.patterns.isNotEmpty)
               const SizedBox(height: 16),
-            ],
-            if (analysis.patterns.isNotEmpty) ...[
-              Text('模式', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 4),
-              ...analysis.patterns.entries.map((e) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text('${e.key}: ${e.value}'),
-                  )),
-            ],
+
+            // 模式分析卡片
+            if (analysis.patterns.isNotEmpty)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.auto_awesome, size: 20, color: Colors.purple),
+                          const SizedBox(width: 8),
+                          Text('Patterns', style: Theme.of(context).textTheme.titleMedium),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      ...analysis.patterns.entries.map((e) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  margin: const EdgeInsets.only(top: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.purple,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    '${e.key}: ${e.value}',
+                                    style: Theme.of(context).textTheme.bodyMedium,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _StatRow extends StatelessWidget {
+  const _StatRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: Colors.grey.shade700),
+        const SizedBox(width: 12),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Colors.grey.shade700,
+          ),
+        ),
+        const Spacer(),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+      ],
     );
   }
 }

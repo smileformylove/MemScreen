@@ -432,7 +432,8 @@ class RecordingPresenter(BasePresenter):
             elif mode == 'region':
                 bbox = kwargs.get('bbox')
                 if bbox and len(bbox) == 4:
-                    self.region_bbox = tuple(bbox)
+                    # 确保bbox元素是整数，PIL的ImageGrab.grab需要整数坐标
+                    self.region_bbox = tuple(int(x) for x in bbox)
                     self.screen_index = None
                     print(f"[RecordingPresenter] Mode set to: Custom Region {bbox}")
                 else:

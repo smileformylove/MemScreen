@@ -184,6 +184,18 @@ MemScreen supports **two frontends**; the default is the **Kivy UI** (launched w
 
 **To use the Flutter frontend:**
 
+**Option 1: Quick Start (Recommended) ⚡**
+   ```bash
+   ./scripts/start_flutter.sh
+   ```
+   This script automatically:
+   - Activates the virtual environment
+   - Starts the API backend
+   - Installs Flutter dependencies
+   - Launches the Flutter app
+
+**Option 2: Manual Steps**
+
 1. **Start the API** (backend must run in the project Conda env `MemScreen`):
    ```bash
    conda activate MemScreen
