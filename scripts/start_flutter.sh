@@ -6,7 +6,7 @@
 set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$SCRIPT_DIR"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 PROJECT_NAME="MemScreen Flutter"
 
 # Colors for output
@@ -115,8 +115,8 @@ if [ -n "$VENV_DIR" ]; then
     print_info "Virtual environment: $VENV_DIR"
 fi
 
-# Start API backend in background
-PYTHONPATH="$PROJECT_ROOT/memscreen" $PYTHON_CMD setup/start_api.py &
+# Start API backend in background (NO Kivy UI)
+PYTHONPATH="$PROJECT_ROOT/memscreen" $PYTHON_CMD setup/start_api_only.py &
 API_PID=$!
 print_info "API PID: $API_PID"
 
@@ -164,7 +164,7 @@ echo ""
   export LANG=en_US.UTF-8 && \
   export LC_ALL=en_US.UTF-8 && \
   export PATH="/Users/jixiangluo/.gem/ruby/3.4.0/bin:$PATH" && \
-  $FLUTTER_BIN run -d macos &)
+  $FLUTTER_BIN run -d macos --release &)
 FLUTTER_PID=$!
 
 echo ""

@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../api/recording_api.dart';
 import '../app_state.dart';
+import '../services/floating_ball_service.dart';
 
 class RecordingScreen extends StatefulWidget {
   const RecordingScreen({super.key});
@@ -245,6 +246,10 @@ class _RecordingScreenState extends State<RecordingScreen> {
         region: region,
         screenIndex: screenIndex,
       );
+      // Update floating ball state
+      if (mounted) {
+        context.read<AppState>().updateFloatingBallState(true);
+      }
       _load();
     } catch (e) {
       if (mounted) {
@@ -258,6 +263,10 @@ class _RecordingScreenState extends State<RecordingScreen> {
   Future<void> _stop() async {
     try {
       await context.read<AppState>().recordingApi.stop();
+      // Update floating ball state
+      if (mounted) {
+        context.read<AppState>().updateFloatingBallState(false);
+      }
       _stopPolling();
       _load();
     } catch (e) {

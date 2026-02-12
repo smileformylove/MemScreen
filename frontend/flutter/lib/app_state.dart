@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import 'api/api_client.dart';
 import 'api/chat_api.dart';
@@ -10,6 +13,7 @@ import 'api/video_api.dart';
 import 'config/api_config.dart';
 import 'connection/connection_state.dart';
 import 'connection/connection_service.dart';
+import 'services/floating_ball_service.dart';
 
 /// Global app state: config, client, connection, API facades.
 class AppState extends ChangeNotifier {
@@ -21,6 +25,12 @@ class AppState extends ChangeNotifier {
     _recordingApi = RecordingApi(_client);
     _videoApi = VideoApi(_client);
     _configApi = ConfigApi(_client);
+
+    // Setup method channel handler for floating ball
+    if (Platform.isMacOS || Platform.isWindows) {
+      const channel = MethodChannel('com.memscreen/floating_ball');
+      channel.setMethodCallHandler(_handleFloatingBallCall);
+    }
   }
 
   ApiConfig _config = ApiConfig.fromEnvironment();
@@ -75,5 +85,59 @@ class AppState extends ChangeNotifier {
   void setConnectionState(ApiConnectionState s) {
     _connectionState = s;
     notifyListeners();
+  }
+
+  /// Update floating ball recording state (macOS only)
+  void updateFloatingBallState(bool isRecording) {
+    if (Platform.isMacOS || Platform.isWindows) {
+      FloatingBallService.setRecordingState(isRecording);
+    }
+  }
+
+  /// Update floating ball paused state (macOS only)
+  void updateFloatingBallPaused(bool isPaused) {
+    if (Platform.isMacOS || Platform.isWindows) {
+      FloatingBallService.setPausedState(isPaused);
+    }
+  }
+
+  /// Handle method calls from native floating ball
+  Future<dynamic> _handleFloatingBallCall(MethodCall call) async {
+    debugPrint('[AppState] Received floating ball call: ${call.method}');
+    switch (call.method) {
+      case 'startRecording':
+        try {
+          await _recordingApi.start(
+            duration: 60,
+            interval: 2.0,
+            mode: 'fullscreen',
+            region: null,
+            screenIndex: null,
+          );
+          updateFloatingBallState(true);
+          debugPrint('[AppState] Recording started from floating ball');
+        } catch (e) {
+          debugPrint('[AppState] Error starting recording: $e');
+        }
+        break;
+
+      case 'stopRecording':
+        try {
+          await _recordingApi.stop();
+          updateFloatingBallState(false);
+          debugPrint('[AppState] Recording stopped from floating ball');
+        } catch (e) {
+          debugPrint('[AppState] Error stopping recording: $e');
+        }
+        break;
+
+      case 'togglePause':
+        // Pause/resume functionality to be implemented
+        debugPrint('[AppState] Toggle pause called (not fully implemented)');
+        break;
+
+      default:
+        debugPrint('[AppState] Unknown method: ${call.method}');
+    }
   }
 }
