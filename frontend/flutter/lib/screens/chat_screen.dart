@@ -20,7 +20,14 @@ class _ChatScreenState extends State<ChatScreen> {
   String _currentReply = '';
   bool _loading = false;
   StreamSubscription? _streamSub;
+  Timer? _thinkingTimer;
+  int _thinkingStep = 0;
   String? _selectedContext;
+  final List<String> _thinkingLabels = const [
+    '正在检索最近记忆...',
+    '正在整理时间线证据...',
+    '正在生成建议...',
+  ];
 
   @override
   void initState() {
@@ -31,9 +38,26 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _streamSub?.cancel();
+    _stopThinking();
     _inputController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _startThinking() {
+    _thinkingTimer?.cancel();
+    _thinkingStep = 0;
+    _thinkingTimer = Timer.periodic(const Duration(milliseconds: 1100), (_) {
+      if (!mounted || !_loading) return;
+      setState(() {
+        _thinkingStep = (_thinkingStep + 1) % _thinkingLabels.length;
+      });
+    });
+  }
+
+  void _stopThinking() {
+    _thinkingTimer?.cancel();
+    _thinkingTimer = null;
   }
 
   Future<void> _loadHistory() async {
@@ -58,14 +82,16 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _history = [..._history, ChatHistoryMessage(role: 'user', content: text)];
       _currentReply = '';
-      _loading = false;
+      _loading = true;
     });
+    _startThinking();
     _scrollToBottom();
 
     final api = context.read<AppState>().chatApi;
     try {
+      await _streamSub?.cancel();
       if (stream) {
-        _streamSub = api.sendStream(text).listen((event) {
+        _streamSub = api.sendStream(messageToSend).listen((event) {
           if (!mounted) return;
           setState(() {
             switch (event) {
@@ -75,39 +101,54 @@ class _ChatScreenState extends State<ChatScreen> {
               case ChatStreamError(:final msg):
                 _currentReply = 'Error: $msg';
                 _loading = false;
+                _stopThinking();
                 break;
               case ChatStreamDone(:final full):
                 _currentReply = full;
-                _history = [..._history, ChatHistoryMessage(role: 'assistant', content: full)];
+                _history = [
+                  ..._history,
+                  ChatHistoryMessage(role: 'assistant', content: full)
+                ];
                 _currentReply = '';
                 _loading = false;
-                break;
-              default:
+                _stopThinking();
                 break;
             }
           });
           _scrollToBottom();
         });
       } else {
-        final reply = await api.send(text);
+        final reply = await api.send(messageToSend);
         if (!mounted) return;
         setState(() {
           if (reply.error != null) {
-            _history = [..._history, ChatHistoryMessage(role: 'assistant', content: 'Error: ${reply.error}')];
+            _history = [
+              ..._history,
+              ChatHistoryMessage(
+                  role: 'assistant', content: 'Error: ${reply.error}')
+            ];
           } else if (reply.reply != null) {
-            _history = [..._history, ChatHistoryMessage(role: 'assistant', content: reply.reply!)];
+            _history = [
+              ..._history,
+              ChatHistoryMessage(role: 'assistant', content: reply.reply!)
+            ];
           }
           _loading = false;
         });
+        _stopThinking();
         _scrollToBottom();
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _history = [..._history, ChatHistoryMessage(role: 'assistant', content: 'Request failed: $e')];
+          _history = [
+            ..._history,
+            ChatHistoryMessage(role: 'assistant', content: 'Request failed: $e')
+          ];
           _loading = false;
         });
       }
+      _stopThinking();
     }
   }
 
@@ -125,7 +166,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Column(
       children: [
         AppBar(
@@ -136,16 +176,20 @@ class _ChatScreenState extends State<ChatScreen> {
               PopupMenuButton<String>(
                 tooltip: 'Context',
                 icon: const Icon(Icons.link),
-                onSelected: (context) => setState(() => _selectedContext = context),
+                onSelected: (context) =>
+                    setState(() => _selectedContext = context),
                 itemBuilder: (context) => [
-                  PopupMenuItem(value: 'no_context', child: Text('No Context')),
+                  const PopupMenuItem(
+                    value: 'no_context',
+                    child: Text('No Context'),
+                  ),
                   const PopupMenuDivider(),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: 'video_context',
                     enabled: false, // TODO: Fetch from video list
                     child: Text('From Video'),
                   ),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: 'session_context',
                     enabled: false, // TODO: Fetch from process sessions
                     child: Text('From Session'),
@@ -161,23 +205,27 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         Expanded(
-          child: ListView.builder(
-            controller: _scrollController,
-            padding: const EdgeInsets.all(16),
-            itemCount: _history.length + (_currentReply.isNotEmpty ? 1 : 0) + (_loading && _currentReply.isEmpty ? 1 : 0),
-            itemBuilder: (context, i) {
-              if (i < _history.length) {
-                final msg = _history[i];
-                return _Bubble(role: msg.role, content: msg.content);
-              }
-              if (_currentReply.isNotEmpty) {
-                return _Bubble(role: 'assistant', content: _currentReply);
-              }
-              return const Padding(
-                padding: EdgeInsets.all(8),
-                child: Row(children: [SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))]),
-              );
-            },
+          child: SelectionArea(
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(16),
+              itemCount: _history.length +
+                  (_currentReply.isNotEmpty ? 1 : 0) +
+                  (_loading ? 1 : 0),
+              itemBuilder: (context, i) {
+                if (i < _history.length) {
+                  final msg = _history[i];
+                  return _Bubble(role: msg.role, content: msg.content);
+                }
+                if (_currentReply.isNotEmpty) {
+                  if (i == _history.length) {
+                    return _Bubble(role: 'assistant', content: _currentReply);
+                  }
+                  return _ThinkingRow(label: _thinkingLabels[_thinkingStep]);
+                }
+                return _ThinkingRow(label: _thinkingLabels[_thinkingStep]);
+              },
+            ),
           ),
         ),
         Padding(
@@ -210,6 +258,37 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
+class _ThinkingRow extends StatelessWidget {
+  const _ThinkingRow({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10, left: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Bubble extends StatelessWidget {
   const _Bubble({required this.role, required this.content});
 
@@ -225,12 +304,15 @@ class _Bubble extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.8),
+        constraints:
+            BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.8),
         decoration: BoxDecoration(
-          color: isUser ? theme.colorScheme.primaryContainer : theme.colorScheme.surfaceContainerHighest,
+          color: isUser
+              ? theme.colorScheme.primaryContainer
+              : theme.colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Text(content, style: theme.textTheme.bodyLarge),
+        child: SelectableText(content, style: theme.textTheme.bodyLarge),
       ),
     );
   }

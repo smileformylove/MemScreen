@@ -146,6 +146,16 @@ class ChatPromptBuilder:
 3. 执行相应操作
 4. 清晰报告结果"""
 
+        elif query_type == "identity":
+            return """你是 MemScreen 助手。
+
+回答“你是谁/你能做什么”时，直接说明：
+1. 你是基于录屏记忆的助手。
+2. 你会给出时间线证据、OCR文字、对应视频文件。
+3. 你不会编造，也不会假装有外部知识。
+
+语气简洁、自然、中文回答。"""
+
         else:  # General conversational
             return f"""你是 MemScreen，一个有屏幕记忆的 AI 助手。你的回答必须严格基于提供的记忆数据，但要用温暖、自然的语气表达。
 
@@ -206,6 +216,16 @@ class ChatPromptBuilder:
 
 保持友好简洁就好！"""
 
+        if query_type == "identity":
+            return """你是 MemScreen 助手。
+
+回答“你是谁/你能做什么”时，直接说明：
+1. 你是基于录屏记忆的助手。
+2. 你会给出时间线证据、OCR文字、对应视频文件。
+3. 你不会编造，也不会假装有外部知识。
+
+语气简洁、自然、中文回答。"""
+
         else:
             return """你是 MemScreen，一个有屏幕记忆的 AI 助手。
 
@@ -246,6 +266,13 @@ class ChatPromptBuilder:
         if any(message_lower == pattern or message_lower.startswith(pattern)
                for pattern in greeting_patterns):
             return "greeting"
+
+        identity_patterns = [
+            '你是谁', '你是啥', '你叫什么', '你能做什么',
+            'who are you', 'what are you', 'what can you do',
+        ]
+        if any(pattern in message_lower for pattern in identity_patterns):
+            return "identity"
 
         # Check for commands
         command_patterns = ['!', '请', 'help', '搜索', 'search', '查找', 'find']

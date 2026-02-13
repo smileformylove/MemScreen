@@ -10,9 +10,11 @@ import os
 import time
 import threading
 import sqlite3
+import json
+import hashlib
 import numpy as np
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 
 from .base_presenter import BasePresenter
 from memscreen.audio import AudioRecorder, AudioSource
@@ -73,6 +75,7 @@ class RecordingPresenter(BasePresenter):
         self.is_recording = False
         self.recording_thread = None
         self._save_thread = None  # Thread for saving recording to database
+        self._memory_index_ready_event = threading.Event()
         self.recording_frames = []
         self.recording_start_time = None
 
@@ -98,6 +101,7 @@ class RecordingPresenter(BasePresenter):
         self.region_config = None
 
         self._is_initialized = False
+        self._easyocr_reader = None
 
         # Check if cv2 is available
         self.cv2_available = self._check_cv2_available()
@@ -359,6 +363,8 @@ class RecordingPresenter(BasePresenter):
 
             # Save the recording with audio
             if self.recording_frames:
+                self._memory_index_ready_event.clear()
+
                 # Save in background thread (non-daemon to ensure database save completes)
                 save_thread = threading.Thread(
                     target=self._save_recording,
@@ -370,6 +376,11 @@ class RecordingPresenter(BasePresenter):
 
                 # Store thread reference for waiting on app exit
                 self._save_thread = save_thread
+
+                # Ensure memory has at least placeholder timeline before returning.
+                self._memory_index_ready_event.wait(timeout=8)
+            else:
+                self._memory_index_ready_event.set()
 
             # Notify view
             if self.view:
@@ -785,6 +796,8 @@ class RecordingPresenter(BasePresenter):
             # Add to memory system
             if self.memory_system:
                 self._add_video_to_memory(filename, len(frames), fps)
+            else:
+                self._memory_index_ready_event.set()
 
             print(f"[RecordingPresenter] Saved segment: {filename}")
 
@@ -857,6 +870,7 @@ class RecordingPresenter(BasePresenter):
             print(f"[RecordingPresenter] ❌ ERROR in _save_recording: {e}")
             import traceback
             traceback.print_exc()
+            self._memory_index_ready_event.set()
             self.handle_error(e, "Failed to save recording")
 
     def _merge_audio_video(self, video_file: str, audio_file: str) -> str:
@@ -960,72 +974,253 @@ class RecordingPresenter(BasePresenter):
             self.handle_error(e, "Failed to save to database")
 
     def _add_video_to_memory(self, filename, frame_count, fps):
-        """Add video recording to memory system"""
+        """
+        Add recording to memory in two phases:
+        1) fast placeholder entry (immediate, no vision call)
+        2) async enrichment with timeline/content analysis
+        """
         try:
             if not self.memory_system:
+                self._memory_index_ready_event.set()
                 return
 
-            # Analyze video content - now returns both description and frame details
-            content_description, frame_details = self._analyze_video_content(filename, frame_count, fps)
-
-            # Create memory entry
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             duration = frame_count / fps if fps > 0 else 0
+            base_name = os.path.basename(filename)
 
-            # Build detailed frame-by-frame summary
-            frame_summary_lines = []
-            if frame_details:
-                frame_summary_lines.append("Frame-by-Frame Analysis:")
-                for frame_info in frame_details:
-                    frame_num = frame_info.get("frame_number", 0)
-                    frame_time = frame_info.get("timestamp", 0)
-                    frame_text = frame_info.get("text", "No text detected")
-
-                    frame_summary_lines.append(f"  - Frame #{frame_num} (t={frame_time:.2f}s): {frame_text}")
-
-            frame_summary = "\n".join(frame_summary_lines) if frame_summary_lines else "No frame analysis available."
-
+            # Fast memory write so chat can immediately reference "when" evidence.
             memory_text = f"""Screen Recording captured at {timestamp}:
 - Duration: {duration:.1f} seconds
 - Frames: {frame_count}
 - File: {filename}
 
-{frame_summary}
-
-Content Description: {content_description}
+Observed Timeline (when things were seen):
+- {timestamp}: Recording finished. Detailed visual analysis is in progress.
 
 This video screen recording shows what was displayed on screen during the recording period.
-When users ask about what was on their screen or what they were doing, reference this recording."""
+When users ask about what was on their screen or what they were doing, always reference this timestamp."""
 
-            # Add to memory with detailed frame information in metadata
-            # Use infer=True to enable proper indexing and searchability
-            print(f"[RecordingPresenter] Adding recording to memory: {filename}")
+            print(f"[RecordingPresenter] Adding fast recording memory: {filename}")
             print(f"[RecordingPresenter] - Duration: {duration:.1f}s, Frames: {frame_count}, FPS: {fps}")
-            print(f"[RecordingPresenter] - Content: {content_description[:100]}...")
-            print(f"[RecordingPresenter] - Frame details: {len(frame_details)} frames analyzed")
 
             result = self.memory_system.add(
                 [{"role": "user", "content": memory_text}],
                 user_id="default_user",  # Use consistent user_id for chat and recordings
                 metadata={
                     "type": "screen_recording",
+                    "category": "screen_recording",
+                    "tags": "screen_recording,timeline_pending",
                     "filename": filename,
+                    "file_basename": base_name,
                     "frame_count": frame_count,
                     "fps": fps,
                     "duration": duration,
-                    "timestamp": timestamp,
-                    "content_description": content_description,
-                    "frame_details": frame_details,  # Store structured frame information
-                    "ocr_text": content_description  # Use content_description for search
+                    "timestamp": timestamp,  # human-readable seen time
+                    "seen_at": timestamp,
+                    "content_description": "录屏已完成，详细画面分析进行中。",
+                    "timeline_text": f"+0.00s: recording saved ({base_name})",
+                    "frame_details_json": "[]",
+                    "suggestions": "等待几秒后再问我“什么时候看到什么”，我会基于时间线回答。",
+                    "analysis_status": "pending",
+                    "ocr_text": base_name,
                 },
-                infer=True  # Enable fact extraction and indexing
+                infer=False  # Faster update for chat queries; keep raw timeline facts
             )
 
-            print(f"[RecordingPresenter] ✅ Successfully added to memory: {filename}")
-            print(f"[RecordingPresenter] - Result: {result}")
+            memory_id = None
+            if isinstance(result, dict):
+                rows = result.get("results", []) or []
+                if rows and isinstance(rows[0], dict):
+                    memory_id = rows[0].get("id")
+
+            print(f"[RecordingPresenter] ✅ Fast memory added: {filename} (id={memory_id})")
+            self._memory_index_ready_event.set()
+
+            # Enrich content asynchronously to avoid blocking chat availability.
+            enrich_thread = threading.Thread(
+                target=self._enrich_recording_memory,
+                args=(memory_id, filename, frame_count, fps, timestamp, duration),
+                daemon=True,
+            )
+            enrich_thread.start()
 
         except Exception as e:
+            self._memory_index_ready_event.set()
             self.handle_error(e, "Failed to add video to memory")
+
+    def _enrich_recording_memory(
+        self,
+        memory_id: Optional[str],
+        filename: str,
+        frame_count: int,
+        fps: float,
+        captured_at: str,
+        duration: float,
+    ) -> None:
+        """Asynchronously enrich recording memory with timeline/details."""
+        try:
+            if not self.memory_system:
+                return
+
+            content_description, frame_details = self._analyze_video_content(filename, frame_count, fps)
+            timeline_lines, timeline_text = self._build_recording_timeline(captured_at, frame_details)
+            suggestions = self._generate_recording_suggestions(content_description, frame_details)
+            suggestion_text = "\n".join(f"- {item}" for item in suggestions)
+            frame_summary = "\n".join(timeline_lines) if timeline_lines else "No frame analysis available."
+
+            enriched_text = f"""Screen Recording captured at {captured_at}:
+- Duration: {duration:.1f} seconds
+- Frames: {frame_count}
+- File: {filename}
+
+Observed Timeline (when things were seen):
+{frame_summary}
+
+Content Description: {content_description}
+
+Actionable Suggestions:
+{suggestion_text}
+
+This video screen recording shows what was displayed on screen during the recording period.
+When users ask about what was on their screen or what they were doing, reference this recording with explicit time points."""
+
+            metadata_updates = {
+                "content_description": content_description,
+                "timeline_text": timeline_text,
+                "frame_details_json": json.dumps(frame_details, ensure_ascii=False),
+                "suggestions": " | ".join(suggestions),
+                "analysis_status": "ready",
+                "ocr_text": content_description,
+                "category": "screen_recording",
+                "tags": "screen_recording,timeline_ready,ocr_enriched",
+            }
+
+            updated = self._update_recording_memory_entry(memory_id, enriched_text, metadata_updates)
+            if updated:
+                print(f"[RecordingPresenter] ✅ Recording memory enriched: {filename}")
+            else:
+                # Fallback: add a new enriched entry if direct update is unavailable.
+                self.memory_system.add(
+                    [{"role": "user", "content": enriched_text}],
+                    user_id="default_user",
+                    metadata={
+                        "type": "screen_recording",
+                        "filename": filename,
+                        "frame_count": frame_count,
+                        "fps": fps,
+                        "duration": duration,
+                        "timestamp": captured_at,
+                        "seen_at": captured_at,
+                        **metadata_updates,
+                    },
+                    infer=False,
+                )
+                print(f"[RecordingPresenter] ✅ Recording memory enriched via fallback add: {filename}")
+
+        except Exception as e:
+            self.handle_error(e, "Failed to enrich recording memory")
+
+    def _update_recording_memory_entry(
+        self,
+        memory_id: Optional[str],
+        memory_text: str,
+        metadata_updates: Dict[str, Any],
+    ) -> bool:
+        """Update existing memory entry while preserving payload metadata."""
+        if not memory_id:
+            return False
+
+        try:
+            vector_store = getattr(self.memory_system, "vector_store", None)
+            embedding_model = getattr(self.memory_system, "embedding_model", None)
+            if vector_store is None or embedding_model is None:
+                return False
+
+            existing = vector_store.get(vector_id=memory_id)
+            if existing is None:
+                return False
+
+            payload = dict(getattr(existing, "payload", {}) or {})
+            prev_text = payload.get("data")
+
+            payload.update(metadata_updates or {})
+            payload["data"] = memory_text
+            payload["hash"] = hashlib.md5(memory_text.encode()).hexdigest()
+            payload["updated_at"] = datetime.now().isoformat()
+
+            embeddings = embedding_model.embed(memory_text, "update")
+            vector_store.update(vector_id=memory_id, vector=embeddings, payload=payload)
+
+            db = getattr(self.memory_system, "db", None)
+            if db and hasattr(db, "add_history"):
+                db.add_history(
+                    memory_id,
+                    prev_text,
+                    memory_text,
+                    "UPDATE",
+                    created_at=payload.get("created_at"),
+                    updated_at=payload.get("updated_at"),
+                    actor_id=payload.get("actor_id"),
+                    role=payload.get("role"),
+                    immediate=False,
+                )
+
+            return True
+        except Exception as update_err:
+            print(f"[RecordingPresenter] Failed to update memory entry {memory_id}: {update_err}")
+            return False
+
+    def _build_recording_timeline(
+        self,
+        captured_at: str,
+        frame_details: List[Dict[str, Any]],
+    ) -> Tuple[List[str], str]:
+        """Build a compact timeline that can be cited in chat answers."""
+        if not frame_details:
+            return [], ""
+
+        timeline_lines = []
+        compact_entries = []
+        for frame_info in frame_details[:5]:
+            frame_num = frame_info.get("frame_number", 0)
+            frame_time = frame_info.get("timestamp", 0)
+            frame_text = frame_info.get("text", "No text detected")
+            frame_text = " ".join(str(frame_text).split())
+            if len(frame_text) > 180:
+                frame_text = frame_text[:180] + "..."
+
+            line = f"- {captured_at} (+{frame_time:.2f}s, frame #{frame_num}): {frame_text}"
+            timeline_lines.append(line)
+            compact_entries.append(f"+{frame_time:.2f}s:{frame_text}")
+
+        return timeline_lines, " | ".join(compact_entries)
+
+    def _generate_recording_suggestions(
+        self,
+        content_description: str,
+        frame_details: List[Dict[str, Any]],
+    ) -> List[str]:
+        """Generate simple actionable suggestions from captured content."""
+        text_pool = [content_description or ""]
+        for frame in frame_details[:5]:
+            text_pool.append(str(frame.get("text", "")))
+
+        merged_text = " ".join(text_pool).lower()
+        suggestions = []
+
+        if any(k in merged_text for k in ["error", "exception", "failed", "warning", "permission denied"]):
+            suggestions.append("你刚刚遇到错误信息，建议先记录报错关键词并优先排查权限/依赖问题。")
+
+        if any(k in merged_text for k in ["todo", "deadline", "meeting", "plan", "task"]):
+            suggestions.append("检测到任务/日程相关内容，建议把关键事项整理成待办并设置提醒。")
+
+        if any(k in merged_text for k in ["code", "terminal", "vscode", "python", "git"]):
+            suggestions.append("检测到开发工作流，建议记录本次改动要点并及时提交代码。")
+
+        if not suggestions:
+            suggestions.append("建议按时间线回顾关键画面，确认下一步要执行的操作。")
+
+        return suggestions[:3]
 
     def _analyze_video_content(self, filename, total_frames, fps):
         """Analyze video content by sampling frames and using vision model"""
@@ -1036,7 +1231,7 @@ When users ask about what was on their screen or what they were doing, reference
                 return "Video recording (analysis unavailable)", []
 
             # Sample frames for analysis
-            num_samples = min(5, total_frames)
+            num_samples = min(3, total_frames)
             sample_indices = [int(i * total_frames / num_samples) for i in range(num_samples)]
 
             frame_details = []  # Store structured frame information
@@ -1050,8 +1245,11 @@ When users ask about what was on their screen or what they were doing, reference
                     # Calculate timestamp for this frame
                     timestamp = frame_idx / fps if fps > 0 else 0
 
-                    # Extract text from frame
-                    frame_text = self._extract_text_from_frame(frame)
+                    # Use vision model only for the first few samples to reduce latency.
+                    frame_text = self._extract_text_from_frame(
+                        frame,
+                        use_vision=(sample_idx < 2),
+                    )
 
                     # Store frame details
                     frame_info = {
@@ -1076,65 +1274,111 @@ When users ask about what was on their screen or what they were doing, reference
             self.handle_error(e, "Failed to analyze video content")
             return "Screen recording (content analysis unavailable)", []
 
-    def _extract_text_from_frame(self, frame):
+    def _get_easyocr_reader(self):
+        """Lazy-init easyocr reader for local OCR fallback."""
+        if self._easyocr_reader is not None:
+            return self._easyocr_reader
+        try:
+            import easyocr  # type: ignore
+
+            self._easyocr_reader = easyocr.Reader(["ch_sim", "en"], gpu=False, verbose=False)
+            return self._easyocr_reader
+        except Exception as e:
+            print(f"[RecordingPresenter] easyocr unavailable: {e}")
+            self._easyocr_reader = False
+            return None
+
+    def _extract_text_with_easyocr(self, frame) -> str:
+        """Extract meaningful text using easyocr as a robust local fallback."""
+        try:
+            cv2 = get_cv2()
+            if cv2 is None:
+                return ""
+
+            reader = self._get_easyocr_reader()
+            if not reader:
+                return ""
+
+            h, w = frame.shape[:2]
+            img = frame
+            if w > 1600:
+                new_w = 1600
+                new_h = int(h * (new_w / w))
+                img = cv2.resize(frame, (new_w, new_h))
+
+            try:
+                results = reader.readtext(img, detail=0, paragraph=True)
+            except Exception:
+                results = []
+
+            clean_items = []
+            for item in results:
+                text = " ".join(str(item).split())
+                if len(text) >= 5:
+                    clean_items.append(text)
+                if len(clean_items) >= 6:
+                    break
+
+            if not clean_items:
+                return ""
+            return " | ".join(clean_items)
+        except Exception as e:
+            print(f"[RecordingPresenter] easyocr fallback failed: {e}")
+            return ""
+
+    def _extract_text_from_frame(self, frame, use_vision: bool = True):
         """Extract text and understand scene context from frame"""
         try:
-            import requests
-            import base64
+            cv2 = get_cv2()
+            if cv2 is None:
+                return "Screen captured (analysis unavailable: cv2 not available)"
 
-            # Encode frame to base64
-            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-            img_str = base64.b64encode(buffer).decode('utf-8')
+            if use_vision:
+                import requests
+                import base64
 
-            # Enhanced prompt: Focus on object detection and scene understanding
-            enhanced_prompt = """You are analyzing a screen capture for memory storage. Describe in detail:
+                # Encode frame to base64
+                _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                img_str = base64.b64encode(buffer).decode('utf-8')
 
-1. **Visible Objects**: List ALL objects you see (icons, buttons, images, symbols, etc.)
-   - Examples: keys, locks, icons, logos, buttons, menus, toolbars
-   - Be specific about position and appearance
+                # Keep prompt/response compact for faster timeline availability.
+                prompt = (
+                    "Describe this screenshot briefly for memory timeline.\n"
+                    "Return one line with: App, Key text, Main action."
+                )
 
-2. **Text Content**: Extract all text visible on screen
+                response = requests.post(
+                    "http://127.0.0.1:11434/api/generate",
+                    json={
+                        "model": "qwen2.5vl:3b",
+                        "prompt": prompt,
+                        "images": [img_str],
+                        "stream": False,
+                        "options": {
+                            "num_predict": 160,
+                            "temperature": 0.2,
+                            "top_p": 0.8,
+                        }
+                    },
+                    timeout=6,
+                )
 
-3. **Application & Activity**: What app is running and what's happening
+                if response.status_code == 200:
+                    result = response.json()
+                    content = result.get("response", "").strip()
+                    if content and content.lower() not in ["no text", "none", "no text found"]:
+                        return content
 
-4. **Visual Elements**: Colors, layouts, UI components
-
-Format your response as:
-Objects: [detailed list of visible objects]
-Text: [all extracted text]
-Scene: [application] - [activity description]
-Visual: [visual elements description]
-
-Be thorough - this information will be used for semantic search."""
-
-            # Send to Ollama vision API
-            response = requests.post(
-                "http://127.0.0.1:11434/api/generate",
-                json={
-                    "model": "qwen2.5vl:3b",  # Use vision model for better understanding
-                    "prompt": enhanced_prompt,
-                    "images": [img_str],
-                    "stream": False,
-                    "options": {
-                        "num_predict": 512,  # Increased from 384 for more detailed object descriptions
-                        "temperature": 0.3,  # Lower for more focused descriptions
-                        "top_p": 0.9,
-                    }
-                },
-                timeout=30
-            )
-
-            if response.status_code == 200:
-                result = response.json()
-                content = result.get("response", "").strip()
-                if content and content.lower() not in ["no text", "none", "no text found"]:
-                    # Parse and format the response
-                    return content
-
-        except requests.exceptions.Timeout:
-            print("[Recording] Vision API timeout, using fallback")
         except Exception as e:
-            print(f"[Recording] Vision API error: {e}")
+            if "timed out" in str(e).lower():
+                print("[Recording] Vision API timeout (6s), using fallback")
+            else:
+                print(f"[Recording] Vision API error: {e}")
+
+        # Local OCR fallback (more informative than heuristic density-only fallback).
+        ocr_text = self._extract_text_with_easyocr(frame)
+        if ocr_text:
+            return f"OCR detected: {ocr_text}"
 
         # Enhanced fallback analysis
         try:

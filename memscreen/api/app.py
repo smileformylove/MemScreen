@@ -6,6 +6,7 @@ Serves Flutter and other frontends; does not modify Kivy or start.py.
 import asyncio
 import json
 import queue
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Any, List
 
@@ -64,15 +65,17 @@ async def chat_post(body: ChatMessageBody):
         raise HTTPException(status_code=503, detail="Chat not available")
     loop = asyncio.get_event_loop()
     result = [None, None]  # [ai_text, error_text]
+    done = threading.Event()
 
     def on_done(ai_text: str, error_text: Optional[str]):
         result[0], result[1] = ai_text, error_text
+        done.set()
 
-    await loop.run_in_executor(
-        _executor,
-        lambda: presenter.send_message_sync(body.message, on_done=on_done),
-    )
+    presenter.send_message_sync(body.message, on_done=on_done)
+    await loop.run_in_executor(_executor, lambda: done.wait(180))
     ai_text, error_text = result[0], result[1]
+    if ai_text is None and error_text is None:
+        return ChatReplyResponse(reply=None, error="Chat request timed out")
     if error_text:
         return ChatReplyResponse(reply=None, error=error_text)
     return ChatReplyResponse(reply=ai_text, error=None)
@@ -113,6 +116,7 @@ async def chat_stream(body: ChatMessageBody):
             if error_text:
                 chunk_queue.put({"error": error_text})
             else:
+                full_response[0] = ai_text
                 # Send full response as one chunk
                 chunk_queue.put(ai_text)
             chunk_queue.put(SENTINEL)

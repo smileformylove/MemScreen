@@ -46,6 +46,8 @@ class AppState extends ChangeNotifier {
   int? get desiredTabIndex => _desiredTabIndex;
   int _videoRefreshVersion = 0;
   int get videoRefreshVersion => _videoRefreshVersion;
+  int _recordingStatusVersion = 0;
+  int get recordingStatusVersion => _recordingStatusVersion;
 
   late ChatApi _chatApi;
   late ProcessApi _processApi;
@@ -117,6 +119,13 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  void requestRecordingStatusRefresh({bool notify = true}) {
+    _recordingStatusVersion += 1;
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
   /// Handle method calls from native floating ball
   Future<dynamic> _handleFloatingBallCall(MethodCall call) async {
     debugPrint('[AppState] Received floating ball call: ${call.method}');
@@ -154,6 +163,7 @@ class AppState extends ChangeNotifier {
             screenIndex: screenIndex,
           );
           updateFloatingBallState(true);
+          requestRecordingStatusRefresh();
           debugPrint(
             '[AppState] Recording started from floating ball: mode=$mode, region=$region, screen=$screenIndex',
           );
@@ -166,9 +176,11 @@ class AppState extends ChangeNotifier {
         try {
           await _recordingApi.stop();
           updateFloatingBallState(false);
+          requestRecordingStatusRefresh();
           requestVideoRefresh();
           // Video save is async in backend; trigger a delayed refresh as well.
           Future.delayed(const Duration(seconds: 2), () {
+            requestRecordingStatusRefresh();
             requestVideoRefresh();
           });
           debugPrint('[AppState] Recording stopped from floating ball');
