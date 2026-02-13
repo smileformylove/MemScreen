@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../api/recording_api.dart';
@@ -23,7 +22,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
   Timer? _pollTimer;
 
   // 录制模式
-  String _mode = 'region';
+  String _mode = 'fullscreen';
   int? _screenIndex;
 
   // 区域选择（用比例）
@@ -50,11 +49,19 @@ class _RecordingScreenState extends State<RecordingScreen> {
   ui.Image? _screenshotImage;
   String? _screenshotPath;
   bool _capturing = false;
+  AppState? _appState;
+  int _lastRecordingStatusVersion = -1;
 
   @override
   void initState() {
     super.initState();
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _appState = context.read<AppState>();
+      _lastRecordingStatusVersion = _appState!.recordingStatusVersion;
+      _appState!.addListener(_onAppStateChanged);
+    });
 
     // 添加监听器实时更新区域显示
     _regionLeftController.addListener(_updateRegionFromControllers);
@@ -65,6 +72,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
 
   @override
   void dispose() {
+    _appState?.removeListener(_onAppStateChanged);
     _pollTimer?.cancel();
     _regionLeftController.dispose();
     _regionTopController.dispose();
@@ -73,6 +81,15 @@ class _RecordingScreenState extends State<RecordingScreen> {
     _durationController.dispose();
     _intervalController.dispose();
     super.dispose();
+  }
+
+  void _onAppStateChanged() {
+    if (!mounted || _appState == null) return;
+    final currentVersion = _appState!.recordingStatusVersion;
+    if (currentVersion != _lastRecordingStatusVersion) {
+      _lastRecordingStatusVersion = currentVersion;
+      _load();
+    }
   }
 
   void _updateRegionFromControllers() {
@@ -97,24 +114,26 @@ class _RecordingScreenState extends State<RecordingScreen> {
           _screens = screens;
           _loading = false;
           if (screens.isNotEmpty) {
-            final primary = screens.firstWhere((s) => s.isPrimary,
-                orElse: () => screens.first);
-            _screenWidth = primary.width.toDouble();
-            _screenHeight = primary.height.toDouble();
-            // 初始化区域为全屏
-            _regionLeft = 0.0;
-            _regionTop = 0.0;
-            _regionRight = 1.0;
-            _regionBottom = 1.0;
-          }
-          if (_mode == 'fullscreen-single' &&
-              _screenIndex == null &&
-              screens.isNotEmpty) {
-            _screenIndex = screens.first.index;
+            final selected = _findScreenByIndex(_screenIndex) ??
+                screens.firstWhere((x) => x.isPrimary,
+                    orElse: () => screens.first);
+            _screenIndex = _screenIndex ?? selected.index;
+            _screenWidth = selected.width.toDouble();
+            _screenHeight = selected.height.toDouble();
+            if (_regionRight <= _regionLeft || _regionBottom <= _regionTop) {
+              _regionLeft = 0.0;
+              _regionTop = 0.0;
+              _regionRight = 1.0;
+              _regionBottom = 1.0;
+            }
           }
         });
       }
-      if (s.isRecording) _startPolling();
+      if (s.isRecording) {
+        _startPolling();
+      } else {
+        _stopPolling();
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -245,7 +264,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
         rightPx.toDouble(),
         bottomPx.toDouble()
       ];
-    } else if (_mode == 'fullscreen-single' && _screenIndex != null) {
+    } else if (_mode == 'fullscreen' && _screenIndex != null) {
+      mode = 'fullscreen-single';
       screenIndex = _screenIndex;
     }
 
@@ -268,6 +288,28 @@ class _RecordingScreenState extends State<RecordingScreen> {
           SnackBar(content: Text('Failed to start recording: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _selectRegionWithFloatingBall() async {
+    try {
+      await FloatingBallService.show();
+      await FloatingBallService.prepareRegionSelection(
+          screenIndex: _screenIndex);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Main window minimized. Select region on screen, then start from floating ball.',
+          ),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to select region: $e')),
+      );
     }
   }
 
@@ -299,8 +341,6 @@ class _RecordingScreenState extends State<RecordingScreen> {
       SegmentedButton<String>(
         segments: const [
           ButtonSegment(value: 'fullscreen', label: Text('Full Screen')),
-          ButtonSegment(
-              value: 'fullscreen-single', label: Text('Single Screen')),
           ButtonSegment(value: 'region', label: Text('Region')),
         ],
         selected: {_mode},
@@ -311,14 +351,14 @@ class _RecordingScreenState extends State<RecordingScreen> {
   }
 
   List<Widget> _buildFullscreenSingleMode() {
-    if (_mode != 'fullscreen-single' || _screens.isEmpty) {
+    if (_screens.isEmpty) {
       return [];
     }
     return [
       DropdownButtonFormField<int>(
         value: _screenIndex ?? _screens.first.index,
         decoration: const InputDecoration(
-          labelText: 'Select Screen',
+          labelText: 'Target Screen',
           contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         ),
         items: _screens
@@ -328,150 +368,66 @@ class _RecordingScreenState extends State<RecordingScreen> {
                       '${e.name} (${e.width}x${e.height})${e.isPrimary ? " [Primary]" : ""}'),
                 ))
             .toList(),
-        onChanged: (v) => setState(() => _screenIndex = v),
+        onChanged: (v) {
+          if (v == null) return;
+          setState(() {
+            _screenIndex = v;
+            final selected = _findScreenByIndex(v);
+            if (selected != null) {
+              _screenWidth = selected.width.toDouble();
+              _screenHeight = selected.height.toDouble();
+            }
+          });
+        },
       ),
+      const SizedBox(height: 12),
     ];
+  }
+
+  RecordingScreenInfo? _findScreenByIndex(int? index) {
+    if (index == null) return null;
+    for (final s in _screens) {
+      if (s.index == index) return s;
+    }
+    return null;
   }
 
   List<Widget> _buildRegionMode() {
     if (_mode != 'region') {
       return [];
     }
-
-    // 确保status不为null
-    final status = _status ??
-        RecordingStatus(
-          isRecording: false,
-          duration: 60,
-          interval: 2,
-          outputDir: '',
-          frameCount: 0,
-          elapsedTime: 0,
-        );
+    final isRecording = _status?.isRecording ?? false;
 
     return [
-      // 区域选择标题
-      Row(
-        children: [
-          Text('Recording Region',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const Spacer(),
-          if (_mode == 'region') ...[
-            OutlinedButton.icon(
-              icon: const Icon(Icons.fullscreen),
-              label: Text('Full Screen'),
-              onPressed: () => setState(() {
-                _regionLeft = 0.0;
-                _regionTop = 0.0;
-                _regionRight = 1.0;
-                _regionBottom = 1.0;
-              }),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              icon: _capturing
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.screenshot),
-              label: Text(_capturing ? 'Capturing...' : 'Select on Screen'),
-              onPressed: _capturing ? null : _captureScreen,
-            ),
-          ],
-        ],
-      ),
-      const SizedBox(height: 12),
-
-      // 区域输入行
-      Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _regionLeftController,
-              decoration: const InputDecoration(
-                labelText: 'Left (px)',
-                isDense: true,
-                contentPadding: EdgeInsets.all(8),
-              ),
-              keyboardType: TextInputType.number,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _regionTopController,
-              decoration: const InputDecoration(
-                labelText: 'Top (px)',
-                isDense: true,
-                contentPadding: EdgeInsets.all(8),
-              ),
-              keyboardType: TextInputType.number,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _regionRightController,
-              decoration: const InputDecoration(
-                labelText: 'Right (px)',
-                isDense: true,
-                contentPadding: EdgeInsets.all(8),
-              ),
-              keyboardType: TextInputType.number,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _regionBottomController,
-              decoration: const InputDecoration(
-                labelText: 'Bottom (px)',
-                isDense: true,
-                contentPadding: EdgeInsets.all(8),
-              ),
-              keyboardType: TextInputType.number,
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 24),
-
-      // 区域显示（百分比）
       Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.blue.shade50,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(color: Colors.blue.shade200),
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Selected Region:',
-                style: TextStyle(fontSize: 12, color: Colors.black87)),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                Text(
-                  'Left:   ${(_regionLeft * 100).toStringAsFixed(1)}%',
-                  style: TextStyle(fontSize: 11, fontFamily: 'monospace'),
-                ),
-                Text(
-                  'Top:    ${(_regionTop * 100).toStringAsFixed(1)}%',
-                  style: TextStyle(fontSize: 11, fontFamily: 'monospace'),
-                ),
-                Text(
-                  'Right:  ${(_regionRight * 100).toStringAsFixed(1)}%',
-                  style: TextStyle(fontSize: 11, fontFamily: 'monospace'),
-                ),
-                Text(
-                  'Bottom: ${(_regionBottom * 100).toStringAsFixed(1)}%',
-                  style: TextStyle(fontSize: 11, fontFamily: 'monospace'),
-                ),
-              ],
+            const Text(
+              'Region Recording',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            const Text('1. Minimize & select region'),
+            const Text('2. Start recording from floating ball'),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: isRecording ? null : _selectRegionWithFloatingBall,
+              icon: const Icon(Icons.select_all),
+              label: const Text('Select Region'),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              isRecording
+                  ? 'Recording in progress.'
+                  : 'Use floating ball to start after selection.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
             ),
           ],
         ),
@@ -507,11 +463,61 @@ class _RecordingScreenState extends State<RecordingScreen> {
       ),
       const SizedBox(height: 32),
 
-      // 开始/停止按钮
       Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          if (!status.isRecording)
+          FilledButton.icon(
+            onPressed: isRecording ? _stop : null,
+            icon: const Icon(Icons.stop),
+            label: const Text('Stop Recording'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  List<Widget> _buildDirectRecordingControls() {
+    if (_mode == 'region') {
+      return [];
+    }
+
+    final isRecording = _status?.isRecording ?? false;
+    return [
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _durationController,
+              decoration: const InputDecoration(
+                labelText: 'Duration (seconds)',
+                prefixIcon: Icon(Icons.timer, size: 20),
+              ),
+              keyboardType: TextInputType.number,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: TextField(
+              controller: _intervalController,
+              decoration: const InputDecoration(
+                labelText: 'Interval (seconds)',
+                prefixIcon: Icon(Icons.schedule, size: 20),
+              ),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 24),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (!isRecording)
             FilledButton.icon(
               onPressed: _start,
               icon: const Icon(Icons.fiber_manual_record),
@@ -558,7 +564,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Screen Recording'),
+        title: const Text('Recording'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -580,16 +586,16 @@ class _RecordingScreenState extends State<RecordingScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
+                    color: Colors.blue.shade50,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.shade300),
+                    border: Border.all(color: Colors.blue.shade200),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Icon(Icons.info_outline, color: Colors.blue),
                       const SizedBox(width: 12),
-                      Text('区域选择：直接输入像素坐标',
+                      Text('Mode → Region (optional) → Start',
                           style:
                               TextStyle(fontSize: 12, color: Colors.black87)),
                     ],
@@ -639,6 +645,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
                 // 屏幕选择或区域设置
                 ..._buildFullscreenSingleMode(),
                 ..._buildRegionMode(),
+                ..._buildDirectRecordingControls(),
               ],
             ),
           ),

@@ -19,7 +19,7 @@
   [![Python](https://img.shields.io/badge/python-3.8+-green?style=for-the-badge&logo=python&logoColor=white&labelColor=333)](https://www.python.org/downloads/)
   [![Ollama](https://img.shields.io/badge/ollama-supported-orange?style=for-the-badge)](https://ollama.com)
   [![vLLM](https://img.shields.io/badge/vLLM-supported-blue?style=for-the-badge)](https://docs.vllm.ai/)
-  [![Version](https://img.shields.io/badge/version-v0.6.0-brightgreen?style=for-the-badge&labelColor=333)](https://github.com/smileformylove/MemScreen/releases/tag/v0.6.0)
+  [![Version](https://img.shields.io/badge/version-v0.6.1-brightgreen?style=for-the-badge&labelColor=333)](https://github.com/smileformylove/MemScreen/releases/tag/v0.6.1)
 
   **100% Local • 100% Private • AI-Powered Visual Memory System**
 
@@ -115,21 +115,24 @@ Everything runs on your machine
 
   **🎉 Featured on Product Hunt, ShipIt & NXGenTools!**
 
-  **🎉 v0.6.0 — Floating Ball Mode & Brand New Experience!**
+  **🎉 v0.6.1 — Flutter Floating Ball Stability Update!**
 
-  ### 🚀 Core Features (v0.6.0)
-  - 🔴 **Floating Ball First** — macOS starts with floating ball only, main window minimized
-  - 🎨 **Branded Experience** — Floating ball displays your logo with circular masking
-  - 🖱️ **Simplified Control** — All features accessible via right-click menu
-  - 📱 **Cleaner Interface** — Drag anywhere, left-click to toggle window, right-click for menu
+  ### 🚀 Latest Features (v0.6.1)
+  - 🧭 **Two-step region recording** — Select region first, then start recording
+  - 📁 **Video list sync** — Auto-refresh after recording stops (immediate + delayed refresh)
+  - 🟣 **Floating ball lifecycle fix** — Closing main window no longer kills floating ball
+  - 🧹 **Toolbar cleanup** — Force-closes when ball exits, no orphan panels
+  - 🚀 **macOS launcher hardening** — Improved process cleanup behavior
 
-  ### 📦 What's Included
-  - 🎯 **Custom Region Recording** — Select any area of your screen to record
+  ### 📦 Core Capabilities
+  - 🎯 **Flexible Recording** — Full screen, single screen, or custom region
   - 🤖 **Intelligent Agent** — Auto-classification & smart routing (3-5x faster)
   - 📊 **Dynamic Memory** — 15 categories for intelligent organization
   - 🔴 **Native Floating Ball** (macOS) — Real floating window for recording control
+  - 💬 **AI Chat Interface** — Natural language queries about your screen history
+  - 👁️ **Visual Search** — Find content by meaning, not just keywords
 
-  ### ⚡ Advanced Optimizations (Phase 1-6)
+  ### ⚡ Advanced Optimizations
   - 👁️ **Visual Encoder** — SigLIP/CLIP models for accurate visual search
   - 🔍 **Multimodal Search** — Text + Visual hybrid retrieval (30-50% better)
   - 📚 **Tiered Memory** — Working → Short-term → Long-term management
@@ -137,7 +140,7 @@ Everything runs on your machine
   - 🎬 **Multi-granular Vision** — Scene/Object/Text level understanding
   - 💬 **Visual QA Optimization** — Chain-of-thought for 7b models
 
-  [View Full Changelog](https://github.com/smileformylove/MemScreen/compare/v0.5.0...v0.6.0) • [User Guide](docs/USER_GUIDE.md)
+  [View Full Changelog](https://github.com/smileformylove/MemScreen/compare/v0.6.0...v0.6.1)
 
 </div>
 
@@ -175,45 +178,191 @@ python setup/start.py
 
 ---
 
-### 🖥️ Dual frontends: Kivy (default) + Flutter (optional)
+### 🖥️ Dual Frontends: Kivy (Default) + Flutter (Optional)
 
-MemScreen supports **two frontends**; the default is the **Kivy UI** (launched with `python setup/start.py`).
+MemScreen supports **two frontends**; default is **Kivy UI** (launched with `python setup/start.py`).
 
-- **Kivy** — Default. Run `python setup/start.py` (or `setup/run.sh`). No extra steps.
-- **Flutter** — Optional alternative UI that talks to MemScreen over HTTP. Use when you prefer a Flutter desktop/mobile client.
+- **Kivy** — Default Python-based desktop UI. Run `python setup/start.py` (or `setup/run.sh`). No extra steps.
+- **Flutter** — Modern cross-platform UI with HTTP API backend. Use when you prefer a Flutter desktop client.
 
-**To use the Flutter frontend:**
+---
 
-**Option 1: Quick Start (Recommended) ⚡**
-   ```bash
-   ./scripts/start_flutter.sh
-   ```
-   This script automatically:
-   - Activates the virtual environment
-   - Starts the API backend
-   - Installs Flutter dependencies
-   - Launches the Flutter app
+### 📱 Flutter Frontend Quick Start
 
-**Option 2: Manual Steps**
+#### Prerequisites
 
-1. **Start the API** (backend must run in the project Conda env `MemScreen`):
-   ```bash
-   conda activate MemScreen
-   python -m memscreen.api
-   # or: python setup/start_api.py
-   ```
-   API runs at `http://127.0.0.1:8765` by default (see [docs/API_HTTP.md](docs/API_HTTP.md)).
+Before launching Flutter, ensure you have:
 
-2. **Run the Flutter app** from the Flutter project directory:
-   ```bash
-   cd frontend/flutter
-   flutter pub get && flutter run
-   ```
-   On macOS, use `flutter run -d macos` after `flutter create . --project-name memscreen_flutter` if needed.
+1. **Python 3.8+** installed with MemScreen dependencies
+2. **Flutter SDK** installed ([Download](https://flutter.dev/docs/get-started/install))
+3. **Virtual environment** created (`python3 -m venv venv`)
+4. **MemScreen installed** (`pip install -e .`)
 
-**Flutter app includes:** Chat (streaming, model switch, history), Process (session list, analysis, delete; **save session** manually or **keyboard/mouse tracking** → save from tracking), Recording (**fullscreen / single screen / region**, duration & interval), Video list, Settings & About. Connection can be retried or API URL reconfigured from the top bar when the backend is unreachable.
+#### Option 1: One-Click Launch (Recommended) ⚡
 
-See [docs/FLUTTER.md](docs/FLUTTER.md) for Flutter dependencies, configuration (API base URL), and development notes.
+The easiest way to start Flutter frontend with all dependencies:
+
+```bash
+# From project root
+./scripts/start_flutter.sh
+```
+
+**This script automatically:**
+- ✅ Activates the virtual environment
+- ✅ Starts the API backend (if not running)
+- ✅ Installs Flutter dependencies
+- ✅ Builds and launches the Flutter app
+- ✅ Handles cleanup on exit
+
+**What happens:**
+1. Script checks for existing API at `http://127.0.0.1:8765`
+2. If not running, starts API backend in background
+3. Waits for API to be ready (health check)
+4. Builds Flutter app in release mode
+5. Launches the app and keeps both processes running
+6. On app exit, automatically shuts down API (if started by script)
+
+#### Option 2: Manual Launch
+
+For development or custom configuration:
+
+**Step 1: Start the API Backend**
+
+```bash
+# Activate virtual environment
+source venv/bin/activate  # or: conda activate MemScreen
+
+# Start API server
+python -m memscreen.api
+# or: python setup/start_api.py
+```
+
+API runs at `http://127.0.0.1:8765` by default.
+
+**Step 2: Launch Flutter App**
+
+```bash
+# Navigate to Flutter project
+cd frontend/flutter
+
+# Install dependencies (first time only)
+flutter pub get
+
+# Run in development mode (hot reload enabled)
+flutter run
+
+# Or run on specific platform
+flutter run -d macos    # macOS
+flutter run -d windows   # Windows
+flutter run -d linux     # Linux
+```
+
+#### Development vs Release Mode
+
+**Development Mode** (`flutter run`):
+- ✅ Hot reload & hot restart
+- ✅ Debug logging
+- ✅ DevTools integration
+- ❌ Slower performance
+
+**Release Mode** (default in `start_flutter.sh`):
+- ✅ Optimized performance
+- ✅ Smaller binary size
+- ✅ Production-ready
+- ❌ No hot reload
+
+To build release manually:
+```bash
+cd frontend/flutter
+flutter build macos --release   # macOS
+flutter build windows --release  # Windows
+flutter build linux --release    # Linux
+```
+
+The built app will be in `frontend/flutter/build/<platform>/`.
+
+#### Configuration
+
+**API URL Configuration:**
+
+If your API runs on a different URL, configure it in the Flutter app:
+
+1. Open Flutter app Settings
+2. Click on "API URL" field
+3. Enter your API URL (e.g., `http://192.168.1.100:8765`)
+4. Click "Retry Connection"
+
+Or set via environment variable before starting API:
+```bash
+export MEMSCREEN_API_PORT=8765
+export MEMSCREEN_API_HOST=0.0.0.0  # Listen on all interfaces
+python -m memscreen.api
+```
+
+#### Flutter App Features
+
+**Core Screens:**
+- 🏠 **Home** — Quick access to all features
+- 💬 **Chat** — AI chat with streaming responses, model switching, and history
+- 📊 **Process** — Track keyboard/mouse usage, session analysis
+- 🎥 **Recording** — Full screen, single screen, or region recording
+- 📁 **Videos** — Manage and view recorded videos
+- ⚙️ **Settings** — Configure API, models, and preferences
+- ℹ️ **About** — App information and version
+
+**Key Features:**
+- 🔄 **Connection Status** — Real-time API connection indicator with retry
+- 📝 **Streaming Responses** — Real-time AI chat responses
+- 🖥️ **Screen Target Selection** — Choose a target display in Record > Full Screen
+- 🎯 **Region Selection** — Visual region selector for recording
+- 🔄 **Auto-Refresh** — Video list updates after recording
+- 💾 **Session Management** — Process tracking sessions with manual/auto save
+
+#### Troubleshooting
+
+**API Connection Failed:**
+```bash
+# Check if API is running
+curl http://127.0.0.1:8765/health
+
+# View API logs
+tail -f ~/.memscreen/logs/api.log
+
+# Restart API manually
+python setup/start_api.py
+```
+
+**Flutter Build Errors:**
+```bash
+# Clean Flutter build cache
+cd frontend/flutter
+flutter clean
+
+# Re-fetch dependencies
+flutter pub get
+
+# Rebuild
+flutter run
+```
+
+**Multiple App Instances:**
+The `start_flutter.sh` script automatically handles cleanup, but if you have issues:
+```bash
+# Kill existing Flutter apps
+pkill -f 'memscreen_flutter.app'
+
+# Kill stale Flutter processes
+pkill -f 'flutter_tools.snapshot'
+```
+
+**Permission Issues (macOS):**
+```bash
+# Grant screen recording permission
+# System Settings → Privacy & Security → Screen Recording
+# Add Terminal or your IDE to the allowed list
+```
+
+See [docs/FLUTTER.md](docs/FLUTTER.md) for detailed Flutter documentation, dependencies, and development notes.
 
 ---
 
@@ -250,11 +399,13 @@ docker-compose up --build
 ---
 
 > **💡 Floating Ball Mode (macOS):**
-> - On macOS, MemScreen starts with a **floating ball** in the top-right corner
+> - On macOS, MemScreen starts with a **floating ball** in top-right corner
 > - **Right-click** the ball to open the action toolbar (Recording, Videos, AI Chat, etc.)
+> - Full-screen workflow: choose target screen in **Record** page or in floating-ball toolbar **Screen** selector
 > - Region workflow: **Select Region** first, then press **Start Recording**
+> - Region selection is bound to selected target screen (main UI and floating ball stay in sync)
 > - **Left-click** the ball to reopen the main window
-> - Closing the main window keeps the floating ball alive; use toolbar **Quit** to exit completely
+> - Closing the main window keeps the floating ball alive; use the toolbar's **Quit** to exit completely
 > - **Drag** the ball to any position on screen
 > - Video list auto-refreshes after recording stops (includes delayed refresh after async save)
 
@@ -291,7 +442,7 @@ docker-compose up --build
 - **🎨 Scene Recognition** — Identifies applications, activities, and UI elements
 - **🔍 Semantic Search** — Find anything by meaning, not just keywords
 
-### 🤖 Intelligent Agent (New!)
+### 🤖 Intelligent Agent
 
 - **⚡ Auto Classification** — Recognizes 15 input types automatically
 - **🎯 Intent Recognition** — Identifies 7 query intents for smart routing
@@ -312,7 +463,7 @@ docker-compose up --build
 - **🔐 No API Keys** — Works out of the box
 - **📖 Open Source** — Verify the code yourself
 
-### 🚀 Advanced Optimizations (Phase 1-6)
+### 🚀 Advanced Optimizations
 
 > **30-50% better visual recall, 40-60% more accurate Q&A!**
 
@@ -399,6 +550,7 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 - [Intelligent Agent System](docs/INTELLIGENT_AGENT.md) — Auto-classification and smart dispatch
 - [Dynamic Memory System](docs/DYNAMIC_MEMORY.md) — Categorized memory and search
 - [Core API Documentation](docs/CORE_API.md) — API reference
+- [Flutter Frontend Guide](docs/FLUTTER.md) — Flutter UI documentation
 
 **🔧 Development:**
 - [Testing Guide](docs/TESTING_GUIDE.md) — How to test the system
@@ -411,14 +563,16 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 
 | Component | Technology |
 |-----------|------------|
-| **GUI Framework** | Kivy |
-| **Screen Capture** | PIL ImageGrab |
-| **Video Processing** | OpenCV |
+| **Backend** | Python 3.8+ |
+| **API Framework** | FastAPI |
+| **GUI Framework** | Kivy (default), Flutter (optional) |
+| **Screen Capture** | PIL ImageGrab, MSS |
+| **Video Processing** | OpenCV, MoviePy |
+| **OCR** | EasyOCR |
 | **Databases** | SQLite + ChromaDB |
 | **AI Backends** | Ollama / vLLM |
 | **Vision Models** | qwen2.5vl:3b / Qwen2-VL |
 | **Advanced Reasoning** | Step-3.5-Flash (optional) |
-| **Language** | Python 3.8+ |
 
 ---
 
@@ -428,7 +582,7 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 
 - 🧭 **Two-step region recording** — Select region first, start recording on explicit button click
 - 📁 **Video list sync** — New recordings now auto-refresh in `Videos` after stop (immediate + delayed refresh)
-- 🟣 **Floating ball lifecycle fix** — Closing main window no longer kills the floating ball
+- 🟣 **Floating ball lifecycle fix** — Closing main window no longer kills floating ball
 - 🧹 **Toolbar cleanup fix** — Floating toolbar is force-closed when ball exits, no orphan panel left on screen
 - 🚀 **macOS launcher hardening** — Startup script runs built app binary and improves process cleanup behavior
 
@@ -443,23 +597,9 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 - 📚 **Better Documentation** — Centralized docs, updated README, cleanup guides
 - 🐛 **Bug Fixes** — Fixed duplicate floating ball, improved state management, coordinate issues
 
-### ✨ v0.5.0 — Dynamic Memory System & Native Floating Ball (February 2026)
-
-- 🤖 **Intelligent Agent** — Auto-classification & smart routing (3-5x faster, 70% fewer tokens)
-- 📊 **Dynamic Memory** — 15 categories, 7 query intents, smart search
-- 🎯 **Custom Region Recording** — Visual crosshair guides, re-selectable regions
-- 🔴 **Native Floating Ball** (macOS) — Real floating window with cross-space visibility
-- 📁 **Improved Structure** — Centralized documentation in `docs/` directory
-
-### ✨ v0.4.0 — Local AI Agent & Privacy-First Design
-
-- 🤖 **Local AI Agent** — Task planning & skill execution
-- 💬 **Enhanced AI Chat** — Humanized, warm responses
-- 🔒 **Zero Cloud** — No API keys, no data transmission
-
 ---
 
-## 🗺️ Todo
+## 🗺️ Roadmap
 
 **🎯 Upcoming Features**
 
@@ -491,33 +631,38 @@ MemScreen/
 ├── pyproject.toml           # Python configuration
 │
 ├── memscreen/              # Main application package
+│   ├── api/               # FastAPI HTTP server (for Flutter)
 │   ├── ui/                # UI components (Kivy)
 │   ├── presenters/        # Business logic (MVP)
 │   ├── memory/            # Memory system
 │   ├── llm/               # LLM integration
+│   ├── agent/             # Intelligent agent
 │   ├── audio/             # Audio recording
-│   └── ...
-│
-├── config/                 # Configuration files
-│   └── config_example.yaml
-│
-├── docs/                   # Documentation (31 files)
-│   ├── guides/            # User guides
-│   ├── history/           # Development history
-│   ├── cleanup/           # Maintenance docs
 │   └── ...
 │
 ├── frontend/
 │   └── flutter/           # Optional Flutter UI (see docs/FLUTTER.md)
+│
+├── config/                 # Configuration files
+│   └── config_example.yaml
+│
+├── docs/                   # Documentation
+│   ├── guides/            # User guides
+│   ├── history/           # Development history
+│   ├── cleanup/           # Maintenance docs
+│   └── ...
 │
 ├── setup/                  # Installation & build
 │   ├── install/           # Installation scripts
 │   ├── docker/            # Docker files
 │   ├── tools/             # Build tools
 │   ├── start.py           # Application entry point
-│   ├── start_api.py       # API-only entry (for Flutter frontend)
+│   ├── start_api.py       # API-only entry (for Flutter)
 │   ├── run.sh/run.bat     # Run scripts
 │   └── MANIFEST.in
+│
+├── scripts/                # Helper scripts
+│   └── start_flutter.sh   # Flutter launcher
 │
 ├── tests/                  # Test suite
 ├── examples/               # Demo scripts
@@ -560,7 +705,7 @@ This project is released under the **MIT License** — free to use, modify, and 
 
   Made with ❤️ and 🦉 by [Jixiang Luo](https://github.com/smileformylove)
 
-  **v0.6.0** — Floating Ball Mode & UI Polish (February 2026)
+  **v0.6.1** — Flutter Floating Ball Stability Update (February 2026)
 
   [📧 Email](mailto:jixiangluo85@gmail.com) • [🐛 Report Bug](https://github.com/smileformylove/MemScreen/issues) • [💬 Discussion](https://github.com/smileformylove/MemScreen/discussions)
 

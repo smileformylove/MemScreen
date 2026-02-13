@@ -258,6 +258,7 @@ class FloatingBallWindow(NSPanel):
         self.on_show_process_callback = None  # Show process mining screen
         self.on_show_about_callback = None  # Show about screen
         self.on_switch_screen_callback = None  # Generic screen switch callback
+        self.on_select_screen_callback = None  # Screen selection callback
         self.on_quit_callback = None  # Quit application
 
         # Drag state
@@ -526,11 +527,17 @@ class FloatingBallWindow(NSPanel):
         """Select screen for recording"""
         screen_tag = sender.tag()  # Get screen index from menu item tag
 
-        if not self.presenter:
-            print("[FloatingBall] No presenter available for screen selection")
-            return
-
         try:
+            # Prefer UI callback so main window/presenter state stay in sync
+            if self.on_select_screen_callback:
+                selected = None if screen_tag == -1 else int(screen_tag)
+                self.on_select_screen_callback(selected)
+                return
+
+            if not self.presenter:
+                print("[FloatingBall] No presenter available for screen selection")
+                return
+
             if screen_tag == -1:
                 # All screens selected
                 self.presenter.set_recording_mode('fullscreen')

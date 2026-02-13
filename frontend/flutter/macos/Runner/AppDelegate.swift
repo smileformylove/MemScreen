@@ -325,6 +325,13 @@ class AppDelegate: FlutterAppDelegate {
         methodChannel?.invokeMethod("switchTab", arguments: ["index": tabIndex])
     }
 
+    private func minimizeMainWindow() {
+        guard let window = findFlutterWindow() else { return }
+        if !window.isMiniaturized {
+            window.miniaturize(nil)
+        }
+    }
+
     private func handleMethodCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         os_log("Method called: %{public}@", log: logger, type: .info, call.method)
 
@@ -379,6 +386,28 @@ class AppDelegate: FlutterAppDelegate {
             } else {
                 result(FlutterError(code: "INVALID_ARGS", message: "Expected index argument", details: nil))
             }
+        case "prepareRegionSelection":
+            var requestedScreenIndex: Int?
+            if let args = call.arguments as? [String: Any] {
+                if let idx = args["screenIndex"] as? Int {
+                    requestedScreenIndex = idx
+                } else if let idxNum = args["screenIndex"] as? NSNumber {
+                    requestedScreenIndex = idxNum.intValue
+                }
+            }
+            if floatingBall == nil {
+                if let controller = resolveFlutterController() {
+                    createFloatingBall(with: controller)
+                } else {
+                    pollForFlutterController()
+                }
+            }
+            floatingBall?.orderFront(nil)
+            floatingBall?.makeKeyAndOrderFront(nil)
+            floatingBall?.setSelectedScreenIndex(requestedScreenIndex)
+            minimizeMainWindow()
+            floatingBall?.beginRegionSelectionFromMainUI()
+            result(nil)
         default:
             result(FlutterMethodNotImplemented)
         }

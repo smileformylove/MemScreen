@@ -53,4 +53,18 @@ class FloatingBallService {
       debugPrint('[FloatingBall] Error quitting: $e');
     }
   }
+
+  /// Minimize main window and enter native region-selection flow (macOS).
+  /// screenIndex: null means follow current/default screen.
+  static Future<void> prepareRegionSelection({int? screenIndex}) async {
+    try {
+      final args = <String, dynamic>{};
+      if (screenIndex != null) {
+        args['screenIndex'] = screenIndex;
+      }
+      await _channel.invokeMethod('prepareRegionSelection', args);
+    } catch (e) {
+      debugPrint('[FloatingBall] Error preparing region selection: $e');
+    }
+  }
 }

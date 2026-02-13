@@ -6,6 +6,7 @@ MemScreen Kivy UI - Clean Modern Design with Light Purple Theme
 import os
 import sys
 import warnings
+import json
 
 # Suppress SDL2 duplicate symbol warnings from OpenCV/Kivy conflict
 # These warnings don't affect functionality, only occur during library loading
@@ -177,6 +178,10 @@ class RecordingScreen(BaseScreen):
         self.region_selector_overlay = None  # Track current overlay
         self.cv2_available = True  # Track if cv2 is available
         self.preview_failed_count = 0  # Count consecutive preview failures
+        self.available_screens = []
+        self.selected_screen_index = None  # None = all screens
+        self.screen_label_to_index = {"All Screens": None}
+        self._updating_screen_spinner = False
 
         # Native floating ball (macOS only)
         self.floating_ball = None
@@ -253,7 +258,7 @@ class RecordingScreen(BaseScreen):
             values=['Full Screen', 'Custom Region'],
             font_name='chinese',
             font_size='22',
-            size_hint_x=0.3,
+            size_hint_x=0.24,
             size_hint_y=None,
             height=85,
             background_color=(0.6, 0.4, 0.75, 1),
@@ -262,13 +267,28 @@ class RecordingScreen(BaseScreen):
         self.mode_spinner.bind(text=self.on_mode_change)
         control_layout.add_widget(self.mode_spinner)
 
+        # Screen selection for Full Screen mode
+        self.screen_spinner = Spinner(
+            text='All Screens',
+            values=['All Screens'],
+            font_name='chinese',
+            font_size='20',
+            size_hint_x=0.24,
+            size_hint_y=None,
+            height=85,
+            background_color=(0.55, 0.38, 0.7, 1),
+            color=(1, 1, 1, 1)
+        )
+        self.screen_spinner.bind(text=self.on_screen_change)
+        control_layout.add_widget(self.screen_spinner)
+
         # Middle: Audio Source Selection
         self.audio_spinner = Spinner(
             text='No Audio',
             values=['No Audio', 'Microphone', 'System Audio'],
             font_name='chinese',
             font_size='22',
-            size_hint_x=0.3,
+            size_hint_x=0.24,
             size_hint_y=None,
             height=85,
             background_color=(0.5, 0.35, 0.65, 1),
@@ -283,7 +303,7 @@ class RecordingScreen(BaseScreen):
             font_name='chinese',
             font_size='22',
             bold=True,
-            size_hint_x=0.4,
+            size_hint_x=0.28,
             size_hint_y=None,
             height=85,
             background_color=(0.6, 0.4, 0.75, 1),
@@ -369,6 +389,7 @@ class RecordingScreen(BaseScreen):
         """Set the presenter for this screen"""
         self.presenter = presenter
         self.presenter.view = self
+        self._refresh_screen_options()
 
         # Check if cv2 is available for preview and recording
         if hasattr(self.presenter, 'cv2_available') and not self.presenter.cv2_available:
@@ -381,6 +402,80 @@ class RecordingScreen(BaseScreen):
             print("[RecordingScreen] TO FIX: Run from source: python3 start.py")
         else:
             self.status_label.text = "Status: Ready"
+
+    def _refresh_screen_options(self):
+        """Load available screens and refresh screen selection spinner."""
+        screen_labels = ["All Screens"]
+        self.screen_label_to_index = {"All Screens": None}
+        self.available_screens = []
+
+        if self.presenter:
+            try:
+                self.available_screens = self.presenter.get_available_screens() or []
+            except Exception as e:
+                print(f"[RecordingScreen] Failed to load screens: {e}")
+
+        for screen in self.available_screens:
+            idx = screen.get('index')
+            name = screen.get('name', f"Screen {idx + 1}")
+            width = screen.get('width')
+            height = screen.get('height')
+            primary = " (Primary)" if screen.get('is_primary') else ""
+            label = f"{name}{primary} {width}x{height}"
+            screen_labels.append(label)
+            self.screen_label_to_index[label] = idx
+
+        self.screen_spinner.values = screen_labels
+
+        # Sync spinner text with presenter's current mode
+        current_idx = None
+        if self.presenter:
+            mode_info = self.presenter.get_recording_mode()
+            current_idx = mode_info.get('screen_index')
+
+        self.selected_screen_index = current_idx
+        self._set_screen_spinner_text_by_index(current_idx)
+
+    def _set_screen_spinner_text_by_index(self, screen_index):
+        """Update screen spinner text without triggering on_screen_change."""
+        self._updating_screen_spinner = True
+        try:
+            target_label = "All Screens"
+            for label, idx in self.screen_label_to_index.items():
+                if idx == screen_index:
+                    target_label = label
+                    break
+            self.screen_spinner.text = target_label
+        finally:
+            self._updating_screen_spinner = False
+
+    def _apply_fullscreen_mode_for_selection(self):
+        """Apply full screen mode according to current selected screen."""
+        if not self.presenter:
+            return
+
+        if self.selected_screen_index is None:
+            self.presenter.set_recording_mode('fullscreen')
+            self.status_label.text = "Status: Full Screen mode (All Screens)"
+        else:
+            self.presenter.set_recording_mode('fullscreen-single', screen_index=self.selected_screen_index)
+            screen_name = f"Screen {self.selected_screen_index + 1}"
+            for screen in self.available_screens:
+                if screen.get('index') == self.selected_screen_index:
+                    screen_name = screen.get('name', screen_name)
+                    break
+            self.status_label.text = f"Status: Full Screen mode ({screen_name})"
+
+    def get_selected_screen_index(self):
+        """Get selected screen index (None means all screens)."""
+        return self.selected_screen_index
+
+    def _select_screen_from_ball(self, screen_index):
+        """Sync screen selection from floating ball to main UI + presenter."""
+        self.selected_screen_index = screen_index
+        self._set_screen_spinner_text_by_index(screen_index)
+        self.mode_spinner.text = 'Full Screen'
+        self._apply_fullscreen_mode_for_selection()
 
     def on_recording_started(self):
         """Callback when recording starts"""
@@ -428,6 +523,7 @@ class RecordingScreen(BaseScreen):
                     self.floating_ball.on_main_window_callback = self._hide_floating_ball  # For closing ball
                     self.floating_ball.on_show_main_window_callback = self._show_main_window  # For showing main window only
                     self.floating_ball.on_switch_screen_callback = self._switch_screen_from_ball  # For switching screens
+                    self.floating_ball.on_select_screen_callback = self._select_screen_from_ball  # For screen selection sync
                     self.floating_ball.on_select_region_callback = self._select_region_from_ball  # For selecting region
                     self.floating_ball.on_start_recording_callback = self._start_recording_from_ball  # For starting recording
                     self.floating_ball.on_quit_callback = self._quit_from_ball  # For quitting app
@@ -641,10 +737,11 @@ class RecordingScreen(BaseScreen):
         import os
         region_trigger_file = os.path.expanduser('~/.memscreen/region_trigger.txt')
         try:
+            target_screen_index = self.selected_screen_index if self.selected_screen_index is not None else 0
             os.makedirs(os.path.dirname(region_trigger_file), exist_ok=True)
             with open(region_trigger_file, 'w') as f:
-                f.write('select')
-            print("[RecordingScreen] Region selection requested")
+                f.write(json.dumps({"action": "select", "screen_index": target_screen_index}))
+            print(f"[RecordingScreen] Region selection requested on screen {target_screen_index}")
         except Exception as e:
             print(f"[RecordingScreen] Failed to request region selection: {e}")
 
@@ -813,14 +910,25 @@ class RecordingScreen(BaseScreen):
             self.region_selector_overlay = None
 
         if text == 'Full Screen':
-            # Set presenter to fullscreen mode
-            if self.presenter:
-                self.presenter.set_recording_mode('fullscreen')
-            self.status_label.text = "Status: Full Screen mode"
+            self._apply_fullscreen_mode_for_selection()
 
         elif text == 'Custom Region':
             # Auto-open region selector
-            self.open_region_selector(None)
+            target_screen_index = self.selected_screen_index if self.selected_screen_index is not None else 0
+            self.open_region_selector(None, screen_index=target_screen_index)
+
+    def on_screen_change(self, spinner, text):
+        """Handle screen selection change."""
+        if self._updating_screen_spinner:
+            return
+
+        self.selected_screen_index = self.screen_label_to_index.get(text)
+        print(f"[RecordingScreen] Screen changed: {text} -> {self.selected_screen_index}")
+
+        if self.mode_spinner.text == 'Full Screen':
+            self._apply_fullscreen_mode_for_selection()
+        else:
+            self.status_label.text = f"Status: Selected target screen ({text})"
 
     def on_audio_source_change(self, spinner, text):
         """Handle audio source change"""
@@ -846,14 +954,10 @@ class RecordingScreen(BaseScreen):
         # Update dropdown to show Full Screen
         self.mode_spinner.text = 'Full Screen'
 
-        # Set presenter to fullscreen mode
-        if self.presenter:
-            self.presenter.set_recording_mode('fullscreen')
-
-        self.status_label.text = "Status: Full Screen mode"
+        self._apply_fullscreen_mode_for_selection()
         print("[RecordingScreen] Switched to Full Screen mode")
 
-    def open_region_selector(self, instance):
+    def open_region_selector(self, instance, screen_index=None):
         """Open full-screen overlay for region selection using native macOS selector"""
         print("[RecordingScreen] Opening native macOS region selector...")
 
@@ -891,7 +995,7 @@ class RecordingScreen(BaseScreen):
 
                     # Reset to Full Screen mode
                     if self.presenter:
-                        self.presenter.set_recording_mode('fullscreen')
+                        self._apply_fullscreen_mode_for_selection()
                         self.status_label.text = "Status: Full Screen mode (cancelled)"
                         self.mode_spinner.text = 'Full Screen'
                     else:
@@ -918,7 +1022,8 @@ class RecordingScreen(BaseScreen):
 
             # Show native region selector (non-blocking)
             print("[RecordingScreen] Launching native region selector...")
-            selector = select_region(region_callback)
+            target_screen_index = 0 if screen_index is None else int(screen_index)
+            selector = select_region(region_callback, screen_index=target_screen_index)
             self.status_label.text = "Status: Drag to select region (press ESC to exit)..."
 
         except Exception as e:
@@ -943,7 +1048,7 @@ class RecordingScreen(BaseScreen):
 
             # Reset to Full Screen mode
             if self.presenter:
-                self.presenter.set_recording_mode('fullscreen')
+                self._apply_fullscreen_mode_for_selection()
                 self.status_label.text = "Status: Full Screen mode (cancelled)"
 
                 # Update mode spinner to reflect change
@@ -3320,6 +3425,7 @@ class MemScreenApp(App):
                     self.floating_ball.on_main_window_callback = self.recording_screen._hide_floating_ball
                     self.floating_ball.on_show_main_window_callback = self.recording_screen._show_main_window
                     self.floating_ball.on_switch_screen_callback = self.recording_screen._switch_screen_from_ball
+                    self.floating_ball.on_select_screen_callback = self.recording_screen._select_screen_from_ball
                     self.floating_ball.on_select_region_callback = self.recording_screen._select_region_from_ball
                     self.floating_ball.on_start_recording_callback = self.recording_screen._start_recording_from_ball
                     self.floating_ball.on_quit_callback = self.recording_screen._quit_from_ball
@@ -3439,6 +3545,28 @@ class MemScreenApp(App):
                 sys.stderr.write(f"[App] Found region selection trigger - using native selector\n")
                 sys.stderr.flush()
 
+                requested_screen_index = None
+                try:
+                    with open(self._region_trigger_file, 'r') as f:
+                        trigger_text = f.read().strip()
+                    if trigger_text:
+                        try:
+                            payload = json.loads(trigger_text)
+                            value = payload.get("screen_index")
+                            if isinstance(value, int) and value >= 0:
+                                requested_screen_index = value
+                        except Exception:
+                            # Backward compatible fallback: plain integer in file
+                            try:
+                                value = int(trigger_text)
+                                if value >= 0:
+                                    requested_screen_index = value
+                            except Exception:
+                                pass
+                except Exception as e:
+                    sys.stderr.write(f"[App] Could not parse region trigger payload: {e}\n")
+                    sys.stderr.flush()
+
                 # Minimize main window
                 try:
                     from kivy.core.window import Window
@@ -3452,6 +3580,16 @@ class MemScreenApp(App):
                 # Use native region selector (synchronous - blocks until selection done)
                 try:
                     from memscreen.ui.native_region_selector import select_region
+
+                    recording_screen = None
+                    if hasattr(self, 'screen_manager') and self.screen_manager:
+                        recording_screen = self.screen_manager.get_screen('recording')
+
+                    if requested_screen_index is None and recording_screen and hasattr(recording_screen, 'get_selected_screen_index'):
+                        requested_screen_index = recording_screen.get_selected_screen_index()
+
+                    if requested_screen_index is None:
+                        requested_screen_index = 0
 
                     def region_callback(bbox):
                         """Handle region selection"""
@@ -3467,7 +3605,10 @@ class MemScreenApp(App):
 
                             # Reset to Full Screen mode
                             if recording_screen and hasattr(recording_screen, 'presenter') and recording_screen.presenter:
-                                recording_screen.presenter.set_recording_mode('fullscreen')
+                                if hasattr(recording_screen, '_apply_fullscreen_mode_for_selection'):
+                                    recording_screen._apply_fullscreen_mode_for_selection()
+                                else:
+                                    recording_screen.presenter.set_recording_mode('fullscreen')
                                 if hasattr(recording_screen, 'status_label'):
                                     recording_screen.status_label.text = "Status: Full Screen mode (cancelled)"
                                 if hasattr(recording_screen, 'mode_spinner'):
@@ -3489,7 +3630,7 @@ class MemScreenApp(App):
                                 if hasattr(recording_screen, 'status_label'):
                                     recording_screen.status_label.text = f"Status: Region {width}×{height}px - Ready to record"
                                 if hasattr(recording_screen, 'mode_spinner'):
-                                    recording_screen.mode_spinner.text = 'Region'
+                                    recording_screen.mode_spinner.text = 'Custom Region'
 
                             sys.stderr.write(f"[App] Region selected: {bbox}\n")
                             sys.stderr.flush()
@@ -3505,7 +3646,7 @@ class MemScreenApp(App):
                     sys.stderr.flush()
 
                     # This blocks until user selects region or cancels
-                    selector = select_region(region_callback)
+                    selector = select_region(region_callback, screen_index=int(requested_screen_index))
                     sys.stderr.write(f"[App] Region selector closed\n")
                     sys.stderr.flush()
 
