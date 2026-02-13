@@ -79,8 +79,10 @@ class _RecordingScreenState extends State<RecordingScreen> {
     setState(() {
       _regionLeft = (double.tryParse(_regionLeftController.text) ?? 0.0) / 100;
       _regionTop = (double.tryParse(_regionTopController.text) ?? 0.0) / 100;
-      _regionRight = (double.tryParse(_regionRightController.text) ?? 1920.0) / 100;
-      _regionBottom = (double.tryParse(_regionBottomController.text) ?? 1080.0) / 100;
+      _regionRight =
+          (double.tryParse(_regionRightController.text) ?? 1920.0) / 100;
+      _regionBottom =
+          (double.tryParse(_regionBottomController.text) ?? 1080.0) / 100;
     });
   }
 
@@ -95,7 +97,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
           _screens = screens;
           _loading = false;
           if (screens.isNotEmpty) {
-            final primary = screens.firstWhere((s) => s.isPrimary, orElse: () => screens.first);
+            final primary = screens.firstWhere((s) => s.isPrimary,
+                orElse: () => screens.first);
             _screenWidth = primary.width.toDouble();
             _screenHeight = primary.height.toDouble();
             // 初始化区域为全屏
@@ -104,7 +107,9 @@ class _RecordingScreenState extends State<RecordingScreen> {
             _regionRight = 1.0;
             _regionBottom = 1.0;
           }
-          if (_mode == 'fullscreen-single' && _screenIndex == null && screens.isNotEmpty) {
+          if (_mode == 'fullscreen-single' &&
+              _screenIndex == null &&
+              screens.isNotEmpty) {
             _screenIndex = screens.first.index;
           }
         });
@@ -137,7 +142,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
       final path = '${tempDir.path}/screenshot_$timestamp.png';
 
       // 执行截图命令（截取主屏幕）
-      final result = await Process.run('screencapture', ['-x', '-t', 'png', '-R', '0,0,$_screenWidth,$_screenHeight', path]);
+      final result = await Process.run('screencapture',
+          ['-x', '-t', 'png', '-R', '0,0,$_screenWidth,$_screenHeight', path]);
 
       if (result.exitCode == 0 || File(path).existsSync()) {
         // 读取截图并显示
@@ -233,19 +239,24 @@ class _RecordingScreenState extends State<RecordingScreen> {
       final topPx = (_regionTop * _screenHeight).round();
       final rightPx = (_regionRight * _screenWidth).round();
       final bottomPx = (_regionBottom * _screenHeight).round();
-      region = [leftPx.toDouble(), topPx.toDouble(), rightPx.toDouble(), bottomPx.toDouble()];
+      region = [
+        leftPx.toDouble(),
+        topPx.toDouble(),
+        rightPx.toDouble(),
+        bottomPx.toDouble()
+      ];
     } else if (_mode == 'fullscreen-single' && _screenIndex != null) {
       screenIndex = _screenIndex;
     }
 
     try {
       await context.read<AppState>().recordingApi.start(
-        duration: duration,
-        interval: interval,
-        mode: mode,
-        region: region,
-        screenIndex: screenIndex,
-      );
+            duration: duration,
+            interval: interval,
+            mode: mode,
+            region: region,
+            screenIndex: screenIndex,
+          );
       // Update floating ball state
       if (mounted) {
         context.read<AppState>().updateFloatingBallState(true);
@@ -265,7 +276,12 @@ class _RecordingScreenState extends State<RecordingScreen> {
       await context.read<AppState>().recordingApi.stop();
       // Update floating ball state
       if (mounted) {
-        context.read<AppState>().updateFloatingBallState(false);
+        final appState = context.read<AppState>();
+        appState.updateFloatingBallState(false);
+        appState.requestVideoRefresh();
+        Future.delayed(const Duration(seconds: 2), () {
+          appState.requestVideoRefresh();
+        });
       }
       _stopPolling();
       _load();
@@ -283,7 +299,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
       SegmentedButton<String>(
         segments: const [
           ButtonSegment(value: 'fullscreen', label: Text('Full Screen')),
-          ButtonSegment(value: 'fullscreen-single', label: Text('Single Screen')),
+          ButtonSegment(
+              value: 'fullscreen-single', label: Text('Single Screen')),
           ButtonSegment(value: 'region', label: Text('Region')),
         ],
         selected: {_mode},
@@ -304,10 +321,13 @@ class _RecordingScreenState extends State<RecordingScreen> {
           labelText: 'Select Screen',
           contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         ),
-        items: _screens.map((e) => DropdownMenuItem<int>(
-          value: e.index,
-          child: Text('${e.name} (${e.width}x${e.height})${e.isPrimary ? " [Primary]" : ""}'),
-        )).toList(),
+        items: _screens
+            .map((e) => DropdownMenuItem<int>(
+                  value: e.index,
+                  child: Text(
+                      '${e.name} (${e.width}x${e.height})${e.isPrimary ? " [Primary]" : ""}'),
+                ))
+            .toList(),
         onChanged: (v) => setState(() => _screenIndex = v),
       ),
     ];
@@ -319,20 +339,22 @@ class _RecordingScreenState extends State<RecordingScreen> {
     }
 
     // 确保status不为null
-    final status = _status ?? RecordingStatus(
-      isRecording: false,
-      duration: 60,
-      interval: 2,
-      outputDir: '',
-      frameCount: 0,
-      elapsedTime: 0,
-    );
+    final status = _status ??
+        RecordingStatus(
+          isRecording: false,
+          duration: 60,
+          interval: 2,
+          outputDir: '',
+          frameCount: 0,
+          elapsedTime: 0,
+        );
 
     return [
       // 区域选择标题
       Row(
         children: [
-          Text('Recording Region', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text('Recording Region',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const Spacer(),
           if (_mode == 'region') ...[
             OutlinedButton.icon(
@@ -348,7 +370,11 @@ class _RecordingScreenState extends State<RecordingScreen> {
             const SizedBox(width: 8),
             FilledButton.icon(
               icon: _capturing
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.screenshot),
               label: Text(_capturing ? 'Capturing...' : 'Select on Screen'),
               onPressed: _capturing ? null : _captureScreen,
@@ -423,7 +449,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Selected Region:', style: TextStyle(fontSize: 12, color: Colors.black87)),
+            Text('Selected Region:',
+                style: TextStyle(fontSize: 12, color: Colors.black87)),
             const SizedBox(height: 4),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -472,7 +499,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
                 labelText: 'Interval (seconds)',
                 prefixIcon: Icon(Icons.schedule, size: 20),
               ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
             ),
           ),
         ],
@@ -489,7 +517,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
               icon: const Icon(Icons.fiber_manual_record),
               label: const Text('Start Recording'),
               style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               ),
             )
           else
@@ -499,7 +528,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
               label: const Text('Stop Recording'),
               style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.error,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               ),
             ),
         ],
@@ -510,7 +540,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
   @override
   Widget build(BuildContext context) {
     // 总是提供有效的status对象
-    final s = _status ?? RecordingStatus(
+    final s = _status ??
+        RecordingStatus(
           isRecording: false,
           duration: 60,
           interval: 2,
@@ -558,7 +589,9 @@ class _RecordingScreenState extends State<RecordingScreen> {
                     children: [
                       const Icon(Icons.info_outline, color: Colors.blue),
                       const SizedBox(width: 12),
-                      Text('区域选择：直接输入像素坐标', style: TextStyle(fontSize: 12, color: Colors.black87)),
+                      Text('区域选择：直接输入像素坐标',
+                          style:
+                              TextStyle(fontSize: 12, color: Colors.black87)),
                     ],
                   ),
                 ),
@@ -573,7 +606,9 @@ class _RecordingScreenState extends State<RecordingScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        s.isRecording ? Icons.fiber_manual_record : Icons.stop_circle_outlined,
+                        s.isRecording
+                            ? Icons.fiber_manual_record
+                            : Icons.stop_circle_outlined,
                         size: 48,
                         color: s.isRecording ? Colors.red : Colors.grey,
                       ),
@@ -589,7 +624,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         if (s.outputDir.isNotEmpty)
-                          Text('Output: ${s.outputDir}', style: Theme.of(context).textTheme.bodySmall),
+                          Text('Output: ${s.outputDir}',
+                              style: Theme.of(context).textTheme.bodySmall),
                       ],
                     ],
                   ),
@@ -621,7 +657,8 @@ class _RegionSelectorDialog extends StatefulWidget {
   final double initialTop;
   final double initialRight;
   final double initialBottom;
-  final Function(double left, double top, double right, double bottom) onRegionSelected;
+  final Function(double left, double top, double right, double bottom)
+      onRegionSelected;
 
   const _RegionSelectorDialog({
     required this.screenshotImage,
@@ -662,7 +699,8 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
 
   // 显示尺寸
   double get _displayWidth => 800;
-  double get _displayHeight => _displayWidth * (widget.screenHeight / widget.screenWidth);
+  double get _displayHeight =>
+      _displayWidth * (widget.screenHeight / widget.screenWidth);
 
   // 转换系数
   double get _scale => _displayWidth / widget.screenWidth;
@@ -695,13 +733,20 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
     _isDraggingBottom = (dy - bottomPx).abs() < handleSize;
 
     // 检查是否在区域内
-    if (!_isDraggingLeft && !_isDraggingTop && !_isDraggingRight && !_isDraggingBottom) {
+    if (!_isDraggingLeft &&
+        !_isDraggingTop &&
+        !_isDraggingRight &&
+        !_isDraggingBottom) {
       if (dx > leftPx && dx < rightPx && dy > topPx && dy < bottomPx) {
         _isMovingRegion = true;
       }
     }
 
-    if (_isDraggingLeft || _isDraggingTop || _isDraggingRight || _isDraggingBottom || _isMovingRegion) {
+    if (_isDraggingLeft ||
+        _isDraggingTop ||
+        _isDraggingRight ||
+        _isDraggingBottom ||
+        _isMovingRegion) {
       setState(() {
         _isDragging = true;
         _dragStartX = dx;
@@ -782,7 +827,10 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
               const SizedBox(height: 8),
               Text(
                 'Drag the corners or edges to adjust the region',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Colors.grey.shade600),
               ),
               const SizedBox(height: 16),
               // 截图显示区域
@@ -803,7 +851,8 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
                       displayWidth: _displayWidth,
                       displayHeight: _displayHeight,
                     ),
-                    child: SizedBox(width: _displayWidth, height: _displayHeight),
+                    child:
+                        SizedBox(width: _displayWidth, height: _displayHeight),
                   ),
                 ),
               ),
@@ -821,10 +870,13 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        Text('Region Size:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('Region Size:',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                         Text(
                           '${((widthPx / _scale).round()).toString()} × ${((heightPx / _scale).round()).toString()}',
-                          style: TextStyle(fontFamily: 'monospace', color: Colors.blue.shade700),
+                          style: TextStyle(
+                              fontFamily: 'monospace',
+                              color: Colors.blue.shade700),
                         ),
                       ],
                     ),
@@ -832,10 +884,13 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        Text('Position:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('Position:',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                         Text(
                           '(${(_left * 100).toStringAsFixed(1)}%, ${(_top * 100).toStringAsFixed(1)}%)',
-                          style: TextStyle(fontFamily: 'monospace', color: Colors.blue.shade700),
+                          style: TextStyle(
+                              fontFamily: 'monospace',
+                              color: Colors.blue.shade700),
                         ),
                       ],
                     ),
@@ -866,7 +921,8 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
-                    onPressed: () => widget.onRegionSelected(_left, _top, _right, _bottom),
+                    onPressed: () =>
+                        widget.onRegionSelected(_left, _top, _right, _bottom),
                     child: const Text('Confirm'),
                   ),
                 ],
@@ -902,7 +958,8 @@ class _ScreenshotPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     // 绘制截图
-    final srcRect = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+    final srcRect =
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
     final dstRect = Rect.fromLTWH(0, 0, displayWidth, displayHeight);
     canvas.drawImageRect(image, srcRect, dstRect, Paint());
 
@@ -918,11 +975,16 @@ class _ScreenshotPainter extends CustomPainter {
     // 顶部遮罩
     canvas.drawRect(Rect.fromLTWH(0, 0, displayWidth, topPx), maskPaint);
     // 底部遮罩
-    canvas.drawRect(Rect.fromLTWH(0, bottomPx, displayWidth, displayHeight - bottomPx), maskPaint);
+    canvas.drawRect(
+        Rect.fromLTWH(0, bottomPx, displayWidth, displayHeight - bottomPx),
+        maskPaint);
     // 左侧遮罩
-    canvas.drawRect(Rect.fromLTWH(0, topPx, leftPx, bottomPx - topPx), maskPaint);
+    canvas.drawRect(
+        Rect.fromLTWH(0, topPx, leftPx, bottomPx - topPx), maskPaint);
     // 右侧遮罩
-    canvas.drawRect(Rect.fromLTWH(rightPx, topPx, displayWidth - rightPx, bottomPx - topPx), maskPaint);
+    canvas.drawRect(
+        Rect.fromLTWH(rightPx, topPx, displayWidth - rightPx, bottomPx - topPx),
+        maskPaint);
 
     // 绘制选择框
     final borderPaint = Paint()
@@ -930,20 +992,34 @@ class _ScreenshotPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
 
-    canvas.drawRect(Rect.fromLTWH(leftPx, topPx, rightPx - leftPx, bottomPx - topPx), borderPaint);
+    canvas.drawRect(
+        Rect.fromLTWH(leftPx, topPx, rightPx - leftPx, bottomPx - topPx),
+        borderPaint);
 
     // 绘制角落手柄
     final handlePaint = Paint()..color = Colors.red;
     const handleSize = 8.0;
 
     // 左上角
-    canvas.drawRect(Rect.fromLTWH(leftPx - handleSize / 2, topPx - handleSize / 2, handleSize, handleSize), handlePaint);
+    canvas.drawRect(
+        Rect.fromLTWH(leftPx - handleSize / 2, topPx - handleSize / 2,
+            handleSize, handleSize),
+        handlePaint);
     // 右上角
-    canvas.drawRect(Rect.fromLTWH(rightPx - handleSize / 2, topPx - handleSize / 2, handleSize, handleSize), handlePaint);
+    canvas.drawRect(
+        Rect.fromLTWH(rightPx - handleSize / 2, topPx - handleSize / 2,
+            handleSize, handleSize),
+        handlePaint);
     // 左下角
-    canvas.drawRect(Rect.fromLTWH(leftPx - handleSize / 2, bottomPx - handleSize / 2, handleSize, handleSize), handlePaint);
+    canvas.drawRect(
+        Rect.fromLTWH(leftPx - handleSize / 2, bottomPx - handleSize / 2,
+            handleSize, handleSize),
+        handlePaint);
     // 右下角
-    canvas.drawRect(Rect.fromLTWH(rightPx - handleSize / 2, bottomPx - handleSize / 2, handleSize, handleSize), handlePaint);
+    canvas.drawRect(
+        Rect.fromLTWH(rightPx - handleSize / 2, bottomPx - handleSize / 2,
+            handleSize, handleSize),
+        handlePaint);
   }
 
   @override

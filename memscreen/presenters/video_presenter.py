@@ -14,7 +14,6 @@ from typing import Optional, List, Dict, Any, TYPE_CHECKING
 if TYPE_CHECKING:
     import cv2
 
-from kivy.clock import Clock
 from .base_presenter import BasePresenter
 
 

@@ -2,36 +2,90 @@ import Cocoa
 import FlutterMacOS
 import os.log
 
+private let flutterWindowReadyNotification = Notification.Name("MemScreenFlutterWindowReady")
+
 @main
 class AppDelegate: FlutterAppDelegate {
     private var floatingBall: FloatingBallWindow?
     private var methodChannel: FlutterMethodChannel?
     private var creationTimer: Timer?
+    private var creationAttempts = 0
     private var shouldForceQuit = false
+    private var mainWindow: NSWindow?
+    private var lastKnownFlutterController: FlutterViewController?
 
     let logger = OSLog(subsystem: "com.memscreen", category: "AppDelegate")
+
+    override func applicationWillFinishLaunching(_ notification: Notification) {
+        super.applicationWillFinishLaunching(notification)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleFlutterWindowReady(_:)),
+            name: flutterWindowReadyNotification,
+            object: nil
+        )
+    }
 
     override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         os_log("Terminate after last window closed", log: logger, type: .info)
         creationTimer?.invalidate()
         creationTimer = nil
+
         if shouldForceQuit {
+            floatingBall?.close()
+            floatingBall = nil
             return true
+        }
+
+        // Keep the floating ball alive when users close the main window.
+        if let ball = floatingBall {
+            ball.orderFront(nil)
+            ball.makeKeyAndOrderFront(nil)
+        } else if let controller = resolveFlutterController() {
+            createFloatingBall(with: controller)
+        } else {
+            pollForFlutterController()
         }
         return false
     }
 
     func forceQuit() {
         os_log("Force quit called", log: logger, type: .info)
+        os_log("Total windows before quit: %{public}d", log: logger, type: .info, NSApplication.shared.windows.count)
         shouldForceQuit = true
-        for window in NSApplication.shared.windows {
-            window.close()
-        }
+
+        // Close floating ball first
+        floatingBall?.close()
+        floatingBall = nil
+
+        // Stop timer
         creationTimer?.invalidate()
         creationTimer = nil
-        NSApplication.shared.reply(toApplicationShouldTerminate: true)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            NSApplication.shared.terminate(nil)
+
+        // Close all windows and terminate app immediately
+        DispatchQueue.main.async { [weak self] in
+            guard let strongSelf = self else { return }
+            let log = strongSelf.logger
+
+            for window in NSApplication.shared.windows {
+                os_log("Closing window: %{public}@",
+                       log: log, type: .info,
+                       String(describing: type(of: window)))
+                window.close()
+            }
+
+            // Force quit after short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                os_log("Calling terminate and exit",
+                       log: log, type: .info)
+                NSApplication.shared.reply(toApplicationShouldTerminate: true)
+                NSApplication.shared.terminate(nil)
+
+                // Force exit with code 0 after another delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    exit(0)
+                }
+            }
         }
     }
 
@@ -40,11 +94,45 @@ class AppDelegate: FlutterAppDelegate {
     }
 
     override func applicationDidFinishLaunching(_ notification: Notification) {
+        super.applicationDidFinishLaunching(notification)
         os_log("App did finish launching", log: logger, type: .info)
-        pollForFlutterController()
+        // Build the floating ball after Flutter window/controller is ready.
+        // We keep the main window visible to avoid blank-screen startup edge cases.
+        DispatchQueue.main.async { [weak self] in
+            self?.pollForFlutterController()
+        }
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func handleFlutterWindowReady(_ notification: Notification) {
+        if let window = notification.object as? NSWindow {
+            mainWindow = window
+        }
+        if let vc = notification.userInfo?["flutterViewController"] as? FlutterViewController {
+            lastKnownFlutterController = vc
+        }
+
+        ensureMethodChannel(with: resolveFlutterController())
+
+        if floatingBall == nil {
+            createFloatingBall(with: resolveFlutterController())
+        }
+    }
+
+    func attachMainFlutterWindow(_ window: NSWindow, controller: FlutterViewController) {
+        mainWindow = window
+        ensureMethodChannel(with: controller)
+        if floatingBall == nil {
+            createFloatingBall(with: controller)
+        }
     }
 
     private func pollForFlutterController() {
+        creationTimer?.invalidate()
+        creationAttempts = 0
         os_log("Starting poll for Flutter controller", log: logger, type: .info)
         let log = logger
         creationTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] timer in
@@ -54,101 +142,243 @@ class AppDelegate: FlutterAppDelegate {
                 return
             }
 
+            strongSelf.creationAttempts += 1
+
+            // Only create floating ball once
             if strongSelf.floatingBall == nil {
-                os_log("Searching for FlutterViewController, windows: %{public}d", log: log, type: .info, NSApplication.shared.windows.count)
-                for window in NSApplication.shared.windows {
-                    if let flutterVC = window.contentViewController as? FlutterViewController {
-                        os_log("Found FlutterViewController", log: log, type: .info)
-                        strongSelf.createFloatingBall(with: flutterVC)
-                        timer.invalidate()
-                        return
+                os_log("Searching for FlutterViewController, total windows: %{public}d",
+                       log: log, type: .info,
+                       NSApplication.shared.windows.count)
+
+                // Prefer FlutterAppDelegate's main window when available.
+                if let flutterVC = strongSelf.resolveFlutterController() {
+                    if let window = strongSelf.findFlutterWindow() {
+                        strongSelf.mainWindow = window
                     }
+                    os_log("Found FlutterViewController, creating floating ball",
+                           log: log, type: .info)
+                    strongSelf.createFloatingBall(with: flutterVC)
+                    timer.invalidate()
+                    strongSelf.creationTimer = nil
+                    return
+                }
+
+                if strongSelf.creationAttempts >= 20 {
+                    os_log("Failed to find FlutterViewController after retries; creating fallback floating ball",
+                           log: log, type: .error)
+                    if strongSelf.floatingBall == nil {
+                        strongSelf.createFloatingBall(with: nil)
+                    }
+                    timer.invalidate()
+                    strongSelf.creationTimer = nil
                 }
             } else {
+                os_log("Floating ball already exists, skipping poll",
+                       log: log, type: .info)
                 timer.invalidate()
+                strongSelf.creationTimer = nil
             }
         }
     }
 
-    private func createFloatingBall(with controller: FlutterViewController) {
+    private func createFloatingBall(with controller: FlutterViewController?) {
         guard floatingBall == nil else { return }
         os_log("Creating floating ball", log: logger, type: .info)
 
-        if methodChannel == nil {
+        ensureMethodChannel(with: controller)
+
+        // Force the primary screen (origin 0,0) so the ball does not end up on another monitor.
+        let targetScreen: NSScreen
+        if let primaryScreen = NSScreen.screens.first(where: { screen in
+            screen.frame.origin.x == 0 && screen.frame.origin.y == 0
+        }) {
+            targetScreen = primaryScreen
+        } else if let windowScreen = findFlutterWindow()?.screen {
+            targetScreen = windowScreen
+        } else {
+            targetScreen = NSScreen.main ?? NSScreen.screens.first!
+        }
+        let screenFrame = targetScreen.visibleFrame
+        let ballSize: CGFloat = 80
+        let margin: CGFloat = 20
+
+        let x = screenFrame.origin.x + screenFrame.width - ballSize - margin
+        let y = screenFrame.origin.y + screenFrame.height - ballSize - margin
+
+        let contentRect = NSRect(x: x, y: y, width: ballSize, height: ballSize)
+
+        // Create floating ball as an auxiliary always-on-top controller.
+        floatingBall = FloatingBallWindow(
+            contentRect: contentRect,
+            flutterChannel: methodChannel,
+            parentWindow: findFlutterWindow()
+        )
+
+        floatingBall?.onClick = { [weak self] in
+            // When floating ball is clicked, just show the main window (but keep it hidden)
+            // Actually, let's show it since user wants to see the main window
+            NSApp.setActivationPolicy(.regular)
+            if let window = self?.findFlutterWindow() {
+                if window.isMiniaturized {
+                    window.deminiaturize(nil)
+                }
+                window.setIsVisible(true)
+                window.makeKeyAndOrderFront(nil)
+                if let strongSelf = self {
+                    os_log("Main window shown", log: strongSelf.logger, type: .info)
+                }
+            }
+        }
+        floatingBall?.onQuit = { [weak self] in
+            self?.forceQuit()
+        }
+
+        // Show floating ball above everything
+        floatingBall?.orderFront(nil)
+        floatingBall?.makeKeyAndOrderFront(nil)
+
+        // Ensure app activation policy is regular
+        NSApp.setActivationPolicy(.regular)
+
+        // Activate app to ensure floating ball is visible
+        NSApp.activate(ignoringOtherApps: true)
+
+        os_log("Floating ball created at %{public}f, %{public}f", log: logger, type: .info, x, y)
+    }
+
+    private func ensureMethodChannel(with controller: FlutterViewController?) {
+        if let controller = controller {
+            lastKnownFlutterController = controller
+        }
+        if methodChannel == nil, let channelController = lastKnownFlutterController {
             methodChannel = FlutterMethodChannel(
                 name: "com.memscreen/floating_ball",
-                binaryMessenger: controller.engine.binaryMessenger
+                binaryMessenger: channelController.engine.binaryMessenger
             )
 
             methodChannel?.setMethodCallHandler { [weak self] (call, result) in
                 self?.handleMethodCall(call, result: result)
             }
         }
+    }
 
-        let screenSize = NSScreen.main?.frame ?? NSRect.zero
-        let ballSize: CGFloat = 80
-        let margin: CGFloat = 20
-
-        let x = screenSize.origin.x + screenSize.width - ballSize - margin
-        let y = screenSize.origin.y + screenSize.height - ballSize - margin
-
-        let contentRect = NSRect(x: x, y: y, width: ballSize, height: ballSize)
-
-        floatingBall = FloatingBallWindow(
-            contentRect: contentRect,
-            flutterChannel: methodChannel
-        )
-
-        floatingBall?.onClick = {
-            for window in NSApplication.shared.windows {
-                if window.contentViewController is FlutterViewController {
-                    window.setIsVisible(true)
-                    window.makeKeyAndOrderFront(nil)
-                    break
-                }
+    private func findFlutterWindow() -> NSWindow? {
+        if let mainWindow = mainWindow {
+            return mainWindow
+        }
+        if let appMainWindow = mainFlutterWindow {
+            return appMainWindow
+        }
+        for window in NSApplication.shared.windows {
+            if let _ = window.contentViewController as? FlutterViewController {
+                return window
             }
         }
+        return nil
+    }
 
-        floatingBall?.orderFront(nil)
+    private func resolveFlutterController() -> FlutterViewController? {
+        if let vc = lastKnownFlutterController {
+            return vc
+        }
+        if let main = mainFlutterWindow,
+           let vc = main.contentViewController as? FlutterViewController {
+            return vc
+        }
+        for window in NSApplication.shared.windows {
+            if let vc = window.contentViewController as? FlutterViewController {
+                return vc
+            }
+        }
+        return nil
+    }
 
-        os_log("Floating ball created at %{public}f, %{public}f", log: logger, type: .info, x, y)
+    private func toggleMainWindow() {
+        guard let window = findFlutterWindow() else { return }
+
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+            window.makeKeyAndOrderFront(nil)
+            os_log("Main window restored from dock", log: logger, type: .info)
+        } else if !window.isVisible {
+            window.setIsVisible(true)
+            window.makeKeyAndOrderFront(nil)
+            os_log("Main window shown", log: logger, type: .info)
+        } else {
+            // Hide instead of minimizing to avoid extra dock icon
+            window.orderOut(nil)
+            os_log("Main window hidden", log: logger, type: .info)
+        }
+    }
+
+    private func showMainWindowAndSwitch(to tabIndex: Int) {
+        // Show main window
+        if let window = findFlutterWindow() {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            window.setIsVisible(true)
+            window.makeKeyAndOrderFront(nil)
+        }
+
+        // Notify Flutter to switch tab
+        methodChannel?.invokeMethod("switchTab", arguments: ["index": tabIndex])
     }
 
     private func handleMethodCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        os_log("Method called: %{public}@", log: logger, type: .info, call.method)
+
         switch call.method {
         case "showFloatingBall":
+            if floatingBall == nil {
+                if let controller = resolveFlutterController() {
+                    createFloatingBall(with: controller)
+                } else {
+                    pollForFlutterController()
+                }
+            }
+            floatingBall?.orderFront(nil)
             floatingBall?.makeKeyAndOrderFront(nil)
             result(nil)
-
         case "hideFloatingBall":
             floatingBall?.orderOut(nil)
             result(nil)
-
         case "setRecordingState":
             if let args = call.arguments as? [String: Any],
                let isRecording = args["isRecording"] as? Bool {
                 floatingBall?.setRecordingState(isRecording)
-                os_log("Recording state set to %{public}@", log: logger, type: .info, isRecording)
                 result(nil)
             } else {
-                result(FlutterError(code: "invalid_args", message: "isRecording required", details: nil))
+                result(FlutterError(code: "INVALID_ARGS", message: "Expected isRecording argument", details: nil))
             }
-
         case "setPausedState":
             if let args = call.arguments as? [String: Any],
                let isPaused = args["isPaused"] as? Bool {
                 floatingBall?.setPausedState(isPaused)
-                os_log("Paused state set to %{public}@", log: logger, type: .info, isPaused)
                 result(nil)
             } else {
-                result(FlutterError(code: "invalid_args", message: "isPaused required", details: nil))
+                result(FlutterError(code: "INVALID_ARGS", message: "Expected isPaused argument", details: nil))
             }
-
-        case "quitApp":
-            floatingBall?.close()
-            NSApplication.shared.terminate(nil)
+        case "openQuickChat":
+            showMainWindowAndSwitch(to: 1)
             result(nil)
-
+        case "openVideos":
+            showMainWindowAndSwitch(to: 2)
+            result(nil)
+        case "openSettings":
+            showMainWindowAndSwitch(to: 3)
+            result(nil)
+        case "quitApp":
+            forceQuit()
+            result(nil)
+        case "switchTab":
+            if let args = call.arguments as? [String: Any],
+               let index = args["index"] as? Int {
+                showMainWindowAndSwitch(to: index)
+                result(nil)
+            } else {
+                result(FlutterError(code: "INVALID_ARGS", message: "Expected index argument", details: nil))
+            }
         default:
             result(FlutterMethodNotImplemented)
         }

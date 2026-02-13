@@ -251,10 +251,12 @@ docker-compose up --build
 
 > **💡 Floating Ball Mode (macOS):**
 > - On macOS, MemScreen starts with a **floating ball** in the top-right corner
-> - The main window stays minimized - use the floating ball to control everything
-> - **Right-click** the ball to access all features (Recording, Videos, AI Chat, etc.)
-> - **Left-click** to show/hide the main window
+> - **Right-click** the ball to open the action toolbar (Recording, Videos, AI Chat, etc.)
+> - Region workflow: **Select Region** first, then press **Start Recording**
+> - **Left-click** the ball to reopen the main window
+> - Closing the main window keeps the floating ball alive; use toolbar **Quit** to exit completely
 > - **Drag** the ball to any position on screen
+> - Video list auto-refreshes after recording stops (includes delayed refresh after async save)
 
 > **💡 Pro Tip:** Once models are downloaded, MemScreen works **completely offline**.
 
@@ -421,6 +423,14 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 ---
 
 ## 📝 What's New
+
+### ✨ v0.6.1 — Flutter Floating Ball Stability Update (February 2026)
+
+- 🧭 **Two-step region recording** — Select region first, start recording on explicit button click
+- 📁 **Video list sync** — New recordings now auto-refresh in `Videos` after stop (immediate + delayed refresh)
+- 🟣 **Floating ball lifecycle fix** — Closing main window no longer kills the floating ball
+- 🧹 **Toolbar cleanup fix** — Floating toolbar is force-closed when ball exits, no orphan panel left on screen
+- 🚀 **macOS launcher hardening** — Startup script runs built app binary and improves process cleanup behavior
 
 ### ✨ v0.6.0 — Floating Ball Mode & UI Polish (February 2026)
 

@@ -13,11 +13,39 @@ class HomeScaffold extends StatefulWidget {
   const HomeScaffold({super.key});
 
   @override
-  State<HomeScaffold> createState() => _HomeScaffoldState();
+  State<HomeScaffold> createState() => HomeScaffoldState();
 }
 
-class _HomeScaffoldState extends State<HomeScaffold> {
+/// Public state class for external access
+class HomeScaffoldState extends State<HomeScaffold> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Listen for tab changes from AppState (triggered by floating ball)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final appState = context.read<AppState>();
+      appState.addListener(_onAppStateChange);
+    });
+  }
+
+  @override
+  void dispose() {
+    context.read<AppState>().removeListener(_onAppStateChange);
+    super.dispose();
+  }
+
+  void _onAppStateChange() {
+    final appState = context.read<AppState>();
+    if (appState.desiredTabIndex != null) {
+      setState(() {
+        _index = appState.desiredTabIndex!;
+      });
+      // Clear the desired tab after consuming it
+      appState.clearDesiredTab();
+    }
+  }
 
   static const _tabs = [
     (icon: Icons.chat, label: 'Chat'),

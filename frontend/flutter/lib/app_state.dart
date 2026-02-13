@@ -37,8 +37,15 @@ class AppState extends ChangeNotifier {
   late ApiClient _client;
   late ConnectionService _connection;
 
-  ApiConnectionState _connectionState = ApiConnectionState(status: ConnectionStatus.unknown);
+  ApiConnectionState _connectionState =
+      ApiConnectionState(status: ConnectionStatus.unknown);
   ApiConnectionState get connectionState => _connectionState;
+
+  // Desired tab index from floating ball (null = no change requested)
+  int? _desiredTabIndex;
+  int? get desiredTabIndex => _desiredTabIndex;
+  int _videoRefreshVersion = 0;
+  int get videoRefreshVersion => _videoRefreshVersion;
 
   late ChatApi _chatApi;
   late ProcessApi _processApi;
@@ -56,7 +63,8 @@ class AppState extends ChangeNotifier {
 
   /// Check connection (e.g. on startup or retry).
   Future<void> checkConnection() async {
-    _connectionState = _connectionState.copyWith(status: ConnectionStatus.connecting);
+    _connectionState =
+        _connectionState.copyWith(status: ConnectionStatus.connecting);
     notifyListeners();
     final state = await _connection.check();
     _connectionState = state;
@@ -65,7 +73,8 @@ class AppState extends ChangeNotifier {
 
   /// Retry with optional new base URL (replaces config and client).
   Future<void> reconnectWithBaseUrl(String baseUrl) async {
-    _connectionState = _connectionState.copyWith(status: ConnectionStatus.connecting);
+    _connectionState =
+        _connectionState.copyWith(status: ConnectionStatus.connecting);
     notifyListeners();
     final state = await _connection.reconnectWithBaseUrl(baseUrl);
     if (state.config != null) {
@@ -101,21 +110,53 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  void requestVideoRefresh({bool notify = true}) {
+    _videoRefreshVersion += 1;
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
   /// Handle method calls from native floating ball
   Future<dynamic> _handleFloatingBallCall(MethodCall call) async {
     debugPrint('[AppState] Received floating ball call: ${call.method}');
     switch (call.method) {
       case 'startRecording':
         try {
+          final args =
+              call.arguments is Map ? (call.arguments as Map) : const {};
+          final rawMode = args['mode'];
+          final mode =
+              rawMode is String && rawMode.isNotEmpty ? rawMode : 'fullscreen';
+
+          List<double>? region;
+          final rawRegion = args['region'];
+          if (rawRegion is List) {
+            region = rawRegion.map((e) => (e as num).toDouble()).toList();
+            if (region.length != 4) {
+              region = null;
+            }
+          }
+
+          int? screenIndex;
+          final rawScreenIndex = args['screenIndex'] ?? args['screen_index'];
+          if (rawScreenIndex is int) {
+            screenIndex = rawScreenIndex;
+          } else if (rawScreenIndex is num) {
+            screenIndex = rawScreenIndex.toInt();
+          }
+
           await _recordingApi.start(
             duration: 60,
             interval: 2.0,
-            mode: 'fullscreen',
-            region: null,
-            screenIndex: null,
+            mode: mode,
+            region: region,
+            screenIndex: screenIndex,
           );
           updateFloatingBallState(true);
-          debugPrint('[AppState] Recording started from floating ball');
+          debugPrint(
+            '[AppState] Recording started from floating ball: mode=$mode, region=$region, screen=$screenIndex',
+          );
         } catch (e) {
           debugPrint('[AppState] Error starting recording: $e');
         }
@@ -125,6 +166,11 @@ class AppState extends ChangeNotifier {
         try {
           await _recordingApi.stop();
           updateFloatingBallState(false);
+          requestVideoRefresh();
+          // Video save is async in backend; trigger a delayed refresh as well.
+          Future.delayed(const Duration(seconds: 2), () {
+            requestVideoRefresh();
+          });
           debugPrint('[AppState] Recording stopped from floating ball');
         } catch (e) {
           debugPrint('[AppState] Error stopping recording: $e');
@@ -136,8 +182,47 @@ class AppState extends ChangeNotifier {
         debugPrint('[AppState] Toggle pause called (not fully implemented)');
         break;
 
+      case 'openQuickChat':
+        _desiredTabIndex = 0;
+        notifyListeners();
+        debugPrint('[AppState] Requesting tab switch to Chat (0)');
+        break;
+
+      case 'openVideos':
+        _desiredTabIndex = 3;
+        notifyListeners();
+        debugPrint('[AppState] Requesting tab switch to Videos (3)');
+        break;
+
+      case 'openSettings':
+        _desiredTabIndex = 4;
+        notifyListeners();
+        debugPrint('[AppState] Requesting tab switch to Settings (4)');
+        break;
+
+      case 'quitApp':
+        // Exit the application completely
+        debugPrint('[AppState] Quitting application...');
+        // Give some time for cleanup then exit
+        Future.delayed(const Duration(milliseconds: 100), () {
+          try {
+            // This will trigger the AppDelegate's termination
+            if (Platform.isMacOS || Platform.isWindows) {
+              FloatingBallService.quitApp();
+            }
+          } catch (e) {
+            debugPrint('[AppState] Error during quit: $e');
+          }
+        });
+        break;
+
       default:
         debugPrint('[AppState] Unknown method: ${call.method}');
     }
+  }
+
+  /// Clear the desired tab index after it has been consumed
+  void clearDesiredTab() {
+    _desiredTabIndex = null;
   }
 }

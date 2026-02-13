@@ -46,10 +46,12 @@ print_info() {
 cleanup() {
     echo ""
     echo -e "${YELLOW}🛑 Cleaning up...${NC}"
-    if [ ! -z "$API_PID" ]; then
+    if [ "$API_STARTED_BY_SCRIPT" = "1" ] && [ -n "${API_PID:-}" ]; then
         kill $API_PID 2>/dev/null || true
     fi
-    kill $FLUTTER_PID 2>/dev/null || true
+    if [ -n "${APP_PID:-}" ]; then
+        kill $APP_PID 2>/dev/null || true
+    fi
     echo -e "${GREEN}✓ Cleanup complete${NC}"
 }
 
@@ -57,6 +59,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 print_banner
+
+API_STARTED_BY_SCRIPT=0
 
 # Check dependencies
 echo -e "${BLUE}🔍 Checking dependencies...${NC}"
@@ -67,6 +71,7 @@ fi
 
 # Get paths
 PYTHON_CMD="python3"
+API_PYTHON_CMD="python3"
 VENV_DIR=""
 if [ -f "venv/bin/activate" ]; then
     VENV_DIR="venv"
@@ -80,6 +85,12 @@ fi
 if [ -n "$VENV_DIR" ]; then
     source $VENV_BIN
     print_info "Virtual environment: $VENV_DIR"
+fi
+
+# Prefer a non-framework Python for API process on macOS.
+# Homebrew framework Python appears as Python.app and can add an extra Dock icon.
+if [ -x "$HOME/Documents/software/miniconda3/bin/python3" ]; then
+    API_PYTHON_CMD="$HOME/Documents/software/miniconda3/bin/python3"
 fi
 
 # Find Flutter
@@ -104,6 +115,7 @@ fi
 echo -e "${GRAY}Python:${NC}   $(python3 --version 2>&1 | head -1)"
 echo -e "${GRAY}Flutter:${NC}  $FLUTTER_BIN"
 echo -e "${GRAY}VEnv:${NC}     $VENV_DIR (${VENV_BIN:-system})"
+echo -e "${GRAY}API Py:${NC}   $API_PYTHON_CMD"
 
 # Step 1: Start API Backend
 print_step "1/3" "Starting API Backend"
@@ -115,14 +127,45 @@ if [ -n "$VENV_DIR" ]; then
     print_info "Virtual environment: $VENV_DIR"
 fi
 
-# Start API backend in background (NO Kivy UI)
-PYTHONPATH="$PROJECT_ROOT/memscreen" $PYTHON_CMD setup/start_api_only.py &
-API_PID=$!
-print_info "API PID: $API_PID"
+# Avoid duplicate Flutter instances (main reason for multiple Dock icons)
+EXISTING_APP_PIDS="$(pgrep -f 'memscreen_flutter.app/Contents/MacOS/memscreen_flutter' || true)"
+if [ -n "$EXISTING_APP_PIDS" ]; then
+    print_info "Stopping existing MemScreen app instances" "$EXISTING_APP_PIDS"
+    kill $EXISTING_APP_PIDS 2>/dev/null || true
+    sleep 1
+fi
 
-# Wait for API to start
-echo -e "   ${GRAY}Waiting for API to be ready...${NC}"
-sleep 3
+# Clean up stale flutter tooling runners left by previous `flutter run` sessions.
+STALE_FLUTTER_RUN_PIDS="$(pgrep -f 'flutter_tools.snapshot run -d macos --release' || true)"
+if [ -n "$STALE_FLUTTER_RUN_PIDS" ]; then
+    print_info "Stopping stale Flutter runner processes" "$STALE_FLUTTER_RUN_PIDS"
+    kill $STALE_FLUTTER_RUN_PIDS 2>/dev/null || true
+    sleep 1
+fi
+
+# Start API backend in background (NO Kivy UI) only when not already running
+if curl -s http://127.0.0.1:8765/health > /dev/null 2>&1; then
+    print_info "API already running" "Reusing http://127.0.0.1:8765"
+else
+    API_PYTHONPATH="$PROJECT_ROOT/memscreen"
+    if [ -n "$VENV_DIR" ]; then
+        for site_pkg in "$PROJECT_ROOT/$VENV_DIR"/lib/python*/site-packages; do
+            if [ -d "$site_pkg" ]; then
+                API_PYTHONPATH="$API_PYTHONPATH:$site_pkg"
+                break
+            fi
+        done
+    fi
+
+    PYTHONPATH="$API_PYTHONPATH" "$API_PYTHON_CMD" setup/start_api_only.py &
+    API_PID=$!
+    API_STARTED_BY_SCRIPT=1
+    print_info "API PID: $API_PID"
+
+    # Wait for API to start
+    echo -e "   ${GRAY}Waiting for API to be ready...${NC}"
+    sleep 3
+fi
 
 # Check API health
 MAX_RETRIES=5
@@ -145,7 +188,7 @@ fi
 echo ""
 print_step "2/3" "API Backend running at ${GREEN}http://127.0.0.1:8765${NC}"
 
-# Step 2: Start Flutter Frontend
+# Step 2: Build and start Flutter Frontend
 print_step "3/3" "Starting Flutter Frontend"
 sleep 3  # Wait for API to be fully ready
 
@@ -154,25 +197,34 @@ print_info "Installing Flutter dependencies..."
 (cd frontend/flutter && $FLUTTER_BIN pub get > /dev/null 2>&1)
 echo ""
 
-print_info "Flutter will start in a new terminal window"
+print_info "Building Flutter macOS app"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# Run Flutter in subshell to preserve working directory
-# Set up environment for CocoaPods
-(cd frontend/flutter && \
-  export LANG=en_US.UTF-8 && \
-  export LC_ALL=en_US.UTF-8 && \
-  export PATH="/Users/jixiangluo/.gem/ruby/3.4.0/bin:$PATH" && \
-  $FLUTTER_BIN run -d macos --release &)
-FLUTTER_PID=$!
+# Build and run app binary directly.
+# This avoids leftover flutter tooling processes that can keep API alive after app quit.
+cd frontend/flutter
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+export PATH="/Users/jixiangluo/.gem/ruby/3.4.0/bin:$PATH"
+$FLUTTER_BIN build macos --release > /dev/null
+
+APP_BIN="$PROJECT_ROOT/frontend/flutter/build/macos/Build/Products/Release/memscreen_flutter.app/Contents/MacOS/memscreen_flutter"
+if [ ! -x "$APP_BIN" ]; then
+    print_error "Built app not found or not executable" "$APP_BIN"
+    exit 1
+fi
+
+"$APP_BIN" &
+APP_PID=$!
+cd "$PROJECT_ROOT"
 
 echo ""
 echo -e "${GREEN}Flutter app started!${NC}"
+print_info "App PID: $APP_PID"
 
 echo ""
-echo -e "${BLUE}📱 Press 'r' to hot reload${NC}"
-echo -e "${BLUE}💬 Press 'q' to quit${NC}"
+echo -e "${BLUE}💬 Press Ctrl+C in this terminal to stop${NC}"
 
 echo ""
 echo -e "${GRAY}API: http://127.0.0.1:8765${NC}"
@@ -184,5 +236,23 @@ echo -e "${GRAY}  echo 'alias flutter=\"$(dirname \"$0\")/start_flutter.sh\"' >>
 
 echo ""
 
-# Keep both processes running
-wait
+# Keep both processes running and monitor app exit
+# When app exits, also shut down API
+while kill -0 $APP_PID 2>/dev/null; do
+    sleep 1
+done
+
+echo ""
+echo -e "${YELLOW}🛑 App exited, shutting down API...${NC}"
+
+# Kill API process when Flutter exits
+if [ "$API_STARTED_BY_SCRIPT" = "1" ] && [ -n "${API_PID:-}" ]; then
+    kill $API_PID 2>/dev/null || true
+fi
+
+# Wait for API to fully shutdown
+if [ "$API_STARTED_BY_SCRIPT" = "1" ] && [ -n "${API_PID:-}" ]; then
+    wait $API_PID 2>/dev/null || true
+fi
+
+echo -e "${GREEN}✓ All processes stopped${NC}"

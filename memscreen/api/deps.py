@@ -5,15 +5,17 @@ Mirrors Kivy's Memory + Presenter initialization so API uses same config and dat
 
 from __future__ import annotations
 
-from typing import Optional, Any
+from typing import Optional, Any, TYPE_CHECKING
 
 from memscreen.config import get_config
 from memscreen.memory import Memory
 from memscreen.memory.models import MemoryConfig, EmbedderConfig, LlmConfig, VectorStoreConfig
-from memscreen.presenters.chat_presenter import ChatPresenter
-from memscreen.presenters.recording_presenter import RecordingPresenter
-from memscreen.presenters.video_presenter import VideoPresenter
-from memscreen.presenters.process_mining_presenter import ProcessMiningPresenter
+
+if TYPE_CHECKING:
+    from memscreen.presenters.chat_presenter import ChatPresenter
+    from memscreen.presenters.recording_presenter import RecordingPresenter
+    from memscreen.presenters.video_presenter import VideoPresenter
+    from memscreen.presenters.process_mining_presenter import ProcessMiningPresenter
 
 
 def _get_process_mining_db_path() -> str:
@@ -61,9 +63,10 @@ def create_memory() -> Optional[Memory]:
         return None
 
 
-def create_chat_presenter(memory: Optional[Memory]) -> Optional[ChatPresenter]:
+def create_chat_presenter(memory: Optional[Memory]) -> Optional["ChatPresenter"]:
     """Create ChatPresenter (view=None for API)."""
     try:
+        from memscreen.presenters.chat_presenter import ChatPresenter
         cfg = get_config()
         p = ChatPresenter(
             view=None,
@@ -79,9 +82,10 @@ def create_chat_presenter(memory: Optional[Memory]) -> Optional[ChatPresenter]:
         return None
 
 
-def create_recording_presenter(memory: Optional[Memory]) -> Optional[RecordingPresenter]:
+def create_recording_presenter(memory: Optional[Memory]) -> Optional["RecordingPresenter"]:
     """Create RecordingPresenter (view=None)."""
     try:
+        from memscreen.presenters.recording_presenter import RecordingPresenter
         cfg = get_config()
         p = RecordingPresenter(
             view=None,
@@ -97,9 +101,10 @@ def create_recording_presenter(memory: Optional[Memory]) -> Optional[RecordingPr
         return None
 
 
-def create_video_presenter() -> Optional[VideoPresenter]:
+def create_video_presenter() -> Optional["VideoPresenter"]:
     """Create VideoPresenter (view=None)."""
     try:
+        from memscreen.presenters.video_presenter import VideoPresenter
         cfg = get_config()
         p = VideoPresenter(db_path=str(cfg.db_path))
         p.initialize()
@@ -113,9 +118,9 @@ def create_video_presenter() -> Optional[VideoPresenter]:
 
 # Lazy singletons (created on first request if needed)
 _memory: Optional[Memory] = None
-_chat_presenter: Optional[ChatPresenter] = None
-_recording_presenter: Optional[RecordingPresenter] = None
-_video_presenter: Optional[VideoPresenter] = None
+_chat_presenter: Optional["ChatPresenter"] = None
+_recording_presenter: Optional["RecordingPresenter"] = None
+_video_presenter: Optional["VideoPresenter"] = None
 
 
 def get_memory() -> Optional[Memory]:
@@ -125,30 +130,31 @@ def get_memory() -> Optional[Memory]:
     return _memory
 
 
-def get_chat_presenter() -> Optional[ChatPresenter]:
+def get_chat_presenter() -> Optional["ChatPresenter"]:
     global _chat_presenter
     if _chat_presenter is None:
         _chat_presenter = create_chat_presenter(get_memory())
     return _chat_presenter
 
 
-def get_recording_presenter() -> Optional[RecordingPresenter]:
+def get_recording_presenter() -> Optional["RecordingPresenter"]:
     global _recording_presenter
     if _recording_presenter is None:
         _recording_presenter = create_recording_presenter(get_memory())
     return _recording_presenter
 
 
-def get_video_presenter() -> Optional[VideoPresenter]:
+def get_video_presenter() -> Optional["VideoPresenter"]:
     global _video_presenter
     if _video_presenter is None:
         _video_presenter = create_video_presenter()
     return _video_presenter
 
 
-def create_process_mining_presenter() -> Optional[ProcessMiningPresenter]:
+def create_process_mining_presenter() -> Optional["ProcessMiningPresenter"]:
     """Create ProcessMiningPresenter (view=None) for keyboard/mouse tracking."""
     try:
+        from memscreen.presenters.process_mining_presenter import ProcessMiningPresenter
         db_path = _get_process_mining_db_path()
         p = ProcessMiningPresenter(view=None, db_path=db_path)
         p.initialize()
@@ -160,10 +166,10 @@ def create_process_mining_presenter() -> Optional[ProcessMiningPresenter]:
         return None
 
 
-_process_mining_presenter: Optional[ProcessMiningPresenter] = None
+_process_mining_presenter: Optional["ProcessMiningPresenter"] = None
 
 
-def get_process_mining_presenter() -> Optional[ProcessMiningPresenter]:
+def get_process_mining_presenter() -> Optional["ProcessMiningPresenter"]:
     global _process_mining_presenter
     if _process_mining_presenter is None:
         _process_mining_presenter = create_process_mining_presenter()

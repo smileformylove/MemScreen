@@ -4,11 +4,19 @@ import FlutterMacOS
 /// Native macOS floating ball window for MemScreen Flutter
 class FloatingBallWindow: NSPanel {
     private var ballView: FloatingBallView!
+    private var toolbarPanel: ToolbarPanel?
+    private var regionSelector: RegionSelectionPanel?
     private var flutterChannel: FlutterMethodChannel?
+
+    // Store parent window reference to restore visibility
+    private weak var parentWindowRef: NSWindow?
 
     // State
     var isRecording: Bool = false
     var isPaused: Bool = false
+    private var isToolbarExpanded: Bool = false
+    private var selectedRegionForNextRecording: [Double]?
+    private var consumeSelectedRegionOnRecordStart = false
 
     // Drag state
     private var initialMouseLocation: NSPoint?
@@ -18,9 +26,9 @@ class FloatingBallWindow: NSPanel {
 
     // Callbacks
     var onClick: (() -> Void)?
-    var onRightClick: (() -> Void)?
+    var onQuit: (() -> Void)?
 
-    init(contentRect: NSRect, flutterChannel: FlutterMethodChannel?) {
+    init(contentRect: NSRect, flutterChannel: FlutterMethodChannel?, parentWindow: NSWindow?) {
         super.init(
             contentRect: contentRect,
             styleMask: [.borderless],
@@ -29,24 +37,26 @@ class FloatingBallWindow: NSPanel {
         )
 
         self.flutterChannel = flutterChannel
+        self.parentWindowRef = parentWindow
 
         // Configure window properties
-        self.level = .floating
+        self.level = .popUpMenu  // Higher than floating for better visibility
         self.isOpaque = false
         self.backgroundColor = .clear
         self.isMovableByWindowBackground = true
 
-        // Note: Don't set parent property - it can cause issues on some macOS versions
-
-        // Configure panel behavior
+        // Configure panel behavior to NOT show in dock
         self.isFloatingPanel = true
         self.becomesKeyOnlyIfNeeded = true
 
-        // Set collection behavior to join all spaces
+        // Use ignoresCycle to prevent dock icon and cmd+tab cycling
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
 
-        // Create ball view
-        self.ballView = FloatingBallView(frame: contentRect)
+        // Create ball view in window-local coordinates.
+        // Using global `contentRect` here makes the view render outside the panel.
+        self.ballView = FloatingBallView(
+            frame: NSRect(x: 0, y: 0, width: contentRect.width, height: contentRect.height)
+        )
         self.contentView = self.ballView
 
         // Setup mouse tracking
@@ -71,6 +81,11 @@ class FloatingBallWindow: NSPanel {
         initialMouseLocation = event.locationInWindow
         initialWindowLocation = self.frame.origin
         isDragging = false
+
+        // Close toolbar if clicking on ball
+        if isToolbarExpanded {
+            collapseToolbar()
+        }
     }
 
     private func handleMouseDragged(_ event: NSEvent) {
@@ -86,6 +101,10 @@ class FloatingBallWindow: NSPanel {
             let distance = sqrt(deltaX * deltaX + deltaY * deltaY)
             if distance > dragThreshold {
                 isDragging = true
+                // Close toolbar when dragging
+                if isToolbarExpanded {
+                    collapseToolbar()
+                }
             }
         }
 
@@ -95,6 +114,11 @@ class FloatingBallWindow: NSPanel {
         )
 
         self.setFrameOrigin(newOrigin)
+
+        // Update toolbar position if expanded
+        if isToolbarExpanded {
+            updateToolbarPosition()
+        }
     }
 
     private func handleMouseUp(_ event: NSEvent) {
@@ -110,102 +134,198 @@ class FloatingBallWindow: NSPanel {
     }
 
     private func handleRightMouseDown(_ event: NSEvent) {
-        onRightClick?()
-        showContextMenu(at: event.locationInWindow)
+        // Toggle toolbar instead of showing context menu
+        if isToolbarExpanded {
+            collapseToolbar()
+        } else {
+            expandToolbar()
+        }
     }
 
-    private func showContextMenu(at location: NSPoint) {
-        let menu = NSMenu()
-        menu.autoenablesItems = false
+    private func expandToolbar() {
+        guard toolbarPanel == nil else { return }
 
-        // Status info
-        let statusText = isRecording ? "Status: Recording" : "Status: Ready"
-        let statusItem = NSMenuItem(title: statusText, action: nil, keyEquivalent: "")
-        statusItem.isEnabled = false
-        menu.addItem(statusItem)
+        let ballFrame = self.frame
+        let toolbarWidth: CGFloat = 260
+        let toolbarHeight: CGFloat = 280
+        let padding: CGFloat = 10
 
-        menu.addItem(NSMenuItem.separator())
+        // Position toolbar to the left of the ball (or right if no space)
+        var toolbarX = ballFrame.origin.x - toolbarWidth - padding
 
-        // Start/Stop Recording
-        if isRecording {
-            let stopItem = NSMenuItem(
-                title: "⏹ Stop Recording",
-                action: #selector(stopRecording),
-                keyEquivalent: ""
-            )
-            stopItem.target = self
-            menu.addItem(stopItem)
-
-            let pauseText = isPaused ? "▶ Resume" : "⏸ Pause"
-            let pauseItem = NSMenuItem(
-                title: pauseText,
-                action: #selector(togglePause),
-                keyEquivalent: ""
-            )
-            pauseItem.target = self
-            menu.addItem(pauseItem)
-        } else {
-            let startItem = NSMenuItem(
-                title: "⏺ Start Recording",
-                action: #selector(startRecording),
-                keyEquivalent: ""
-            )
-            startItem.target = self
-            menu.addItem(startItem)
+        if toolbarX < 0 {
+            toolbarX = ballFrame.origin.x + ballFrame.width + padding
         }
 
-        menu.addItem(NSMenuItem.separator())
+        let toolbarY = ballFrame.origin.y + (ballFrame.height - toolbarHeight) / 2
 
-        // Quit
-        let quitItem = NSMenuItem(
-            title: "🚪 Quit MemScreen",
-            action: #selector(quitApp),
-            keyEquivalent: "q"
+        let toolbarRect = NSRect(x: toolbarX, y: toolbarY, width: toolbarWidth, height: toolbarHeight)
+
+        toolbarPanel = ToolbarPanel(
+            contentRect: toolbarRect,
+            flutterChannel: flutterChannel,
+            onToggleRecording: { [weak self] in
+                self?.toggleRecordingFromToolbar()
+            },
+            onSelectRegion: { [weak self] in
+                self?.selectRegionForNextRecording()
+            },
+            onQuit: { [weak self] in
+                self?.onQuit?()
+            }
         )
-        quitItem.target = self
-        menu.addItem(quitItem)
+        toolbarPanel?.setSelectedRegion(selectedRegionForNextRecording)
+        toolbarPanel?.updateRecordingState(isRecording)
+        toolbarPanel?.updatePausedState(isPaused)
 
-        // Show menu
-        menu.popUp(positioning: nil, at: location, in: self.ballView)
+        toolbarPanel?.makeKeyAndOrderFront(nil)
+        isToolbarExpanded = true
+        ballView.isToolbarExpanded = true
+        ballView.needsDisplay = true
     }
 
-    @objc private func startRecording() {
-        flutterChannel?.invokeMethod("startRecording", arguments: nil)
+    private func collapseToolbar() {
+        toolbarPanel?.close()
+        toolbarPanel = nil
+        isToolbarExpanded = false
+        ballView.isToolbarExpanded = false
+        ballView.needsDisplay = true
     }
 
-    @objc private func stopRecording() {
-        flutterChannel?.invokeMethod("stopRecording", arguments: nil)
-    }
+    private func updateToolbarPosition() {
+        guard let toolbar = toolbarPanel else { return }
 
-    @objc private func togglePause() {
-        flutterChannel?.invokeMethod("togglePause", arguments: nil)
-    }
+        let ballFrame = self.frame
+        let padding: CGFloat = 10
 
-    @objc private func quitApp() {
-        debugPrint("[FloatingBall] quitApp called - requesting app termination")
+        var toolbarX = ballFrame.origin.x - toolbar.frame.width - padding
 
-        // Close floating ball window
-        self.close()
-
-        // Use AppDelegate's forceQuit method for clean termination
-        if let appDelegate = NSApplication.shared.delegate as? AppDelegate {
-            appDelegate.forceQuit()
-        } else {
-            // Fallback: direct termination
-            NSApplication.shared.terminate(nil)
+        if toolbarX < 0 {
+            toolbarX = ballFrame.origin.x + ballFrame.width + padding
         }
+
+        let toolbarY = ballFrame.origin.y + (ballFrame.height - toolbar.frame.height) / 2
+
+        toolbar.setFrameOrigin(NSPoint(x: toolbarX, y: toolbarY))
     }
 
     func setRecordingState(_ recording: Bool) {
         isRecording = recording
+        if recording, consumeSelectedRegionOnRecordStart {
+            selectedRegionForNextRecording = nil
+            consumeSelectedRegionOnRecordStart = false
+        } else if !recording {
+            consumeSelectedRegionOnRecordStart = false
+        }
         ballView.isRecording = recording
         ballView.needsDisplay = true
+        toolbarPanel?.updateRecordingState(recording)
+        toolbarPanel?.setSelectedRegion(selectedRegionForNextRecording)
     }
 
     func setPausedState(_ paused: Bool) {
         isPaused = paused
         ballView.isPaused = paused
         ballView.needsDisplay = true
+        toolbarPanel?.updatePausedState(paused)
+    }
+
+    private func selectRegionForNextRecording() {
+        guard !isRecording else {
+            toolbarPanel?.showStatus("Status: Stop recording first", color: NSColor.systemOrange)
+            return
+        }
+
+        let shouldReopenToolbar = isToolbarExpanded
+        if let parentWindow = parentWindowRef, !parentWindow.isMiniaturized {
+            parentWindow.miniaturize(nil)
+        }
+
+        let previousVisibility = self.isVisible
+        collapseToolbar()
+        self.orderOut(nil)
+
+        let screen = selectionScreen()
+        regionSelector = RegionSelectionPanel(screen: screen) { [weak self] region in
+            guard let self = self else { return }
+
+            self.regionSelector = nil
+            if previousVisibility {
+                self.orderFront(nil)
+                self.makeKeyAndOrderFront(nil)
+            }
+
+            if shouldReopenToolbar {
+                self.expandToolbar()
+            }
+
+            guard let selectedRegion = region else {
+                self.toolbarPanel?.setSelectedRegion(self.selectedRegionForNextRecording)
+                self.toolbarPanel?.showStatus("Status: Region selection cancelled", color: NSColor.secondaryLabelColor)
+                return
+            }
+
+            self.selectedRegionForNextRecording = selectedRegion
+            self.consumeSelectedRegionOnRecordStart = false
+            self.toolbarPanel?.setSelectedRegion(selectedRegion)
+
+            let width = Int(max(0, (selectedRegion[2] - selectedRegion[0]).rounded()))
+            let height = Int(max(0, (selectedRegion[3] - selectedRegion[1]).rounded()))
+            self.toolbarPanel?.showStatus("Status: Region \(width)x\(height) ready", color: NSColor.systemGreen)
+        }
+        regionSelector?.show()
+    }
+
+    private func toggleRecordingFromToolbar() {
+        if isRecording {
+            toolbarPanel?.showStatus("Status: Stopping recording...", color: NSColor.systemOrange)
+            flutterChannel?.invokeMethod("stopRecording", arguments: nil)
+            return
+        }
+
+        if let selectedRegion = selectedRegionForNextRecording {
+            consumeSelectedRegionOnRecordStart = true
+            let width = Int(max(0, (selectedRegion[2] - selectedRegion[0]).rounded()))
+            let height = Int(max(0, (selectedRegion[3] - selectedRegion[1]).rounded()))
+            toolbarPanel?.showStatus("Status: Starting region \(width)x\(height)...", color: NSColor.systemBlue)
+            invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: nil)
+            return
+        }
+
+        toolbarPanel?.showStatus("Status: Starting full-screen recording...", color: NSColor.systemBlue)
+        invokeStartRecording(mode: "fullscreen", region: nil, screenIndex: nil)
+    }
+
+    private func selectionScreen() -> NSScreen {
+        let mouseLocation = NSEvent.mouseLocation
+        for screen in NSScreen.screens {
+            if screen.frame.contains(mouseLocation) {
+                return screen
+            }
+        }
+        if let parentScreen = parentWindowRef?.screen {
+            return parentScreen
+        }
+        return NSScreen.main ?? NSScreen.screens.first!
+    }
+
+    private func invokeStartRecording(mode: String, region: [Double]?, screenIndex: Int?) {
+        var args: [String: Any] = ["mode": mode]
+        if let region = region {
+            args["region"] = region
+        }
+        if let screenIndex = screenIndex {
+            args["screenIndex"] = screenIndex
+        }
+        flutterChannel?.invokeMethod("startRecording", arguments: args)
+    }
+
+    override func close() {
+        collapseToolbar()
+        regionSelector?.orderOut(nil)
+        regionSelector?.close()
+        regionSelector = nil
+        super.close()
     }
 
     override func makeKeyAndOrderFront(_ sender: Any?) {
@@ -214,10 +334,407 @@ class FloatingBallWindow: NSPanel {
     }
 }
 
+/// Toolbar panel showing quick action buttons
+class ToolbarPanel: NSPanel {
+    private var flutterChannel: FlutterMethodChannel?
+
+    private var startStopButton: NSButton!
+    private var selectRegionButton: NSButton!
+    private var quickChatButton: NSButton!
+    private var videosButton: NSButton!
+    private var settingsButton: NSButton!
+    private var quitButton: NSButton!
+    private var statusLabel: NSTextField?
+
+    private var onToggleRecording: (() -> Void)?
+    private var onSelectRegion: (() -> Void)?
+    private var onQuit: (() -> Void)?
+    private var currentRecording = false
+    private var currentPaused = false
+    private var selectedRegionSummary: String?
+
+    init(
+        contentRect: NSRect,
+        flutterChannel: FlutterMethodChannel?,
+        onToggleRecording: @escaping () -> Void,
+        onSelectRegion: @escaping () -> Void,
+        onQuit: @escaping () -> Void
+    ) {
+        super.init(
+            contentRect: contentRect,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+
+        self.flutterChannel = flutterChannel
+        self.onToggleRecording = onToggleRecording
+        self.onSelectRegion = onSelectRegion
+        self.onQuit = onQuit
+
+        self.level = .popUpMenu  // Higher than floating for better visibility
+        self.isOpaque = false
+        self.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.95)
+        self.isMovableByWindowBackground = false
+
+        self.isFloatingPanel = true
+        self.becomesKeyOnlyIfNeeded = true
+        // Use ignoresCycle to prevent dock icon
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+
+        // Setup content view
+        setupUI()
+    }
+
+    private func setupUI() {
+        let containerView = NSView(frame: self.contentView!.bounds)
+        containerView.wantsLayer = true
+        containerView.layer?.cornerRadius = 12
+        containerView.layer?.masksToBounds = true
+
+        // Title
+        let titleLabel = NSTextField(labelWithString: "MemScreen")
+        titleLabel.font = NSFont.systemFont(ofSize: 16, weight: .bold)
+        titleLabel.textColor = NSColor.controlTextColor
+        titleLabel.alignment = .center
+        titleLabel.frame = NSRect(x: 0, y: containerView.bounds.height - 35, width: containerView.bounds.width, height: 25)
+        containerView.addSubview(titleLabel)
+
+        statusLabel = NSTextField(labelWithString: "Status: Ready")
+        statusLabel?.font = NSFont.systemFont(ofSize: 11)
+        statusLabel?.textColor = NSColor.secondaryLabelColor
+        statusLabel?.alignment = .center
+        statusLabel?.frame = NSRect(x: 0, y: containerView.bounds.height - 55, width: containerView.bounds.width, height: 16)
+        if let statusLabel = statusLabel {
+            containerView.addSubview(statusLabel)
+        }
+
+        startStopButton = createActionButton(
+            title: "⏺ Start Recording",
+            color: NSColor.systemRed,
+            action: #selector(toggleRecording)
+        )
+        startStopButton.frame = NSRect(x: 15, y: 185, width: 230, height: 36)
+        containerView.addSubview(startStopButton)
+
+        selectRegionButton = createActionButton(
+            title: "🎯 Select Region",
+            color: NSColor.systemPurple,
+            action: #selector(selectRegionAndRecord)
+        )
+        selectRegionButton.frame = NSRect(x: 15, y: 145, width: 230, height: 36)
+        containerView.addSubview(selectRegionButton)
+
+        // Quick Chat button
+        quickChatButton = createActionButton(
+            title: "💬 Quick Chat",
+            color: NSColor.systemBlue,
+            action: #selector(openQuickChat)
+        )
+        quickChatButton.frame = NSRect(x: 15, y: 105, width: 230, height: 36)
+        containerView.addSubview(quickChatButton)
+
+        // Videos button
+        videosButton = createActionButton(
+            title: "📁 Videos",
+            color: NSColor.systemGreen,
+            action: #selector(openVideos)
+        )
+        videosButton.frame = NSRect(x: 15, y: 65, width: 230, height: 36)
+        containerView.addSubview(videosButton)
+
+        // Settings button
+        settingsButton = createActionButton(
+            title: "⚙️ Settings",
+            color: NSColor.systemGray,
+            action: #selector(openSettings)
+        )
+        settingsButton.frame = NSRect(x: 15, y: 20, width: 110, height: 36)
+        containerView.addSubview(settingsButton)
+
+        // Quit button
+        quitButton = createActionButton(
+            title: "🚪 Quit",
+            color: NSColor.systemRed,
+            action: #selector(quitApp)
+        )
+        quitButton.frame = NSRect(x: 135, y: 20, width: 110, height: 36)
+        containerView.addSubview(quitButton)
+
+        self.contentView = containerView
+    }
+
+    private func createActionButton(title: String, color: NSColor, action: Selector) -> NSButton {
+        let button = NSButton(title: title, target: self, action: action)
+        button.bezelStyle = .rounded
+        button.wantsLayer = true
+        button.layer?.backgroundColor = color.withAlphaComponent(0.15).cgColor
+        button.layer?.cornerRadius = 8
+        button.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        return button
+    }
+
+    @objc private func openQuickChat() {
+        flutterChannel?.invokeMethod("openQuickChat", arguments: nil)
+    }
+
+    @objc private func openVideos() {
+        flutterChannel?.invokeMethod("openVideos", arguments: nil)
+    }
+
+    @objc private func openSettings() {
+        flutterChannel?.invokeMethod("openSettings", arguments: nil)
+    }
+
+    @objc private func quitApp() {
+        if let onQuit = onQuit {
+            onQuit()
+        } else {
+            flutterChannel?.invokeMethod("quitApp", arguments: nil)
+        }
+    }
+
+    @objc private func toggleRecording() {
+        onToggleRecording?()
+    }
+
+    @objc private func selectRegionAndRecord() {
+        if currentRecording {
+            showStatus("Status: Stop recording before selecting region", color: NSColor.systemOrange)
+            return
+        }
+        onSelectRegion?()
+    }
+
+    func updateRecordingState(_ isRecording: Bool) {
+        currentRecording = isRecording
+        if !isRecording {
+            currentPaused = false
+        }
+        refreshStatus()
+        refreshActionButtons()
+    }
+
+    func updatePausedState(_ isPaused: Bool) {
+        currentPaused = isPaused
+        refreshStatus()
+        refreshActionButtons()
+    }
+
+    func setSelectedRegion(_ region: [Double]?) {
+        guard let region = region, region.count == 4 else {
+            selectedRegionSummary = nil
+            refreshStatus()
+            refreshActionButtons()
+            return
+        }
+
+        let width = Int(max(0, (region[2] - region[0]).rounded()))
+        let height = Int(max(0, (region[3] - region[1]).rounded()))
+        selectedRegionSummary = "Region \(width)x\(height)"
+        refreshStatus()
+        refreshActionButtons()
+    }
+
+    func showStatus(_ text: String, color: NSColor = NSColor.secondaryLabelColor) {
+        DispatchQueue.main.async { [weak self] in
+            self?.statusLabel?.stringValue = text
+            self?.statusLabel?.textColor = color
+        }
+    }
+
+    private func refreshStatus() {
+        if currentPaused {
+            showStatus("Status: Paused", color: NSColor.systemOrange)
+            return
+        }
+        if currentRecording {
+            showStatus("Status: Recording", color: NSColor.systemRed)
+            return
+        }
+        if let selectedRegionSummary = selectedRegionSummary {
+            showStatus("Status: \(selectedRegionSummary) ready", color: NSColor.systemGreen)
+            return
+        }
+        showStatus("Status: Ready")
+    }
+
+    private func refreshActionButtons() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if self.currentRecording {
+                self.startStopButton.title = "⏹ Stop Recording"
+            } else if self.selectedRegionSummary != nil {
+                self.startStopButton.title = "⏺ Start Region Recording"
+            } else {
+                self.startStopButton.title = "⏺ Start Recording"
+            }
+            self.selectRegionButton.title = self.selectedRegionSummary == nil ? "🎯 Select Region" : "🎯 Re-select Region"
+            self.selectRegionButton.isEnabled = !self.currentRecording
+            self.selectRegionButton.alphaValue = self.currentRecording ? 0.6 : 1.0
+        }
+    }
+}
+
+private class RegionSelectionPanel: NSPanel {
+    private var selectionView: RegionSelectionView!
+    private var onComplete: (([Double]?) -> Void)?
+    private var hasCompleted = false
+
+    init(screen: NSScreen, onComplete: @escaping ([Double]?) -> Void) {
+        let frame = screen.frame
+        super.init(
+            contentRect: frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+
+        self.onComplete = onComplete
+
+        level = .screenSaver
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        ignoresMouseEvents = false
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+
+        let localFrame = NSRect(x: 0, y: 0, width: frame.width, height: frame.height)
+        selectionView = RegionSelectionView(frame: localFrame, panelFrame: frame) { [weak self] region in
+            self?.finish(with: region)
+        }
+        contentView = selectionView
+    }
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
+    func show() {
+        makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        makeFirstResponder(selectionView)
+    }
+
+    private func finish(with region: [Double]?) {
+        guard !hasCompleted else { return }
+        hasCompleted = true
+        orderOut(nil)
+        close()
+        onComplete?(region)
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        finish(with: nil)
+    }
+}
+
+private class RegionSelectionView: NSView {
+    private let minSelectionSize: CGFloat = 10
+    private var startPoint: NSPoint?
+    private var currentPoint: NSPoint?
+    private let panelFrame: NSRect
+    private let completion: ([Double]?) -> Void
+
+    init(frame frameRect: NSRect, panelFrame: NSRect, completion: @escaping ([Double]?) -> Void) {
+        self.panelFrame = panelFrame
+        self.completion = completion
+        super.init(frame: frameRect)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        NSColor.black.withAlphaComponent(0.30).setFill()
+        NSBezierPath(rect: dirtyRect).fill()
+
+        guard let rect = selectionRect else { return }
+
+        NSColor.systemPurple.withAlphaComponent(0.25).setFill()
+        rect.fill()
+
+        let borderPath = NSBezierPath(rect: rect)
+        borderPath.lineWidth = 2
+        NSColor.systemPurple.withAlphaComponent(0.95).setStroke()
+        borderPath.stroke()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let location = convert(event.locationInWindow, from: nil)
+        startPoint = location
+        currentPoint = location
+        needsDisplay = true
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        currentPoint = convert(event.locationInWindow, from: nil)
+        needsDisplay = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        currentPoint = convert(event.locationInWindow, from: nil)
+        finalizeSelection()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 {  // ESC
+            completion(nil)
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    private var selectionRect: NSRect? {
+        guard let start = startPoint, let current = currentPoint else { return nil }
+        return NSRect(
+            x: min(start.x, current.x),
+            y: min(start.y, current.y),
+            width: abs(start.x - current.x),
+            height: abs(start.y - current.y)
+        )
+    }
+
+    private func finalizeSelection() {
+        guard let rect = selectionRect else {
+            completion(nil)
+            return
+        }
+
+        guard rect.width >= minSelectionSize, rect.height >= minSelectionSize else {
+            completion(nil)
+            return
+        }
+
+        let x1 = panelFrame.origin.x + rect.minX
+        let x2 = panelFrame.origin.x + rect.maxX
+        let y1 = panelFrame.origin.y + rect.minY
+        let y2 = panelFrame.origin.y + rect.maxY
+
+        let mainHeight = NSScreen.main?.frame.height ?? panelFrame.height
+        let top = mainHeight - y2
+        let bottom = mainHeight - y1
+
+        let region: [Double] = [
+            Double(floor(x1)),
+            Double(floor(top)),
+            Double(ceil(x2)),
+            Double(ceil(bottom))
+        ]
+        completion(region)
+    }
+}
+
 /// Custom view for drawing the floating ball
 class FloatingBallView: NSView {
     var isRecording: Bool = false
     var isPaused: Bool = false
+    var isToolbarExpanded: Bool = false
 
     var onMouseDown: ((NSEvent) -> Void)?
     var onMouseDragged: ((NSEvent) -> Void)?
@@ -237,9 +754,10 @@ class FloatingBallView: NSView {
 
         let bounds = self.bounds
 
-        // Draw outer glow
+        // Draw outer glow with animation hint when toolbar is expanded
+        let glowAlpha: CGFloat = isToolbarExpanded ? 0.5 : 0.3
         let glowPath = NSBezierPath(ovalIn: bounds)
-        let glowColor = NSColor(red: 0.6, green: 0.4, blue: 0.75, alpha: 0.3)
+        let glowColor = NSColor(red: 0.6, green: 0.4, blue: 0.75, alpha: glowAlpha)
         glowColor.setFill()
         glowPath.fill()
 
@@ -270,8 +788,33 @@ class FloatingBallView: NSView {
         mainPath.lineWidth = 1.5
         mainPath.stroke()
 
-        // Draw status icon
-        drawStatusIcon(in: bounds)
+        // Draw toolbar expansion indicator
+        if isToolbarExpanded {
+            drawExpansionIndicator(in: bounds)
+        } else {
+            // Draw status icon
+            drawStatusIcon(in: bounds)
+        }
+    }
+
+    private func drawExpansionIndicator(in bounds: NSRect) {
+        // Draw small dots menu icon (···)
+        NSColor.white.setFill()
+
+        let dotSize: CGFloat = 6
+        let spacing: CGFloat = 10
+        let startX = (bounds.width - (dotSize * 3 + spacing * 2)) / 2
+        let y = bounds.height / 2 - dotSize / 2
+
+        for i in 0..<3 {
+            let dotRect = NSRect(
+                x: startX + CGFloat(i) * (dotSize + spacing),
+                y: y,
+                width: dotSize,
+                height: dotSize
+            )
+            NSBezierPath(ovalIn: dotRect).fill()
+        }
     }
 
     private func drawStatusIcon(in bounds: NSRect) {

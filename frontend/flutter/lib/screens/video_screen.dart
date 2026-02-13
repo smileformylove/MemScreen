@@ -16,6 +16,8 @@ class VideoScreen extends StatefulWidget {
 class _VideoScreenState extends State<VideoScreen> {
   List<VideoItem> _videos = [];
   bool _loading = true;
+  late AppState _appState;
+  int _lastVideoRefreshVersion = 0;
   VideoPlayerController? _controller;
   VideoItem? _currentVideo;
 
@@ -25,13 +27,31 @@ class _VideoScreenState extends State<VideoScreen> {
   @override
   void initState() {
     super.initState();
+    _appState = context.read<AppState>();
+    _lastVideoRefreshVersion = _appState.videoRefreshVersion;
+    _appState.addListener(_onAppStateChange);
     _load();
   }
 
   @override
   void dispose() {
+    _appState.removeListener(_onAppStateChange);
     _controller?.dispose();
     super.dispose();
+  }
+
+  void _onAppStateChange() {
+    if (!mounted) return;
+
+    if (_appState.videoRefreshVersion != _lastVideoRefreshVersion) {
+      _lastVideoRefreshVersion = _appState.videoRefreshVersion;
+      _load();
+      return;
+    }
+
+    if (_appState.desiredTabIndex == 3) {
+      _load();
+    }
   }
 
   String _formatDuration(Duration duration) {
@@ -228,7 +248,9 @@ class _VideoScreenState extends State<VideoScreen> {
                     : null,
                 color: isPlaying ? null : theme.colorScheme.surfaceContainerLow,
                 border: Border.all(
-                  color: isPlaying ? theme.colorScheme.primary : theme.dividerColor,
+                  color: isPlaying
+                      ? theme.colorScheme.primary
+                      : theme.dividerColor,
                   width: isPlaying ? 2 : 1,
                 ),
                 boxShadow: isPlaying
@@ -279,11 +301,13 @@ class _VideoScreenState extends State<VideoScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.video_library, size: 64, color: theme.colorScheme.onSurfaceVariant),
+            Icon(Icons.video_library,
+                size: 64, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: 16),
             Text(
               '暂无录制视频',
-              style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 16),
+              style: TextStyle(
+                  color: theme.colorScheme.onSurfaceVariant, fontSize: 16),
             ),
           ],
         ),
@@ -308,7 +332,8 @@ class _VideoScreenState extends State<VideoScreen> {
                 : Colors.transparent,
           ),
           child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             leading: Container(
               width: 50,
               height: 50,
@@ -318,7 +343,9 @@ class _VideoScreenState extends State<VideoScreen> {
                     : theme.colorScheme.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: isPlaying ? theme.colorScheme.primary : theme.dividerColor,
+                  color: isPlaying
+                      ? theme.colorScheme.primary
+                      : theme.dividerColor,
                   width: 1,
                 ),
               ),
@@ -344,11 +371,13 @@ class _VideoScreenState extends State<VideoScreen> {
             ),
             subtitle: Row(
               children: [
-                Icon(Icons.access_time, size: 12, color: theme.colorScheme.onSurfaceVariant),
+                Icon(Icons.access_time,
+                    size: 12, color: theme.colorScheme.onSurfaceVariant),
                 const SizedBox(width: 4),
                 Text(
                   v.timestamp,
-                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
+                  style: TextStyle(
+                      color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
                 ),
                 const SizedBox(width: 12),
                 Text(
@@ -377,7 +406,8 @@ class _VideoScreenState extends State<VideoScreen> {
                 ),
                 // 删除按钮
                 IconButton(
-                  icon: Icon(Icons.delete_outline, color: theme.colorScheme.error),
+                  icon: Icon(Icons.delete_outline,
+                      color: theme.colorScheme.error),
                   onPressed: () => _deleteVideo(v, index),
                   tooltip: '删除',
                 ),
@@ -399,7 +429,8 @@ class _VideoScreenState extends State<VideoScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: theme.colorScheme.surfaceContainerHigh,
-        title: Text('删除视频', style: TextStyle(color: theme.colorScheme.onSurface)),
+        title:
+            Text('删除视频', style: TextStyle(color: theme.colorScheme.onSurface)),
         content: Text(
           '确定要删除这个视频吗？\n${video.filename.split('/').last}',
           style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
@@ -407,7 +438,8 @@ class _VideoScreenState extends State<VideoScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('取消', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+            child: Text('取消',
+                style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
@@ -505,7 +537,10 @@ class _VideoScreenState extends State<VideoScreen> {
                   children: [
                     Text(
                       _positionLabel,
-                      style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 13, fontFamily: 'monospace'),
+                      style: TextStyle(
+                          color: theme.colorScheme.onSurface,
+                          fontSize: 13,
+                          fontFamily: 'monospace'),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -514,11 +549,16 @@ class _VideoScreenState extends State<VideoScreen> {
                         min: 0.0,
                         max: 1.0,
                         activeColor: theme.colorScheme.primary,
-                        inactiveColor: theme.colorScheme.onSurface.withOpacity(0.2),
+                        inactiveColor:
+                            theme.colorScheme.onSurface.withOpacity(0.2),
                         onChanged: (value) {
-                          if (_controller != null && _controller!.value.isInitialized) {
+                          if (_controller != null &&
+                              _controller!.value.isInitialized) {
                             final position = Duration(
-                              milliseconds: (value * _controller!.value.duration.inMilliseconds).toInt(),
+                              milliseconds: (value *
+                                      _controller!
+                                          .value.duration.inMilliseconds)
+                                  .toInt(),
                             );
                             _controller!.seekTo(position);
                           }
@@ -527,7 +567,10 @@ class _VideoScreenState extends State<VideoScreen> {
                     ),
                     Text(
                       _formatDuration(_controller!.value.duration),
-                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13, fontFamily: 'monospace'),
+                      style: TextStyle(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontSize: 13,
+                          fontFamily: 'monospace'),
                     ),
                   ],
                 ),
@@ -539,7 +582,9 @@ class _VideoScreenState extends State<VideoScreen> {
                   children: [
                     IconButton(
                       icon: Icon(
-                        _controller!.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                        _controller!.value.isPlaying
+                            ? Icons.pause
+                            : Icons.play_arrow,
                         color: theme.colorScheme.onSurface,
                       ),
                       onPressed: () {
@@ -553,7 +598,8 @@ class _VideoScreenState extends State<VideoScreen> {
                     ),
                     const SizedBox(width: 32),
                     IconButton(
-                      icon: Icon(Icons.close, color: theme.colorScheme.onSurfaceVariant),
+                      icon: Icon(Icons.close,
+                          color: theme.colorScheme.onSurfaceVariant),
                       onPressed: _closeVideo,
                     ),
                   ],
@@ -570,12 +616,15 @@ class _VideoScreenState extends State<VideoScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.movie, size: 16, color: theme.colorScheme.primary),
+                      Icon(Icons.movie,
+                          size: 16, color: theme.colorScheme.primary),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           _currentVideo?.filename.split('/').last ?? '',
-                          style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
+                          style: TextStyle(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              fontSize: 11),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
