@@ -13,6 +13,7 @@ class AppDelegate: FlutterAppDelegate {
     private var shouldForceQuit = false
     private var mainWindow: NSWindow?
     private var lastKnownFlutterController: FlutterViewController?
+    private var floatingBallHealthTimer: Timer?
 
     let logger = OSLog(subsystem: "com.memscreen", category: "AppDelegate")
 
@@ -100,11 +101,14 @@ class AppDelegate: FlutterAppDelegate {
         // We keep the main window visible to avoid blank-screen startup edge cases.
         DispatchQueue.main.async { [weak self] in
             self?.pollForFlutterController()
+            self?.startFloatingBallHealthMonitor()
         }
     }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+        floatingBallHealthTimer?.invalidate()
+        floatingBallHealthTimer = nil
     }
 
     @objc private func handleFlutterWindowReady(_ notification: Notification) {
@@ -236,6 +240,7 @@ class AppDelegate: FlutterAppDelegate {
         // Show floating ball above everything
         floatingBall?.orderFront(nil)
         floatingBall?.makeKeyAndOrderFront(nil)
+        floatingBall?.level = .floating
 
         // Ensure app activation policy is regular
         NSApp.setActivationPolicy(.regular)
@@ -244,6 +249,29 @@ class AppDelegate: FlutterAppDelegate {
         NSApp.activate(ignoringOtherApps: true)
 
         os_log("Floating ball created at %{public}f, %{public}f", log: logger, type: .info, x, y)
+    }
+
+    private func startFloatingBallHealthMonitor() {
+        floatingBallHealthTimer?.invalidate()
+        floatingBallHealthTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            if self.shouldForceQuit { return }
+
+            if self.floatingBall == nil {
+                if let controller = self.resolveFlutterController() {
+                    os_log("Floating ball missing, recreating", log: self.logger, type: .error)
+                    self.createFloatingBall(with: controller)
+                }
+                return
+            }
+
+            if let ball = self.floatingBall, !ball.isVisible {
+                os_log("Floating ball hidden unexpectedly, restoring", log: self.logger, type: .error)
+                ball.orderFront(nil)
+                ball.makeKeyAndOrderFront(nil)
+                ball.level = .floating
+            }
+        }
     }
 
     private func ensureMethodChannel(with controller: FlutterViewController?) {

@@ -18,6 +18,7 @@ class FloatingBallWindow: NSPanel {
     private var selectedRegionForNextRecording: [Double]?
     private var consumeSelectedRegionOnRecordStart = false
     private var selectedScreenIndexForNextRecording: Int?
+    private var keyboardMonitor: Any?
 
     // Drag state
     private var initialMouseLocation: NSPoint?
@@ -76,6 +77,14 @@ class FloatingBallWindow: NSPanel {
 
         // Don't hide when app loses focus
         self.hidesOnDeactivate = false
+        installKeyboardShortcuts()
+    }
+
+    deinit {
+        if let monitor = keyboardMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyboardMonitor = nil
+        }
     }
 
     private func handleMouseDown(_ event: NSEvent) {
@@ -251,7 +260,7 @@ class FloatingBallWindow: NSPanel {
         self.orderOut(nil)
 
         let screen = selectionScreen()
-        regionSelector = RegionSelectionPanel(screen: screen) { [weak self] region in
+        regionSelector = RegionSelectionPanel(screen: screen) { [weak self] result in
             guard let self = self else { return }
 
             self.regionSelector = nil
@@ -260,23 +269,26 @@ class FloatingBallWindow: NSPanel {
                 self.makeKeyAndOrderFront(nil)
             }
 
-            if shouldReopenToolbar {
-                self.expandToolbar()
-            }
-
-            guard let selectedRegion = region else {
+            if case .cancelled = result {
+                if shouldReopenToolbar {
+                    self.expandToolbar()
+                }
                 self.toolbarPanel?.setSelectedRegion(self.selectedRegionForNextRecording)
                 self.toolbarPanel?.showStatus("Status: Region selection cancelled", color: NSColor.secondaryLabelColor)
                 return
             }
 
+            guard case let .confirmed(selectedRegion) = result else {
+                return
+            }
             self.selectedRegionForNextRecording = selectedRegion
-            self.consumeSelectedRegionOnRecordStart = false
+            self.consumeSelectedRegionOnRecordStart = true
             self.toolbarPanel?.setSelectedRegion(selectedRegion)
 
             let width = Int(max(0, (selectedRegion[2] - selectedRegion[0]).rounded()))
             let height = Int(max(0, (selectedRegion[3] - selectedRegion[1]).rounded()))
-            self.toolbarPanel?.showStatus("Status: Region \(width)x\(height) ready", color: NSColor.systemGreen)
+            self.toolbarPanel?.showStatus("Status: Starting region \(width)x\(height)...", color: NSColor.systemBlue)
+            self.invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: nil)
         }
         regionSelector?.show()
     }
@@ -324,6 +336,46 @@ class FloatingBallWindow: NSPanel {
             invokeStartRecording(mode: "fullscreen", region: nil, screenIndex: nil)
         }
         collapseToolbar()
+    }
+
+    private func installKeyboardShortcuts() {
+        keyboardMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self else { return event }
+            // Command + Shift + R: select/reselect region
+            if event.modifierFlags.contains([.command, .shift]), event.charactersIgnoringModifiers?.lowercased() == "r" {
+                self.selectRegionForNextRecording()
+                return nil
+            }
+            // Command + Shift + S: start/stop recording
+            if event.modifierFlags.contains([.command, .shift]), event.charactersIgnoringModifiers?.lowercased() == "s" {
+                self.toggleRecordingFromToolbar()
+                return nil
+            }
+            // Command + Shift + C: quick chat
+            if event.modifierFlags.contains([.command, .shift]), event.charactersIgnoringModifiers?.lowercased() == "c" {
+                self.flutterChannel?.invokeMethod("openQuickChat", arguments: nil)
+                self.collapseToolbar()
+                return nil
+            }
+            // Command + Shift + V: videos
+            if event.modifierFlags.contains([.command, .shift]), event.charactersIgnoringModifiers?.lowercased() == "v" {
+                self.flutterChannel?.invokeMethod("openVideos", arguments: nil)
+                self.collapseToolbar()
+                return nil
+            }
+            // Command + Shift + Comma: settings
+            if event.modifierFlags.contains([.command, .shift]), event.charactersIgnoringModifiers == "," {
+                self.flutterChannel?.invokeMethod("openSettings", arguments: nil)
+                self.collapseToolbar()
+                return nil
+            }
+            // Command + Shift + Q: quit
+            if event.modifierFlags.contains([.command, .shift]), event.charactersIgnoringModifiers?.lowercased() == "q" {
+                self.onQuit?()
+                return nil
+            }
+            return event
+        }
     }
 
     private func selectionScreen() -> NSScreen {
@@ -466,7 +518,7 @@ class ToolbarPanel: NSPanel {
         containerView.addSubview(screenPopup)
 
         startStopButton = createActionButton(
-            title: "⏺ Start Recording",
+            title: "⏺ Start Recording (⌘⇧S)",
             color: NSColor.systemRed,
             action: #selector(toggleRecording)
         )
@@ -474,7 +526,7 @@ class ToolbarPanel: NSPanel {
         containerView.addSubview(startStopButton)
 
         selectRegionButton = createActionButton(
-            title: "🎯 Select Region",
+            title: "🎯 Select Region (⌘⇧R)",
             color: NSColor.systemPurple,
             action: #selector(selectRegionAndRecord)
         )
@@ -483,7 +535,7 @@ class ToolbarPanel: NSPanel {
 
         // Quick Chat button
         quickChatButton = createActionButton(
-            title: "💬 Quick Chat",
+            title: "💬 Quick Chat (⌘⇧C)",
             color: NSColor.systemBlue,
             action: #selector(openQuickChat)
         )
@@ -492,7 +544,7 @@ class ToolbarPanel: NSPanel {
 
         // Videos button
         videosButton = createActionButton(
-            title: "📁 Videos",
+            title: "📁 Videos (⌘⇧V)",
             color: NSColor.systemGreen,
             action: #selector(openVideos)
         )
@@ -501,7 +553,7 @@ class ToolbarPanel: NSPanel {
 
         // Settings button
         settingsButton = createActionButton(
-            title: "⚙️ Settings",
+            title: "⚙️ Settings (⌘⇧,)",
             color: NSColor.systemGray,
             action: #selector(openSettings)
         )
@@ -510,7 +562,7 @@ class ToolbarPanel: NSPanel {
 
         // Quit button
         quitButton = createActionButton(
-            title: "🚪 Quit",
+            title: "🚪 Quit (⌘⇧Q)",
             color: NSColor.systemRed,
             action: #selector(quitApp)
         )
@@ -637,25 +689,32 @@ class ToolbarPanel: NSPanel {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             if self.currentRecording {
-                self.startStopButton.title = "⏹ Stop Recording"
+                self.startStopButton.title = "⏹ Stop Recording (⌘⇧S)"
             } else if self.selectedRegionSummary != nil {
-                self.startStopButton.title = "⏺ Start Region Recording"
+                self.startStopButton.title = "⏺ Start Region Recording (⌘⇧S)"
             } else {
-                self.startStopButton.title = "⏺ Start Recording"
+                self.startStopButton.title = "⏺ Start Recording (⌘⇧S)"
             }
-            self.selectRegionButton.title = self.selectedRegionSummary == nil ? "🎯 Select Region" : "🎯 Re-select Region"
+            self.selectRegionButton.title = self.selectedRegionSummary == nil
+                ? "🎯 Select Region (⌘⇧R)"
+                : "🎯 Re-select Region (⌘⇧R)"
             self.selectRegionButton.isEnabled = !self.currentRecording
             self.selectRegionButton.alphaValue = self.currentRecording ? 0.6 : 1.0
         }
     }
 }
 
+private enum RegionSelectionResult {
+    case cancelled
+    case confirmed([Double])
+}
+
 private class RegionSelectionPanel: NSPanel {
     private var selectionView: RegionSelectionView!
-    private var onComplete: (([Double]?) -> Void)?
+    private var onComplete: ((RegionSelectionResult) -> Void)?
     private var hasCompleted = false
 
-    init(screen: NSScreen, onComplete: @escaping ([Double]?) -> Void) {
+    init(screen: NSScreen, onComplete: @escaping (RegionSelectionResult) -> Void) {
         let frame = screen.frame
         super.init(
             contentRect: frame,
@@ -689,16 +748,16 @@ private class RegionSelectionPanel: NSPanel {
         makeFirstResponder(selectionView)
     }
 
-    private func finish(with region: [Double]?) {
+    private func finish(with result: RegionSelectionResult) {
         guard !hasCompleted else { return }
         hasCompleted = true
         orderOut(nil)
         close()
-        onComplete?(region)
+        onComplete?(result)
     }
 
     override func cancelOperation(_ sender: Any?) {
-        finish(with: nil)
+        finish(with: .cancelled)
     }
 }
 
@@ -707,9 +766,11 @@ private class RegionSelectionView: NSView {
     private var startPoint: NSPoint?
     private var currentPoint: NSPoint?
     private let panelFrame: NSRect
-    private let completion: ([Double]?) -> Void
+    private let completion: (RegionSelectionResult) -> Void
+    private var lastConfirmedRegion: [Double]?
+    private var confirmButtonRect: NSRect = .zero
 
-    init(frame frameRect: NSRect, panelFrame: NSRect, completion: @escaping ([Double]?) -> Void) {
+    init(frame frameRect: NSRect, panelFrame: NSRect, completion: @escaping (RegionSelectionResult) -> Void) {
         self.panelFrame = panelFrame
         self.completion = completion
         super.init(frame: frameRect)
@@ -737,6 +798,8 @@ private class RegionSelectionView: NSView {
         borderPath.lineWidth = 2
         NSColor.systemPurple.withAlphaComponent(0.95).setStroke()
         borderPath.stroke()
+
+        drawConfirmButton(under: rect)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -753,12 +816,33 @@ private class RegionSelectionView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         currentPoint = convert(event.locationInWindow, from: nil)
+        let location = convert(event.locationInWindow, from: nil)
+        if !confirmButtonRect.isEmpty, confirmButtonRect.contains(location), let region = lastConfirmedRegion {
+            completion(.confirmed(region))
+            return
+        }
         finalizeSelection()
     }
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 {  // ESC
-            completion(nil)
+            completion(.cancelled)
+            return
+        }
+        // Enter: confirm and start recording
+        if event.keyCode == 36 || event.keyCode == 76 {
+            if let region = lastConfirmedRegion {
+                completion(.confirmed(region))
+            }
+            return
+        }
+        // R: clear current selection and reselect
+        if event.charactersIgnoringModifiers?.lowercased() == "r" {
+            startPoint = nil
+            currentPoint = nil
+            lastConfirmedRegion = nil
+            confirmButtonRect = .zero
+            needsDisplay = true
             return
         }
         super.keyDown(with: event)
@@ -776,12 +860,16 @@ private class RegionSelectionView: NSView {
 
     private func finalizeSelection() {
         guard let rect = selectionRect else {
-            completion(nil)
+            completion(.cancelled)
             return
         }
 
         guard rect.width >= minSelectionSize, rect.height >= minSelectionSize else {
-            completion(nil)
+            startPoint = nil
+            currentPoint = nil
+            lastConfirmedRegion = nil
+            confirmButtonRect = .zero
+            needsDisplay = true
             return
         }
 
@@ -800,7 +888,55 @@ private class RegionSelectionView: NSView {
             Double(ceil(x2)),
             Double(ceil(bottom))
         ]
-        completion(region)
+        lastConfirmedRegion = region
+        needsDisplay = true
+    }
+
+    private func drawConfirmButton(under rect: NSRect) {
+        guard lastConfirmedRegion != nil else {
+            confirmButtonRect = .zero
+            return
+        }
+
+        let width: CGFloat = 190
+        let height: CGFloat = 34
+        let x = min(max(rect.midX - width / 2, 12), bounds.width - width - 12)
+        let y = max(rect.minY - height - 10, 12)
+        confirmButtonRect = NSRect(x: x, y: y, width: width, height: height)
+
+        let buttonPath = NSBezierPath(roundedRect: confirmButtonRect, xRadius: 8, yRadius: 8)
+        NSColor.systemGreen.withAlphaComponent(0.92).setFill()
+        buttonPath.fill()
+
+        NSColor.white.withAlphaComponent(0.95).setStroke()
+        buttonPath.lineWidth = 1.2
+        buttonPath.stroke()
+
+        let title = "✅ 确定录屏 (Enter)"
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+            .foregroundColor: NSColor.white
+        ]
+        let size = title.size(withAttributes: attrs)
+        let textPoint = NSPoint(
+            x: confirmButtonRect.midX - size.width / 2,
+            y: confirmButtonRect.midY - size.height / 2
+        )
+        title.draw(at: textPoint, withAttributes: attrs)
+
+        let hint = "ESC 取消 · R 重选"
+        let hintAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11, weight: .regular),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.85)
+        ]
+        let hintSize = hint.size(withAttributes: hintAttrs)
+        hint.draw(
+            at: NSPoint(
+                x: confirmButtonRect.midX - hintSize.width / 2,
+                y: confirmButtonRect.minY - hintSize.height - 6
+            ),
+            withAttributes: hintAttrs
+        )
     }
 }
 

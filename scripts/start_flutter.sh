@@ -143,6 +143,22 @@ if [ -n "$STALE_FLUTTER_RUN_PIDS" ]; then
     sleep 1
 fi
 
+# Avoid Kivy/floating-ball interference from legacy process instances.
+KIVY_PIDS="$(pgrep -f 'memscreen/ui/kivy_app.py|memscreen-ui|setup/start.py' || true)"
+if [ -n "$KIVY_PIDS" ]; then
+    print_info "Stopping possible Kivy/legacy UI processes" "$KIVY_PIDS"
+    kill $KIVY_PIDS 2>/dev/null || true
+    sleep 1
+fi
+
+# Clean stale trigger files used by Kivy floating-ball IPC.
+MEMSCREEN_HOME="$HOME/.memscreen"
+for trigger_file in switch_screen.txt region_trigger.txt recording_trigger.txt; do
+    if [ -f "$MEMSCREEN_HOME/$trigger_file" ]; then
+        rm -f "$MEMSCREEN_HOME/$trigger_file" 2>/dev/null || true
+    fi
+done
+
 # Start API backend in background (NO Kivy UI) only when not already running
 if curl -s http://127.0.0.1:8765/health > /dev/null 2>&1; then
     print_info "API already running" "Reusing http://127.0.0.1:8765"

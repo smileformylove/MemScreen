@@ -33,11 +33,9 @@ keywords = ["ai", "screen-recording", "vision-language", "memory", "local-ai", "
 dependencies = [
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.22.0",
-    "kivy[base]>=2.3.0",
     "torch>=2.0.0",
     "torchvision>=0.15.0",
     "pydantic>=2.0.0",
-    "ttkthemes>=3.0.0",
     "ollama>=0.3.0",
     "mss>=9.0.0",
     "matplotlib>=3.0.0",
@@ -70,6 +68,10 @@ macos = [
 ]
 vllm = [
     "vllm>=0.6.0",
+]
+kivy = [
+    "kivy[base]>=2.3.0",
+    "ttkthemes>=3.0.0",
 ]
 
 [project.urls]

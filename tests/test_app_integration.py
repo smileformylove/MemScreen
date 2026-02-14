@@ -45,7 +45,7 @@ print("\n[测试 3] 检查动态 Memory 配置...")
 try:
     from memscreen.memory import MemoryConfig
 
-    # 创建配置（模拟 kivy_app.py 中的配置）
+    # 创建配置（模拟应用启动配置）
     test_config = MemoryConfig(
         enable_dynamic_memory=True,
         dynamic_config={
@@ -97,7 +97,7 @@ try:
 
     app_config = get_config()
 
-    # 模拟 kivy_app.py 中的配置
+    # 模拟历史应用配置结构
     from memscreen.memory import (
         EmbedderConfig,
         VectorStoreConfig,
@@ -185,7 +185,7 @@ print("""
   6. ✅ 新 API 方法可用
 
 应用已准备就绪:
-  • kivy_app.py 中已启用动态功能
+  • 应用入口中已启用动态功能
   • Memory 实例化包含动态组件
   • 所有新 API 方法可用
 

@@ -19,7 +19,7 @@
   [![Python](https://img.shields.io/badge/python-3.8+-green?style=for-the-badge&logo=python&logoColor=white&labelColor=333)](https://www.python.org/downloads/)
   [![Ollama](https://img.shields.io/badge/ollama-supported-orange?style=for-the-badge)](https://ollama.com)
   [![vLLM](https://img.shields.io/badge/vLLM-supported-blue?style=for-the-badge)](https://docs.vllm.ai/)
-  [![Version](https://img.shields.io/badge/version-v0.6.1-brightgreen?style=for-the-badge&labelColor=333)](https://github.com/smileformylove/MemScreen/releases/tag/v0.6.1)
+  [![Version](https://img.shields.io/badge/version-v0.6.2-brightgreen?style=for-the-badge&labelColor=333)](https://github.com/smileformylove/MemScreen/releases/tag/v0.6.2)
 
   **100% Local • 100% Private • AI-Powered Visual Memory System**
 
@@ -115,10 +115,12 @@ Everything runs on your machine
 
   **🎉 Featured on Product Hunt, ShipIt & NXGenTools!**
 
-  **🎉 v0.6.1 — Flutter Floating Ball Stability Update!**
+  **🎉 v0.6.2 — UI Migration to Flutter!**
 
-  ### 🚀 Latest Features (v0.6.1)
-  - 🧭 **Two-step region recording** — Select region first, then start recording
+  ### 🚀 Latest Features (v0.6.2)
+  - 🖥️ **Screen-aware recording** — Full Screen now supports multi-screen selection
+  - ⌨️ **Hotkey-enabled controls** — Floating tools support shortcuts for faster operation
+  - ✅ **Region confirm flow** — Confirm button appears below selected area for direct start
   - 📁 **Video list sync** — Auto-refresh after recording stops (immediate + delayed refresh)
   - 🟣 **Floating ball lifecycle fix** — Closing main window no longer kills floating ball
   - 🧹 **Toolbar cleanup** — Force-closes when ball exits, no orphan panels
@@ -140,7 +142,7 @@ Everything runs on your machine
   - 🎬 **Multi-granular Vision** — Scene/Object/Text level understanding
   - 💬 **Visual QA Optimization** — Chain-of-thought for 7b models
 
-  [View Full Changelog](https://github.com/smileformylove/MemScreen/compare/v0.6.0...v0.6.1)
+  [View Full Changelog](https://github.com/smileformylove/MemScreen/compare/v0.6.1...v0.6.2)
 
 </div>
 
@@ -166,10 +168,20 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -e .
 
 # 4. Launch 🚀
-python setup/start.py
+./scripts/start_flutter.sh
 ```
 
-✅ **That's it!** MemScreen will start and guide you through the rest.
+✅ **That's it!** The Flutter app will launch automatically.
+
+**Alternative (manual start):**
+```bash
+# Terminal 1: Start API backend
+python setup/start.py
+
+# Terminal 2: Start Flutter app
+cd frontend/flutter
+flutter run
+```
 
 📚 **Platform-Specific Guides:**
 - 🍎 [macOS Installation](docs/guides/INSTALL_MACOS.md)
@@ -178,12 +190,11 @@ python setup/start.py
 
 ---
 
-### 🖥️ Dual Frontends: Kivy (Default) + Flutter (Optional)
+### 🖥️ Flutter Frontend (Primary)
 
-MemScreen supports **two frontends**; default is **Kivy UI** (launched with `python setup/start.py`).
+MemScreen now uses **Flutter** as the primary UI framework for a modern, cross-platform experience.
 
-- **Kivy** — Default Python-based desktop UI. Run `python setup/start.py` (or `setup/run.sh`). No extra steps.
-- **Flutter** — Modern cross-platform UI with HTTP API backend. Use when you prefer a Flutter desktop client.
+**Note:** The legacy Kivy UI has been archived as of v0.6.2. See [`archive/README.md`](archive/README.md) for details.
 
 ---
 
@@ -565,7 +576,7 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 |-----------|------------|
 | **Backend** | Python 3.8+ |
 | **API Framework** | FastAPI |
-| **GUI Framework** | Kivy (default), Flutter (optional) |
+| **GUI Framework** | Flutter (primary), Kivy (archived) |
 | **Screen Capture** | PIL ImageGrab, MSS |
 | **Video Processing** | OpenCV, MoviePy |
 | **OCR** | EasyOCR |
@@ -577,6 +588,13 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 ---
 
 ## 📝 What's New
+
+### ✨ v0.6.2 — UI Migration to Flutter (February 2026)
+
+- 📱 **Flutter Primary** — Flutter is now the default and recommended UI framework
+- 📦 **Kivy Archived** — Legacy Kivy UI moved to `archive/` for historical reference
+- 🚀 **Simplified Setup** — Cleaner dependencies without Kivy in default installation
+- ⚡ **Better Performance** — Flutter provides smoother animations and native feel
 
 ### ✨ v0.6.1 — Flutter Floating Ball Stability Update (February 2026)
 
@@ -603,7 +621,7 @@ export MEMSCREEN_VLLM_LLM_MODEL=stepfun-ai/Step-3.5-Flash
 
 **🎯 Upcoming Features**
 
-- ⌨️ **Global Hotkey Binding** — System-wide shortcuts for quick access
+- ⌨️ **Global Hotkey Expansion** — Extend current shortcuts to true system-wide triggers
 - 🖥️ **CLI Tool** — Command-line interface for power users
 - 👁️ **Visual Memory Optimization** — Advanced visual encoding & retrieval improvements
 - 🔌 **Plugin System** — Extensible architecture for custom integrations
@@ -632,7 +650,6 @@ MemScreen/
 │
 ├── memscreen/              # Main application package
 │   ├── api/               # FastAPI HTTP server (for Flutter)
-│   ├── ui/                # UI components (Kivy)
 │   ├── presenters/        # Business logic (MVP)
 │   ├── memory/            # Memory system
 │   ├── llm/               # LLM integration
@@ -641,7 +658,10 @@ MemScreen/
 │   └── ...
 │
 ├── frontend/
-│   └── flutter/           # Optional Flutter UI (see docs/FLUTTER.md)
+│   └── flutter/           # Flutter UI (primary)
+│
+├── archive/                # Archived components
+│   └── memscreen_ui_kivy/ # Legacy Kivy UI (archived v0.6.2)
 │
 ├── config/                 # Configuration files
 │   └── config_example.yaml
@@ -656,8 +676,8 @@ MemScreen/
 │   ├── install/           # Installation scripts
 │   ├── docker/            # Docker files
 │   ├── tools/             # Build tools
-│   ├── start.py           # Application entry point
-│   ├── start_api.py       # API-only entry (for Flutter)
+│   ├── start.py           # Legacy entry (now shows migration notice)
+│   ├── start_api.py       # API server entry (for Flutter)
 │   ├── run.sh/run.bat     # Run scripts
 │   └── MANIFEST.in
 │
@@ -705,7 +725,7 @@ This project is released under the **MIT License** — free to use, modify, and 
 
   Made with ❤️ and 🦉 by [Jixiang Luo](https://github.com/smileformylove)
 
-  **v0.6.1** — Flutter Floating Ball Stability Update (February 2026)
+  **v0.6.2** — UI Migration to Flutter (February 2026)
 
   [📧 Email](mailto:jixiangluo85@gmail.com) • [🐛 Report Bug](https://github.com/smileformylove/MemScreen/issues) • [💬 Discussion](https://github.com/smileformylove/MemScreen/discussions)
 
