@@ -436,6 +436,28 @@ class AppDelegate: FlutterAppDelegate {
             minimizeMainWindow()
             floatingBall?.beginRegionSelectionFromMainUI()
             result(nil)
+        case "prepareWindowSelection":
+            var requestedScreenIndex: Int?
+            if let args = call.arguments as? [String: Any] {
+                if let idx = args["screenIndex"] as? Int {
+                    requestedScreenIndex = idx
+                } else if let idxNum = args["screenIndex"] as? NSNumber {
+                    requestedScreenIndex = idxNum.intValue
+                }
+            }
+            if floatingBall == nil {
+                if let controller = resolveFlutterController() {
+                    createFloatingBall(with: controller)
+                } else {
+                    pollForFlutterController()
+                }
+            }
+            floatingBall?.orderFront(nil)
+            floatingBall?.makeKeyAndOrderFront(nil)
+            floatingBall?.setSelectedScreenIndex(requestedScreenIndex)
+            minimizeMainWindow()
+            floatingBall?.beginWindowSelectionFromMainUI()
+            result(nil)
         default:
             result(FlutterMethodNotImplemented)
         }

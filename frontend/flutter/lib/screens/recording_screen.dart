@@ -313,6 +313,28 @@ class _RecordingScreenState extends State<RecordingScreen> {
     }
   }
 
+  Future<void> _selectWindowWithFloatingBall() async {
+    try {
+      await FloatingBallService.show();
+      await FloatingBallService.prepareWindowSelection(
+          screenIndex: _screenIndex);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Main window minimized. Click an app window, then confirm recording.',
+          ),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to select app window: $e')),
+      );
+    }
+  }
+
   Future<void> _stop() async {
     try {
       await context.read<AppState>().recordingApi.stop();
@@ -342,6 +364,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
         segments: const [
           ButtonSegment(value: 'fullscreen', label: Text('Full Screen')),
           ButtonSegment(value: 'region', label: Text('Region')),
+          ButtonSegment(value: 'window', label: Text('App Window')),
         ],
         selected: {_mode},
         onSelectionChanged: (v) => setState(() => _mode = v.first),
@@ -480,8 +503,92 @@ class _RecordingScreenState extends State<RecordingScreen> {
     ];
   }
 
+  List<Widget> _buildWindowMode() {
+    if (_mode != 'window') {
+      return [];
+    }
+    final isRecording = _status?.isRecording ?? false;
+    return [
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.indigo.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.indigo.shade200),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'App Window Recording',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            const Text('1. Minimize & pick an app window'),
+            const Text('2. Confirm recording below selected window'),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: isRecording ? null : _selectWindowWithFloatingBall,
+              icon: const Icon(Icons.crop_din),
+              label: const Text('Select App Window'),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              isRecording
+                  ? 'Recording in progress.'
+                  : 'You can reselect another app window before confirming.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 24),
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _durationController,
+              decoration: const InputDecoration(
+                labelText: 'Duration (seconds)',
+                prefixIcon: Icon(Icons.timer, size: 20),
+              ),
+              keyboardType: TextInputType.number,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: TextField(
+              controller: _intervalController,
+              decoration: const InputDecoration(
+                labelText: 'Interval (seconds)',
+                prefixIcon: Icon(Icons.schedule, size: 20),
+              ),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 32),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          FilledButton.icon(
+            onPressed: isRecording ? _stop : null,
+            icon: const Icon(Icons.stop),
+            label: const Text('Stop Recording'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+
   List<Widget> _buildDirectRecordingControls() {
-    if (_mode == 'region') {
+    if (_mode == 'region' || _mode == 'window') {
       return [];
     }
 
@@ -595,7 +702,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
                     children: [
                       const Icon(Icons.info_outline, color: Colors.blue),
                       const SizedBox(width: 12),
-                      Text('Mode → Region (optional) → Start',
+                      Text('Mode → Target (optional) → Start',
                           style:
                               TextStyle(fontSize: 12, color: Colors.black87)),
                     ],
@@ -645,6 +752,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
                 // 屏幕选择或区域设置
                 ..._buildFullscreenSingleMode(),
                 ..._buildRegionMode(),
+                ..._buildWindowMode(),
                 ..._buildDirectRecordingControls(),
               ],
             ),

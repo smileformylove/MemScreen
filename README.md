@@ -119,6 +119,7 @@ Everything runs on your machine
 
   ### 🚀 Latest Features (v0.6.2)
   - 🖥️ **Screen-aware recording** — Full Screen now supports multi-screen selection
+  - 🪟 **App window recording** — Select a target app window and confirm before start
   - ⌨️ **Hotkey-enabled controls** — Floating tools support shortcuts for faster operation
   - ✅ **Region confirm flow** — Confirm button appears below selected area for direct start
   - 📁 **Video list sync** — Auto-refresh after recording stops (immediate + delayed refresh)
@@ -414,7 +415,10 @@ docker-compose up --build
 > - **Right-click** the ball to open the action toolbar (Recording, Videos, AI Chat, etc.)
 > - Full-screen workflow: choose target screen in **Record** page or in floating-ball toolbar **Screen** selector
 > - Region workflow: **Select Region** first, then press **Start Recording**
+> - App-window workflow: **Select Window** first, then confirm from the button shown under the selected window
 > - Region selection is bound to selected target screen (main UI and floating ball stay in sync)
+> - Selection confirm shortcuts: `Enter` confirm, `R` reselect, `Esc` cancel
+> - Toolbar shortcuts: `⌘⇧S` Start/Stop, `⌘⇧R` Select Region, `⌘⇧W` Select Window, `⌘⇧C` Chat, `⌘⇧V` Videos, `⌘⇧,` Settings, `⌘⇧Q` Quit
 > - **Left-click** the ball to reopen the main window
 > - Closing the main window keeps the floating ball alive; use the toolbar's **Quit** to exit completely
 > - **Drag** the ball to any position on screen
@@ -436,7 +440,7 @@ docker-compose up --build
 
 ### 🎯 Screen Recording
 
-- **🖥️ Full Screen & Custom Region** — Record everything or select specific areas
+- **🖥️ Full Screen, App Window & Custom Region** — Record everything, one app window, or a specific area
 - **📐 Visual Guides** — Crosshair guides for precise region selection
 - **⏱️ Flexible Intervals** — Set capture frequency (0.5s - 5s)
 - **👁️ Live Preview** — See exactly what's being captured
