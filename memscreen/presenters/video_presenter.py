@@ -9,6 +9,8 @@
 import os
 import sqlite3
 import threading
+import json
+from datetime import datetime
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -21,23 +23,136 @@ class VideoInfo:
     """Information about a video recording"""
 
     def __init__(self, filename: str, timestamp: str, frame_count: int, fps: float,
-                 duration: float, file_size: int):
+                 duration: float, file_size: int, recording_mode: str = "fullscreen",
+                 window_title: Optional[str] = None, audio_source: Optional[str] = None,
+                 content_tags: Optional[List[str]] = None, content_summary: Optional[str] = None):
         self.filename = filename
         self.timestamp = timestamp
         self.frame_count = frame_count
         self.fps = fps
         self.duration = duration
         self.file_size = file_size
+        self.recording_mode = recording_mode or "fullscreen"
+        self.window_title = window_title
+        self.audio_source = audio_source
+        self.content_tags = content_tags or []
+        self.content_summary = content_summary
 
     def to_dict(self) -> Dict[str, Any]:
+        app_name = self._extract_app_name()
+        tags = self._build_tags(app_name)
         return {
             "filename": self.filename,
             "timestamp": self.timestamp,
             "frame_count": self.frame_count,
             "fps": self.fps,
             "duration": self.duration,
-            "file_size": self.file_size
+            "file_size": self.file_size,
+            "recording_mode": self.recording_mode,
+            "window_title": self.window_title,
+            "audio_source": self.audio_source,
+            "app_name": app_name,
+            "tags": tags,
+            "content_tags": self.content_tags,
+            "content_summary": self.content_summary,
         }
+
+    def _extract_app_name(self) -> str:
+        title = (self.window_title or "").strip()
+        if not title:
+            if self.recording_mode == "fullscreen-single":
+                return "single-screen"
+            if self.recording_mode == "region":
+                return "region-capture"
+            return "all-screens"
+        if title.startswith("Window: "):
+            body = title[len("Window: "):]
+            sep = body.find(" · ")
+            return body[:sep].strip() if sep > 0 else body.strip()
+        sep = title.find(" · ")
+        return title[:sep].strip() if sep > 0 else title
+
+    def _build_tags(self, app_name: str) -> List[str]:
+        tags: List[str] = []
+
+        # Mode
+        mode_map = {
+            "fullscreen": "mode:full",
+            "fullscreen-single": "mode:single-screen",
+            "region": "mode:region-window",
+        }
+        tags.append(mode_map.get(self.recording_mode, "mode:unknown"))
+
+        # App/source
+        tags.append(f"app:{app_name.lower()}")
+
+        # Purpose heuristic
+        lower = f"{app_name} {(self.window_title or '')}".lower()
+        if any(x in lower for x in ["zoom", "teams", "meeting", "会议", "腾讯会议", "feishu"]):
+            tags.append("purpose:meeting")
+        if any(x in lower for x in ["code", "vscode", "xcode", "pycharm", "terminal", "intellij"]):
+            tags.append("purpose:coding")
+        if any(x in lower for x in ["chrome", "safari", "firefox", "edge", "浏览器"]):
+            tags.append("purpose:research")
+        if any(x in lower for x in ["figma", "sketch", "photoshop", "design"]):
+            tags.append("purpose:design")
+        if any(x in lower for x in ["slack", "discord", "wechat", "钉钉", "telegram"]):
+            tags.append("purpose:communication")
+
+        # Content-centric tags from vision/OCR enrichment (high priority).
+        for tag in self.content_tags:
+            clean = str(tag).strip().lower()
+            if not clean:
+                continue
+            if clean.startswith("topic:"):
+                tags.append(clean)
+            else:
+                tags.append(f"topic:{clean}")
+
+        # Duration bucket
+        duration = float(self.duration or 0.0)
+        if duration < 30:
+            tags.append("length:short")
+        elif duration < 180:
+            tags.append("length:medium")
+        else:
+            tags.append("length:long")
+
+        # Time bucket + weekday from timestamp
+        hour = None
+        weekday = None
+        try:
+            dt = datetime.strptime(self.timestamp, "%Y-%m-%d %H:%M:%S")
+            hour = dt.hour
+            weekday = dt.strftime("%a").lower()
+        except Exception:
+            pass
+        if weekday:
+            tags.append(f"weekday:{weekday}")
+        if hour is not None:
+            if 6 <= hour < 12:
+                tags.append("time:morning")
+            elif 12 <= hour < 18:
+                tags.append("time:afternoon")
+            elif 18 <= hour < 24:
+                tags.append("time:evening")
+            else:
+                tags.append("time:night")
+
+        # Audio
+        if self.audio_source:
+            tags.append(f"audio:{self.audio_source}")
+        else:
+            tags.append("audio:none")
+
+        # Dedupe but keep order
+        seen = set()
+        out: List[str] = []
+        for tag in tags:
+            if tag not in seen:
+                seen.add(tag)
+                out.append(tag)
+        return out
 
 
 class VideoPresenter(BasePresenter):
@@ -121,11 +236,20 @@ class VideoPresenter(BasePresenter):
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
-            cursor.execute('''
-                SELECT filename, timestamp, frame_count, fps, duration, file_size
-                FROM recordings
-                ORDER BY timestamp DESC
-            ''')
+            try:
+                cursor.execute('''
+                    SELECT filename, timestamp, frame_count, fps, duration, file_size,
+                           recording_mode, window_title, audio_source, content_tags, content_summary
+                    FROM recordings
+                    ORDER BY timestamp DESC
+                ''')
+            except sqlite3.OperationalError:
+                # Backward compatibility for older DB schema.
+                cursor.execute('''
+                    SELECT filename, timestamp, frame_count, fps, duration, file_size
+                    FROM recordings
+                    ORDER BY timestamp DESC
+                ''')
 
             all_rows = cursor.fetchall()
             print(f"[VideoPresenter] 📊 Found {len(all_rows)} total records in database")
@@ -141,7 +265,12 @@ class VideoPresenter(BasePresenter):
                         frame_count=row[2],
                         fps=row[3] or 30.0,
                         duration=row[4] or 0.0,
-                        file_size=row[5] or 0
+                        file_size=row[5] or 0,
+                        recording_mode=row[6] if len(row) > 6 else "fullscreen",
+                        window_title=row[7] if len(row) > 7 else None,
+                        audio_source=row[8] if len(row) > 8 else None,
+                        content_tags=self._parse_content_tags(row[9] if len(row) > 9 else None),
+                        content_summary=row[10] if len(row) > 10 else None,
                     )
                     videos.append(video)
                     print(f"[VideoPresenter] ✅ Video exists: {os.path.basename(filename)}")
@@ -448,17 +577,48 @@ class VideoPresenter(BasePresenter):
         if not os.path.exists(self.db_path):
             raise FileNotFoundError(f"Database not found: {self.db_path}")
 
+    def _parse_content_tags(self, raw: Any) -> List[str]:
+        """Parse serialized content tags from DB."""
+        if raw is None:
+            return []
+        if isinstance(raw, list):
+            return [str(x).strip().lower() for x in raw if str(x).strip()]
+        raw_text = str(raw).strip()
+        if not raw_text:
+            return []
+        try:
+            arr = json.loads(raw_text)
+            if isinstance(arr, list):
+                return [str(x).strip().lower() for x in arr if str(x).strip()]
+        except Exception:
+            pass
+        # Fallback: CSV text
+        out = []
+        for part in raw_text.split(","):
+            p = part.strip().lower()
+            if p:
+                out.append(p)
+        return out
+
     def _get_video_info(self, filename: str) -> Optional[VideoInfo]:
         """Get video info from database"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
-            cursor.execute('''
-                SELECT filename, timestamp, frame_count, fps, duration, file_size
-                FROM recordings
-                WHERE filename = ?
-            ''', (filename,))
+            try:
+                cursor.execute('''
+                    SELECT filename, timestamp, frame_count, fps, duration, file_size,
+                           recording_mode, window_title, audio_source, content_tags, content_summary
+                    FROM recordings
+                    WHERE filename = ?
+                ''', (filename,))
+            except sqlite3.OperationalError:
+                cursor.execute('''
+                    SELECT filename, timestamp, frame_count, fps, duration, file_size
+                    FROM recordings
+                    WHERE filename = ?
+                ''', (filename,))
 
             row = cursor.fetchone()
             conn.close()
@@ -470,7 +630,12 @@ class VideoPresenter(BasePresenter):
                     frame_count=row[2],
                     fps=row[3] or 30.0,
                     duration=row[4] or 0.0,
-                    file_size=row[5] or 0
+                    file_size=row[5] or 0,
+                    recording_mode=row[6] if len(row) > 6 else "fullscreen",
+                    window_title=row[7] if len(row) > 7 else None,
+                    audio_source=row[8] if len(row) > 8 else None,
+                    content_tags=self._parse_content_tags(row[9] if len(row) > 9 else None),
+                    content_summary=row[10] if len(row) > 10 else None,
                 )
 
             return None

@@ -10,6 +10,7 @@ class RecordingApi {
     String? mode,
     List<double>? region,
     int? screenIndex,
+    String? windowTitle,
   }) async {
     final body = <String, dynamic>{
       'duration': duration,
@@ -18,6 +19,9 @@ class RecordingApi {
     if (mode != null) body['mode'] = mode;
     if (region != null) body['region'] = region;
     if (screenIndex != null) body['screen_index'] = screenIndex;
+    if (windowTitle != null && windowTitle.isNotEmpty) {
+      body['window_title'] = windowTitle;
+    }
     await client.post('/recording/start', body: body);
   }
 

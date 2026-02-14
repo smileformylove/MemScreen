@@ -96,6 +96,9 @@ class RecordingPresenter(BasePresenter):
         self.recording_mode = 'fullscreen'  # fullscreen, region
         self.region_bbox = None  # (left, top, right, bottom) or None
         self.screen_index = None  # Index of screen to record (None = all screens/primary)
+        self.window_title = None  # Optional window/app label for region-window mode
+        self.content_tags: List[str] = []
+        self.content_summary: Optional[str] = None
 
         # Services (lazy loaded)
         self.region_config = None
@@ -173,6 +176,8 @@ class RecordingPresenter(BasePresenter):
                     recording_mode TEXT DEFAULT 'fullscreen',
                     region_bbox TEXT,
                     window_title TEXT,
+                    content_tags TEXT,
+                    content_summary TEXT,
                     audio_file TEXT,
                     audio_source TEXT
                 )
@@ -205,6 +210,16 @@ class RecordingPresenter(BasePresenter):
 
             try:
                 cursor.execute('ALTER TABLE recordings ADD COLUMN window_title TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute('ALTER TABLE recordings ADD COLUMN content_tags TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute('ALTER TABLE recordings ADD COLUMN content_summary TEXT')
             except sqlite3.OperationalError:
                 pass  # Column already exists
 
@@ -423,11 +438,14 @@ class RecordingPresenter(BasePresenter):
         """
         try:
             self.recording_mode = mode
+            window_title = kwargs.get('window_title')
+            self.window_title = window_title.strip() if isinstance(window_title, str) and window_title.strip() else None
 
             if mode == 'fullscreen':
                 # Capture all screens combined
                 self.region_bbox = None
                 self.screen_index = None
+                self.window_title = None
                 print("[RecordingPresenter] Mode set to: Full Screen (all screens)")
 
             elif mode == 'fullscreen-single':
@@ -436,6 +454,7 @@ class RecordingPresenter(BasePresenter):
                 if screen_index is not None:
                     self.screen_index = int(screen_index)
                     self.region_bbox = None
+                    self.window_title = None
                     print(f"[RecordingPresenter] Mode set to: Full Screen {self.screen_index + 1}")
                 else:
                     raise ValueError("screen_index is required for fullscreen-single mode")
@@ -446,7 +465,10 @@ class RecordingPresenter(BasePresenter):
                     # 确保bbox元素是整数，PIL的ImageGrab.grab需要整数坐标
                     self.region_bbox = tuple(int(x) for x in bbox)
                     self.screen_index = None
-                    print(f"[RecordingPresenter] Mode set to: Custom Region {bbox}")
+                    if self.window_title:
+                        print(f"[RecordingPresenter] Mode set to: Window Region {bbox} ({self.window_title})")
+                    else:
+                        print(f"[RecordingPresenter] Mode set to: Custom Region {bbox}")
                 else:
                     raise ValueError("Invalid bbox for region mode")
 
@@ -608,6 +630,165 @@ class RecordingPresenter(BasePresenter):
         except Exception as e:
             self.handle_error(e, "Failed to get recordings list")
             return []
+
+    def reanalyze_recording_content(self, filename: str) -> Dict[str, Any]:
+        """
+        Re-run visual analysis on an existing recording and refresh content tags/summary.
+
+        Args:
+            filename: Absolute path of the video file.
+
+        Returns:
+            Dict with status and generated tags.
+        """
+        try:
+            if not filename:
+                return {"ok": False, "error": "filename is required"}
+            if not os.path.exists(filename):
+                return {"ok": False, "error": f"file not found: {filename}"}
+
+            frame_count, fps, captured_at, duration = self._load_recording_metrics(filename)
+
+            # Fallback metrics from video itself if DB misses.
+            if frame_count <= 0 or fps <= 0:
+                cv2 = get_cv2()
+                if cv2 is not None:
+                    cap = cv2.VideoCapture(filename)
+                    if cap.isOpened():
+                        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or frame_count or 0)
+                        fps = float(cap.get(cv2.CAP_PROP_FPS) or fps or 0)
+                    cap.release()
+
+            if fps <= 0:
+                fps = 1.0 / self.interval if self.interval > 0 else 1.0
+            if frame_count <= 0:
+                frame_count = max(3, int(duration * fps)) if duration > 0 else 30
+            if duration <= 0:
+                duration = frame_count / fps if fps > 0 else 0
+            if not captured_at:
+                captured_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            content_description, frame_details = self._analyze_video_content(filename, frame_count, fps)
+            content_tags = self._generate_content_tags(content_description, frame_details)
+            self._save_recording_content_metadata(
+                filename=filename,
+                content_description=content_description,
+                content_tags=content_tags,
+            )
+
+            # Refresh memory metadata/text as well when memory is available.
+            if self.memory_system:
+                timeline_lines, timeline_text = self._build_recording_timeline(captured_at, frame_details)
+                suggestion_items = self._generate_recording_suggestions(content_description, frame_details)
+                frame_summary = "\n".join(timeline_lines) if timeline_lines else "No frame analysis available."
+                memory_text = f"""Screen Recording captured at {captured_at}:
+- Duration: {duration:.1f} seconds
+- Frames: {frame_count}
+- File: {filename}
+
+Observed Timeline (when things were seen):
+{frame_summary}
+
+Content Description: {content_description}
+
+Content Tags: {", ".join(content_tags)}
+"""
+                metadata_updates = {
+                    "content_description": content_description,
+                    "timeline_text": timeline_text,
+                    "frame_details_json": json.dumps(frame_details, ensure_ascii=False),
+                    "content_tags": ",".join(content_tags),
+                    "content_tags_json": json.dumps(content_tags, ensure_ascii=False),
+                    "suggestions": " | ".join(suggestion_items),
+                    "analysis_status": "ready",
+                    "ocr_text": content_description,
+                    "tags": self._build_recording_memory_tags(content_tags),
+                }
+                memory_id = self._find_recording_memory_id(filename)
+                if memory_id:
+                    self._update_recording_memory_entry(memory_id, memory_text, metadata_updates)
+                else:
+                    self.memory_system.add(
+                        [{"role": "user", "content": memory_text}],
+                        user_id="default_user",
+                        metadata={
+                            "type": "screen_recording",
+                            "category": "screen_recording",
+                            "filename": filename,
+                            "file_basename": os.path.basename(filename),
+                            "frame_count": frame_count,
+                            "fps": fps,
+                            "duration": duration,
+                            "timestamp": captured_at,
+                            "seen_at": captured_at,
+                            **metadata_updates,
+                        },
+                        infer=False,
+                    )
+
+            return {
+                "ok": True,
+                "filename": filename,
+                "content_tags": content_tags,
+                "content_summary": content_description,
+            }
+        except Exception as e:
+            self.handle_error(e, f"Failed to reanalyze recording: {filename}")
+            return {"ok": False, "error": str(e)}
+
+    def _load_recording_metrics(self, filename: str) -> Tuple[int, float, str, float]:
+        """Load frame_count/fps/timestamp/duration from DB for one recording."""
+        frame_count = 0
+        fps = 0.0
+        timestamp = ""
+        duration = 0.0
+        try:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT frame_count, fps, timestamp, duration
+                FROM recordings
+                WHERE filename = ?
+                ORDER BY rowid DESC
+                LIMIT 1
+                """,
+                (filename,),
+            )
+            row = cursor.fetchone()
+            conn.close()
+            if row:
+                frame_count = int(row[0] or 0)
+                fps = float(row[1] or 0.0)
+                timestamp = str(row[2] or "")
+                duration = float(row[3] or 0.0)
+        except Exception as e:
+            print(f"[RecordingPresenter] Failed to load recording metrics: {e}")
+        return frame_count, fps, timestamp, duration
+
+    def _find_recording_memory_id(self, filename: str) -> Optional[str]:
+        """Find existing memory id for this recording file if available."""
+        if not self.memory_system:
+            return None
+        try:
+            result = self.memory_system.search(
+                query=os.path.basename(filename),
+                user_id="default_user",
+                filters={"type": "screen_recording"},
+                limit=10,
+                threshold=0.0,
+            )
+            rows = result.get("results", []) if isinstance(result, dict) else (result or [])
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                md = row.get("metadata", {}) or {}
+                if str(md.get("filename", "")) == filename:
+                    rid = row.get("id")
+                    return str(rid) if rid is not None else None
+        except Exception as e:
+            print(f"[RecordingPresenter] Failed to find recording memory id: {e}")
+        return None
 
     # ==================== Private Methods ====================
 
@@ -798,6 +979,13 @@ class RecordingPresenter(BasePresenter):
                 self._add_video_to_memory(filename, len(frames), fps)
             else:
                 self._memory_index_ready_event.set()
+                captured_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                duration = len(frames) / fps if fps > 0 else 0
+                threading.Thread(
+                    target=self._enrich_recording_memory,
+                    args=(None, filename, len(frames), fps, captured_at, duration),
+                    daemon=True,
+                ).start()
 
             print(f"[RecordingPresenter] Saved segment: {filename}")
 
@@ -859,6 +1047,14 @@ class RecordingPresenter(BasePresenter):
             # Add to memory system
             if self.memory_system:
                 self._add_video_to_memory(filename, len(frames), fps)
+            else:
+                captured_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                duration = len(frames) / fps if fps > 0 else 0
+                threading.Thread(
+                    target=self._enrich_recording_memory,
+                    args=(None, filename, len(frames), fps, captured_at, duration),
+                    daemon=True,
+                ).start()
 
             # Notify view
             if self.view:
@@ -946,12 +1142,23 @@ class RecordingPresenter(BasePresenter):
             # Prepare metadata
             recording_mode = getattr(self, 'recording_mode', 'fullscreen')
             region_bbox = json.dumps(self.region_bbox) if getattr(self, 'region_bbox', None) else None
+            window_title = getattr(self, 'window_title', None)
+            content_tags = None
+            content_summary = None
             audio_source_str = self.audio_source.value if self.audio_source != AudioSource.NONE else None
 
             cursor.execute('''
-                INSERT INTO recordings (filename, timestamp, frame_count, fps, duration, file_size, recording_mode, region_bbox, window_title, audio_file, audio_source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (filename, timestamp, frame_count, fps, duration, file_size, recording_mode, region_bbox, None, audio_file, audio_source_str))
+                INSERT INTO recordings (
+                    filename, timestamp, frame_count, fps, duration, file_size,
+                    recording_mode, region_bbox, window_title, content_tags, content_summary,
+                    audio_file, audio_source
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                filename, timestamp, frame_count, fps, duration, file_size,
+                recording_mode, region_bbox, window_title, content_tags, content_summary,
+                audio_file, audio_source_str
+            ))
 
             conn.commit()
 
@@ -1059,14 +1266,22 @@ When users ask about what was on their screen or what they were doing, always re
     ) -> None:
         """Asynchronously enrich recording memory with timeline/details."""
         try:
-            if not self.memory_system:
-                return
-
             content_description, frame_details = self._analyze_video_content(filename, frame_count, fps)
+            content_tags = self._generate_content_tags(content_description, frame_details)
+            self._save_recording_content_metadata(
+                filename=filename,
+                content_description=content_description,
+                content_tags=content_tags,
+            )
+
+            if not self.memory_system:
+                print(f"[RecordingPresenter] Content tags saved without memory_system: {filename} -> {content_tags}")
+                return
             timeline_lines, timeline_text = self._build_recording_timeline(captured_at, frame_details)
             suggestions = self._generate_recording_suggestions(content_description, frame_details)
             suggestion_text = "\n".join(f"- {item}" for item in suggestions)
             frame_summary = "\n".join(timeline_lines) if timeline_lines else "No frame analysis available."
+            content_tag_text = ", ".join(content_tags) if content_tags else "general"
 
             enriched_text = f"""Screen Recording captured at {captured_at}:
 - Duration: {duration:.1f} seconds
@@ -1078,6 +1293,8 @@ Observed Timeline (when things were seen):
 
 Content Description: {content_description}
 
+Content Tags: {content_tag_text}
+
 Actionable Suggestions:
 {suggestion_text}
 
@@ -1088,11 +1305,13 @@ When users ask about what was on their screen or what they were doing, reference
                 "content_description": content_description,
                 "timeline_text": timeline_text,
                 "frame_details_json": json.dumps(frame_details, ensure_ascii=False),
+                "content_tags": ",".join(content_tags),
+                "content_tags_json": json.dumps(content_tags, ensure_ascii=False),
                 "suggestions": " | ".join(suggestions),
                 "analysis_status": "ready",
                 "ocr_text": content_description,
                 "category": "screen_recording",
-                "tags": "screen_recording,timeline_ready,ocr_enriched",
+                "tags": self._build_recording_memory_tags(content_tags),
             }
 
             updated = self._update_recording_memory_entry(memory_id, enriched_text, metadata_updates)
@@ -1221,6 +1440,97 @@ When users ask about what was on their screen or what they were doing, reference
             suggestions.append("建议按时间线回顾关键画面，确认下一步要执行的操作。")
 
         return suggestions[:3]
+
+    def _generate_content_tags(
+        self,
+        content_description: str,
+        frame_details: List[Dict[str, Any]],
+    ) -> List[str]:
+        """
+        Generate content-centric semantic tags from vision-analyzed frame text.
+        Tags are derived from frame-level visual descriptions + OCR fallbacks.
+        """
+        text_pool: List[str] = [content_description or ""]
+        for frame in frame_details[:8]:
+            text_pool.append(str(frame.get("text", "")))
+        merged = " ".join(text_pool).lower()
+
+        tags: List[str] = []
+
+        tag_rules = {
+            "coding": ["vscode", "xcode", "pycharm", "intellij", "source code", "代码", "编程"],
+            "terminal": ["terminal", "shell", "bash", "zsh", "powershell", "命令行"],
+            "debugging": ["error", "exception", "traceback", "failed", "warning", "报错", "异常", "失败"],
+            "meeting": ["zoom", "teams", "meeting", "会议", "腾讯会议", "飞书会议", "google meet"],
+            "browser": ["chrome", "safari", "firefox", "edge", "browser", "网页", "浏览器"],
+            "research": ["paper", "arxiv", "abstract", "reference", "论文", "文献", "研究"],
+            "document": ["doc", "document", "pdf", "notion", "word", "文档", "笔记"],
+            "spreadsheet": ["excel", "spreadsheet", "sheet", "表格"],
+            "chat": ["slack", "discord", "wechat", "telegram", "chat", "message", "消息", "聊天"],
+            "design": ["figma", "sketch", "photoshop", "design", "ui", "画板", "设计"],
+            "presentation": ["ppt", "slides", "keynote", "演示", "汇报"],
+            "dashboard": ["dashboard", "grafana", "datadog", "analytics", "统计", "看板"],
+        }
+
+        for tag, keywords in tag_rules.items():
+            if any(k in merged for k in keywords):
+                tags.append(tag)
+
+        # Fallback + cap
+        if not tags:
+            tags.append("general")
+
+        # Keep deterministic order (no hard cap on tag count).
+        deduped: List[str] = []
+        seen = set()
+        for tag in tags:
+            if tag in seen:
+                continue
+            seen.add(tag)
+            deduped.append(tag)
+        return deduped
+
+    def _build_recording_memory_tags(self, content_tags: List[str]) -> str:
+        """Build comma-separated tags string for memory payload filtering/ranking."""
+        base_tags = ["screen_recording", "timeline_ready", "ocr_enriched"]
+        semantic_tags = [f"semantic:{tag}" for tag in content_tags if tag]
+        merged = base_tags + semantic_tags
+        # Preserve order while deduping
+        out: List[str] = []
+        seen = set()
+        for tag in merged:
+            if tag in seen:
+                continue
+            seen.add(tag)
+            out.append(tag)
+        return ",".join(out)
+
+    def _save_recording_content_metadata(
+        self,
+        filename: str,
+        content_description: str,
+        content_tags: List[str],
+    ) -> None:
+        """Persist enriched content metadata into recordings DB for video organization."""
+        try:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE recordings
+                SET content_tags = ?, content_summary = ?
+                WHERE filename = ?
+                """,
+                (
+                    json.dumps(content_tags, ensure_ascii=False),
+                    content_description[:500] if content_description else None,
+                    filename,
+                ),
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[RecordingPresenter] Failed to save content metadata for {filename}: {e}")
 
     def _analyze_video_content(self, filename, total_frames, fps):
         """Analyze video content by sampling frames and using vision model"""

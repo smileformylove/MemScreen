@@ -874,6 +874,92 @@ class ChatPresenter(BasePresenter):
                 filtered.append(row)
         return filtered
 
+    def _infer_query_tag_hints(self, query: str) -> List[str]:
+        """Infer semantic tag hints from user query for recording-ranking."""
+        q = (query or "").lower()
+        hints: List[str] = []
+        rules = {
+            "coding": ["code", "coding", "vscode", "xcode", "python", "写代码", "代码"],
+            "terminal": ["terminal", "shell", "bash", "zsh", "命令行"],
+            "debugging": ["error", "exception", "bug", "报错", "异常", "错误", "失败"],
+            "meeting": ["meeting", "zoom", "teams", "会议", "腾讯会议", "飞书会议"],
+            "research": ["research", "paper", "arxiv", "论文", "文献", "调研"],
+            "document": ["doc", "document", "pdf", "文档", "笔记"],
+            "browser": ["browser", "chrome", "safari", "网页", "浏览器"],
+            "chat": ["chat", "message", "slack", "discord", "微信", "消息", "沟通"],
+            "design": ["design", "figma", "sketch", "photoshop", "设计"],
+            "presentation": ["ppt", "slides", "keynote", "演示", "汇报"],
+            "dashboard": ["dashboard", "grafana", "analytics", "看板", "统计"],
+        }
+        for tag, keywords in rules.items():
+            if any(k in q for k in keywords):
+                hints.append(tag)
+        return hints
+
+    def _extract_recording_tags_from_meta(self, metadata: Dict[str, Any]) -> List[str]:
+        """Extract normalized semantic tags from recording metadata."""
+        out: List[str] = []
+
+        raw_tags = metadata.get("tags")
+        if isinstance(raw_tags, str):
+            for part in raw_tags.split(","):
+                p = part.strip().lower()
+                if p:
+                    out.append(p)
+        elif isinstance(raw_tags, list):
+            for part in raw_tags:
+                p = str(part).strip().lower()
+                if p:
+                    out.append(p)
+
+        raw_content_tags = metadata.get("content_tags_json") or metadata.get("content_tags")
+        if isinstance(raw_content_tags, str):
+            text = raw_content_tags.strip()
+            if text:
+                try:
+                    arr = json.loads(text)
+                    if isinstance(arr, list):
+                        for x in arr:
+                            p = str(x).strip().lower()
+                            if p:
+                                out.append(p)
+                except Exception:
+                    for part in text.split(","):
+                        p = part.strip().lower()
+                        if p:
+                            out.append(p)
+        elif isinstance(raw_content_tags, list):
+            for x in raw_content_tags:
+                p = str(x).strip().lower()
+                if p:
+                    out.append(p)
+
+        normalized: List[str] = []
+        seen = set()
+        for t in out:
+            if t.startswith("semantic:"):
+                t = t[len("semantic:"):]
+            if t.startswith("topic:"):
+                t = t[len("topic:"):]
+            if t and t not in seen:
+                seen.add(t)
+                normalized.append(t)
+        return normalized
+
+    def _recording_tag_match_score(self, metadata: Dict[str, Any], query: str) -> int:
+        """Score how well one recording metadata matches query semantic tags."""
+        hints = self._infer_query_tag_hints(query)
+        if not hints:
+            return 0
+        tags = set(self._extract_recording_tags_from_meta(metadata))
+        score = 0
+        for hint in hints:
+            if hint in tags:
+                score += 5
+        if metadata.get("analysis_status") == "ready":
+            score += 1
+        return score
+
     def _get_easyocr_reader(self):
         """Lazy-load easyocr reader for text extraction."""
         if self._easyocr_reader is not None:
@@ -1978,52 +2064,55 @@ class ChatPresenter(BasePresenter):
 
         target_phrase = self._extract_visual_target_phrase(query)
         lines = ["我按“检索视频→逐帧抽取→OCR/视觉交叉验证”的链路整理了证据："]
-        for i, ev in enumerate(evidence_list, 1):
-            lines.append(
-                f"{i}. 时间：{ev.get('timestamp')}，视频：{ev.get('basename')}（{float(ev.get('duration', 0.0)):.1f}s）"
-            )
+        main_rows: List[List[str]] = []
+        for ev in evidence_list:
             text_items = ev.get("ocr_snippets", []) or []
-            if text_items:
-                lines.append("   屏幕可见文字：" + "；".join(text_items[:8]))
-            else:
-                lines.append("   屏幕可见文字：未识别到清晰文本")
-
             objects = ev.get("objects", []) or []
-            if objects:
-                lines.append("   屏幕主要物体/界面元素：" + "、".join(objects[:8]))
-
             overall = str(ev.get("overall_description", "")).strip()
-            if overall:
-                lines.append("   整体描述：" + overall)
+            main_rows.append([
+                str(ev.get("timestamp", "")),
+                str(ev.get("basename", "")),
+                f"{float(ev.get('duration', 0.0)):.1f}s",
+                "；".join(text_items[:6]) if text_items else "未识别到清晰文本",
+                "、".join(objects[:6]) if objects else "",
+                overall[:140],
+            ])
+        lines.append(self._build_markdown_table(["时间", "视频", "时长", "可见文字", "主要元素", "整体描述"], main_rows))
 
+        for ev in evidence_list:
             hits = ev.get("target_hits", []) or []
             if target_phrase:
                 if hits:
                     lines.append(f"   命中位置（目标：{target_phrase}）：")
+                    hit_rows: List[List[str]] = []
                     for hit in hits[:8]:
-                        lines.append(
-                            f"   - frame{int(hit.get('frame_index', 0))} "
-                            f"(+{float(hit.get('time_offset', 0.0)):.1f}s)"
-                            f"，位置：{hit.get('location', '未知')}，证据：{hit.get('evidence', '')}"
-                        )
+                        hit_rows.append([
+                            f"frame{int(hit.get('frame_index', 0))}",
+                            f"+{float(hit.get('time_offset', 0.0)):.1f}s",
+                            str(hit.get('location', '未知')),
+                            str(hit.get('evidence', ''))[:120],
+                        ])
+                    lines.append(self._build_markdown_table(["帧", "偏移", "位置", "证据"], hit_rows))
                 else:
                     lines.append(f"   命中位置（目标：{target_phrase}）：当前视频未命中")
             else:
                 frame_rows = ev.get("frame_timeline_text", []) or []
                 if frame_rows:
-                    lines.append("   逐帧列表：")
+                    fr_rows: List[List[str]] = []
                     for row in frame_rows[:6]:
-                        lines.append(
-                            f"   - frame{int(row.get('frame_index', 0))} "
-                            f"(+{float(row.get('time_offset', 0.0)):.1f}s)：{row.get('text', '')}"
-                        )
+                        fr_rows.append([
+                            f"frame{int(row.get('frame_index', 0))}",
+                            f"+{float(row.get('time_offset', 0.0)):.1f}s",
+                            str(row.get('text', ''))[:140],
+                        ])
+                    lines.append(self._build_markdown_table(["帧", "偏移", "证据文字"], fr_rows))
 
         memory_lines = self._extract_memory_evidence_lines(memory_context, limit=6)
         if not memory_lines:
             memory_lines = self._collect_memory_recording_evidence(query, limit=4)
         if memory_lines:
             lines.append("\n记忆系统证据（Memory）：")
-            lines.extend(memory_lines[:6])
+            lines.append(self._build_memory_evidence_table(memory_lines[:6]))
 
         lines.append("\n建议：")
         if target_phrase:
@@ -2033,6 +2122,51 @@ class ChatPresenter(BasePresenter):
             lines.append("1. 打开同一视频按上述逐帧时间点复核。")
             lines.append("2. 继续问“这个词/物体出现在哪一帧”，我会返回更精确位置证据。")
         return "\n".join(lines)
+
+    def _build_markdown_table(self, headers: List[str], rows: List[List[str]]) -> str:
+        """Build a simple markdown table block."""
+        if not headers:
+            return ""
+        header_line = "| " + " | ".join(headers) + " |"
+        separator_line = "| " + " | ".join(["---"] * len(headers)) + " |"
+        body_lines = []
+        for row in rows:
+            safe_row = [str(c).replace("\n", " ").replace("|", "/") for c in row]
+            if len(safe_row) < len(headers):
+                safe_row.extend([""] * (len(headers) - len(safe_row)))
+            body_lines.append("| " + " | ".join(safe_row[: len(headers)]) + " |")
+        if not body_lines:
+            body_lines.append("| " + " | ".join([""] * len(headers)) + " |")
+        return "\n".join([header_line, separator_line] + body_lines)
+
+    def _build_memory_evidence_table(self, memory_lines: List[str]) -> str:
+        """Convert compact memory evidence lines to markdown table for readability."""
+        rows: List[List[str]] = []
+        for line in memory_lines:
+            text = str(line).strip()
+            if text.startswith("- "):
+                text = text[2:].strip()
+            # Expected format:
+            # 2026-... basename.mp4：hint...
+            when = ""
+            file_name = ""
+            evidence = text
+            try:
+                head, tail = text.split("：", 1)
+                evidence = tail.strip()
+                parts = head.strip().split(" ")
+                if len(parts) >= 3:
+                    when = " ".join(parts[:2]).strip()
+                    file_name = " ".join(parts[2:]).strip()
+                elif len(parts) == 2:
+                    when = parts[0].strip()
+                    file_name = parts[1].strip()
+                else:
+                    file_name = head.strip()
+            except ValueError:
+                pass
+            rows.append([when, file_name, evidence])
+        return self._build_markdown_table(["时间", "录屏文件", "证据摘要"], rows)
 
     def _collect_visual_detail_evidence(self, query: str, max_videos: int = 2) -> List[Dict[str, Any]]:
         """Collect rich visual evidence from recent recordings."""
@@ -2140,31 +2274,34 @@ class ChatPresenter(BasePresenter):
         specific_hint = self._extract_specific_recording_hint(query)
         frame_mode = bool(specific_hint)
         lines = ["我基于最近录屏给你整理了可核验的画面证据："]
+        main_rows: List[List[str]] = []
         for i, ev in enumerate(evidence_list, 1):
-            lines.append(f"{i}. 时间：{ev.get('timestamp')}，视频：{ev.get('basename')}（{ev.get('duration', 0.0):.1f}s）")
             text_items = ev.get("ocr_snippets", []) or ev.get("visible_text", [])
-            if text_items:
-                lines.append("   屏幕上可见文字（OCR/视觉识别）：" + "；".join(text_items[:6]))
-            else:
-                lines.append("   屏幕上可见文字：未识别到清晰文本")
             objs = ev.get("objects", [])
-            if objs:
-                lines.append("   屏幕上主要物体/界面元素：" + "、".join(objs[:8]))
-            else:
-                lines.append("   屏幕上主要物体/界面元素：窗口、工具栏、文档区域（粗略）")
             overall = ev.get("overall_description", "")
-            if overall:
-                lines.append("   整体描述：" + overall)
-            elif ev.get("scene_summaries", []):
-                lines.append("   整体描述：" + " | ".join((ev.get("scene_summaries", []) or [])[:2]))
+            if not overall and ev.get("scene_summaries", []):
+                overall = " | ".join((ev.get("scene_summaries", []) or [])[:2])
+            main_rows.append([
+                str(ev.get('timestamp', '')),
+                str(ev.get('basename', '')),
+                f"{float(ev.get('duration', 0.0)):.1f}s",
+                "；".join(text_items[:6]) if text_items else "未识别到清晰文本",
+                "、".join(objs[:8]) if objs else "窗口、工具栏、文档区域（粗略）",
+                str(overall)[:140],
+            ])
+        lines.append(self._build_markdown_table(["时间", "视频", "时长", "可见文字", "主要元素", "整体描述"], main_rows))
+
+        for ev in evidence_list:
             frame_rows = ev.get("frame_timeline_text", []) or []
             if frame_rows and frame_mode:
-                lines.append("   逐帧列表：")
+                fr_rows: List[List[str]] = []
                 for row in frame_rows[:4]:
-                    lines.append(
-                        f"   - frame{int(row.get('frame_index', 0))} "
-                        f"(+{float(row.get('time_offset', 0.0)):.1f}s)：{row.get('text', '')}"
-                    )
+                    fr_rows.append([
+                        f"frame{int(row.get('frame_index', 0))}",
+                        f"+{float(row.get('time_offset', 0.0)):.1f}s",
+                        str(row.get('text', ''))[:140],
+                    ])
+                lines.append(self._build_markdown_table(["帧", "偏移", "证据文字"], fr_rows))
             elif frame_rows:
                 compact = []
                 for row in frame_rows[:3]:
@@ -2216,8 +2353,9 @@ class ChatPresenter(BasePresenter):
                 md = item.get("metadata", {}) if isinstance(item, dict) else {}
                 status = str(md.get("analysis_status", "")).lower()
                 ts = str(md.get("timestamp") or md.get("seen_at") or "")
-                # ready first, newer first
-                return (0 if status == "ready" else 1, ts)
+                tag_score = self._recording_tag_match_score(md, query)
+                # tag hits first, then ready first, then newer first
+                return (-tag_score, 0 if status == "ready" else 1, ts)
 
             rows = sorted(rows, key=_rank, reverse=False)
 
@@ -2447,10 +2585,15 @@ class ChatPresenter(BasePresenter):
         focus = "、".join([f"{k}({v})" for k, v in top_kinds[:3]]) if top_kinds else "通用窗口操作"
 
         lines = ["我按录屏时间线整理了你最近做过的事情：", "时间线证据："]
+        timeline_rows: List[List[str]] = []
         for item in entries[:6]:
-            lines.append(
-                f"- {item.get('timestamp', 'Unknown time')} {item.get('basename', '')}：{item.get('detail', '')}"
-            )
+            timeline_rows.append([
+                str(item.get('timestamp', 'Unknown time')),
+                str(item.get('basename', '')),
+                str(item.get('kind', '')),
+                str(item.get('detail', ''))[:180],
+            ])
+        lines.append(self._build_markdown_table(["时间", "视频", "活动类型", "证据摘要"], timeline_rows))
         lines.append(f"主要活动类型：{focus}")
 
         # Deterministic suggestion baseline.
@@ -2547,13 +2690,16 @@ class ChatPresenter(BasePresenter):
             return "", stats
 
         evidence_lines = ["[Hybrid Visual Evidence: DB Timeline]"]
+        db_rows_md: List[List[str]] = []
         for row in target_rows:
-            line = (
-                f"- {row.get('timestamp', 'Unknown time')}：{row.get('basename', '')}"
-                f"（{row.get('duration', 0.0):.1f}s, {row.get('frame_count', 0)} 帧）"
-            )
-            evidence_lines.append(line)
-            stats["db_lines"].append(line)
+            db_rows_md.append([
+                str(row.get('timestamp', 'Unknown time')),
+                str(row.get('basename', '')),
+                f"{float(row.get('duration', 0.0)):.1f}s",
+                str(row.get('frame_count', 0)),
+            ])
+        evidence_lines.append(self._build_markdown_table(["时间", "视频", "时长", "帧数"], db_rows_md))
+        stats["db_lines"] = [f"- {r[0]}：{r[1]}（{r[2]}, {r[3]} 帧）" for r in db_rows_md]
 
         if time_window_note:
             evidence_lines.append(f"- {time_window_note}")
@@ -2599,7 +2745,15 @@ class ChatPresenter(BasePresenter):
 
         if ocr_lines:
             evidence_lines.append("\n[Hybrid Visual Evidence: OCR]")
-            evidence_lines.extend(ocr_lines)
+            ocr_rows_md: List[List[str]] = []
+            for line in ocr_lines:
+                txt = line[2:] if line.startswith("- ") else line
+                if "：" in txt:
+                    t, pv = txt.split("：", 1)
+                    ocr_rows_md.append([t.strip(), pv.strip()])
+                else:
+                    ocr_rows_md.append(["", txt])
+            evidence_lines.append(self._build_markdown_table(["时间", "OCR证据"], ocr_rows_md))
 
         return "\n".join(evidence_lines), stats
 
@@ -3720,6 +3874,17 @@ class ChatPresenter(BasePresenter):
                 if 'metadata' in r and r['metadata'].get('type') == 'screen_recording'
             ]
 
+            # Prioritize recording memories whose semantic tags match the current query.
+            if recording_memories:
+                def _recording_rank(row: Dict[str, Any]) -> Tuple[int, str]:
+                    meta = row.get("metadata", {}) if isinstance(row, dict) else {}
+                    tag_score = self._recording_tag_match_score(meta, query)
+                    ts = str(meta.get("timestamp") or meta.get("seen_at") or "")
+                    # Higher tag score first, newer first.
+                    return (-tag_score, ts)
+
+                recording_memories = sorted(recording_memories, key=_recording_rank, reverse=False)
+
             ocr_memories = [
                 r for r in memories
                 if 'metadata' in r and r['metadata'].get('type') == 'ocr_text'
@@ -3751,6 +3916,10 @@ class ChatPresenter(BasePresenter):
 
                     if 'content_description' in metadata:
                         context_parts.append(f"   - Summary: {metadata['content_description']}")
+
+                    sem_tags = self._extract_recording_tags_from_meta(metadata)
+                    if sem_tags:
+                        context_parts.append(f"   - Tags: {', '.join(sem_tags[:6])}")
 
                     if 'ocr_text' in metadata and metadata['ocr_text']:
                         # Include OCR text preview (first 200 chars)

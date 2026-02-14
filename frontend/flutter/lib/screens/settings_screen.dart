@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../api/config_api.dart';
@@ -21,7 +22,9 @@ class SettingsScreen extends StatelessWidget {
             onTap: () {
               // URL modification via ConnectionGate when backend unreachable
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Use "Config API" when backend is unreachable to modify')),
+                const SnackBar(
+                    content: Text(
+                        'Use "Config API" when backend is unreachable to modify')),
               );
             },
           ),
@@ -68,29 +71,50 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-class AboutScreen extends StatelessWidget {
+class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
+
+  @override
+  State<AboutScreen> createState() => _AboutScreenState();
+}
+
+class _AboutScreenState extends State<AboutScreen> {
+  late final Future<PackageInfo> _packageInfoFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _packageInfoFuture = PackageInfo.fromPlatform();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('About')),
-      body: const Padding(
-        padding: EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('MemScreen Flutter', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            SizedBox(height: 8),
-            Text('版本: 0.1.0'),
-            SizedBox(height: 16),
-            Text(
-              'Optional Flutter frontend for MemScreen, coexisting with the default Kivy UI. '
-              'Start MemScreen API first (conda activate MemScreen, then python -m memscreen.api), '
-              'then run this app.',
+      body: FutureBuilder<PackageInfo>(
+        future: _packageInfoFuture,
+        builder: (context, snapshot) {
+          final version = snapshot.hasData ? snapshot.data!.version : 'Loading...';
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('MemScreen Flutter',
+                    style:
+                        TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text('版本: $version'),
+                const SizedBox(height: 16),
+                const Text(
+                  'Optional Flutter frontend for MemScreen, coexisting with the default Kivy UI. '
+                  'Start MemScreen API first (conda activate MemScreen, then python -m memscreen.api), '
+                  'then run this app.',
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

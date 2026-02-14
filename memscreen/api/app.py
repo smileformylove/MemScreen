@@ -52,6 +52,11 @@ class RecordingStartBody(BaseModel):
     mode: Optional[str] = None  # fullscreen, fullscreen-single, region
     region: Optional[List[float]] = None  # [left, top, right, bottom]
     screen_index: Optional[int] = None
+    window_title: Optional[str] = None
+
+
+class VideoReanalyzeBody(BaseModel):
+    filename: str
 
 
 # ---------- Chat ----------
@@ -405,6 +410,8 @@ async def recording_start(body: RecordingStartBody):
             kwargs["bbox"] = tuple(body.region)
         elif body.mode == "fullscreen-single" and body.screen_index is not None:
             kwargs["screen_index"] = body.screen_index
+        if body.window_title:
+            kwargs["window_title"] = body.window_title
         try:
             presenter.set_recording_mode(body.mode, **kwargs)
         except Exception as e:
@@ -465,6 +472,23 @@ async def video_list():
         raise HTTPException(status_code=503, detail="Video not available")
     videos = presenter.get_video_list()
     return {"videos": [v.to_dict() for v in videos]}
+
+
+@app.post("/video/reanalyze")
+async def video_reanalyze(body: VideoReanalyzeBody):
+    """Reanalyze one video with vision model and refresh content tags/summary."""
+    from . import deps
+    presenter = deps.get_recording_presenter()
+    if not presenter:
+        raise HTTPException(status_code=503, detail="Recording presenter not available")
+
+    result = await asyncio.get_event_loop().run_in_executor(
+        _executor,
+        lambda: presenter.reanalyze_recording_content(body.filename),
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "reanalysis failed"))
+    return result
 
 
 # ---------- Config & Health ----------

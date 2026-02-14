@@ -13,6 +13,13 @@ class VideoScreen extends StatefulWidget {
   State<VideoScreen> createState() => _VideoScreenState();
 }
 
+class _SmartView {
+  const _SmartView({required this.name, required this.tags});
+
+  final String name;
+  final List<String> tags;
+}
+
 class _VideoScreenState extends State<VideoScreen> {
   List<VideoItem> _videos = [];
   bool _loading = true;
@@ -23,6 +30,14 @@ class _VideoScreenState extends State<VideoScreen> {
 
   String _positionLabel = '0:00';
   double _sliderValue = 0.0;
+  final Set<String> _reanalyzingFiles = <String>{};
+  String _organizeMode = 'all'; // all | app | day | tag
+  final Set<String> _selectedTags = <String>{};
+  final List<_SmartView> _smartViews = <_SmartView>[
+    _SmartView(name: 'Coding Focus', tags: ['purpose:coding', 'time:morning']),
+    _SmartView(name: 'Meetings', tags: ['purpose:meeting']),
+    _SmartView(name: 'Research', tags: ['purpose:research', 'length:medium']),
+  ];
 
   @override
   void initState() {
@@ -91,6 +106,96 @@ class _VideoScreenState extends State<VideoScreen> {
     }
   }
 
+  List<String> get _availableTags {
+    final freq = <String, int>{};
+    for (final v in _videos) {
+      for (final tag in _prioritizedTags(v.tags)) {
+        freq[tag] = (freq[tag] ?? 0) + 1;
+      }
+    }
+    final keys = freq.keys.toList()
+      ..sort((a, b) {
+        final diff = (freq[b] ?? 0).compareTo(freq[a] ?? 0);
+        if (diff != 0) return diff;
+        return a.compareTo(b);
+      });
+    return keys;
+  }
+
+  List<VideoItem> get _visibleVideos {
+    if (_selectedTags.isEmpty) return _videos;
+    return _videos.where((v) {
+      final tags = v.tags.toSet();
+      return _selectedTags.every(tags.contains);
+    }).toList();
+  }
+
+  void _toggleTag(String tag) {
+    setState(() {
+      if (_selectedTags.contains(tag)) {
+        _selectedTags.remove(tag);
+      } else {
+        _selectedTags.add(tag);
+      }
+    });
+  }
+
+  void _applySmartView(_SmartView view) {
+    setState(() {
+      _selectedTags
+        ..clear()
+        ..addAll(view.tags);
+    });
+  }
+
+  void _clearFilters() {
+    if (_selectedTags.isEmpty) return;
+    setState(() => _selectedTags.clear());
+  }
+
+  Future<void> _saveCurrentSmartView() async {
+    if (_selectedTags.isEmpty) return;
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Save Smart View'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'View name',
+            hintText: 'e.g. Morning Coding',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final v = controller.text.trim();
+              if (v.isEmpty) return;
+              Navigator.pop(context, v);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.trim().isEmpty) return;
+    setState(() {
+      _smartViews.insert(
+        0,
+        _SmartView(name: name.trim(), tags: _selectedTags.toList()),
+      );
+      if (_smartViews.length > 12) {
+        _smartViews.removeLast();
+      }
+    });
+  }
+
   Future<void> _playVideo(VideoItem v) async {
     _controller?.dispose();
 
@@ -134,6 +239,40 @@ class _VideoScreenState extends State<VideoScreen> {
     }
   }
 
+  Future<void> _reanalyzeVideo(VideoItem v) async {
+    if (_reanalyzingFiles.contains(v.filename)) return;
+    setState(() => _reanalyzingFiles.add(v.filename));
+    try {
+      final result =
+          await context.read<AppState>().videoApi.reanalyze(v.filename);
+      if (!mounted) return;
+      final tags = (result['content_tags'] is List)
+          ? (result['content_tags'] as List).whereType<String>().join(', ')
+          : '';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            tags.isEmpty ? 'Reanalysis complete' : 'Reanalysis complete: $tags',
+          ),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Reanalysis failed: $e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _reanalyzingFiles.remove(v.filename));
+      }
+    }
+  }
+
   void _closeVideo() {
     _controller?.pause();
     _controller?.removeListener(_updatePosition);
@@ -144,7 +283,6 @@ class _VideoScreenState extends State<VideoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Videos'),
@@ -163,22 +301,138 @@ class _VideoScreenState extends State<VideoScreen> {
               children: [
                 // 视频录制时间轴 - 始终显示
                 _buildTimeline(),
+                _buildOrganizationBar(),
+                _buildTagFilterBar(),
+                _buildSmartViewsBar(),
                 // 视频播放器或列表区域
                 Expanded(
                   child: _currentVideo != null
                       ? _buildVideoPlayer()
-                      : _buildVideoList(),
+                      : _buildOrganizedVideoList(),
                 ),
               ],
             ),
     );
   }
 
+  Widget _buildOrganizationBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Row(
+        children: [
+          const Text('Organize by'),
+          const SizedBox(width: 12),
+          Expanded(
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'all', label: Text('All')),
+                ButtonSegment(value: 'app', label: Text('By App')),
+                ButtonSegment(value: 'day', label: Text('By Day')),
+                ButtonSegment(value: 'tag', label: Text('By Tag')),
+              ],
+              selected: {_organizeMode},
+              onSelectionChanged: (s) {
+                if (s.isEmpty) return;
+                setState(() => _organizeMode = s.first);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTagFilterBar() {
+    final tags = _availableTags;
+    if (tags.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+      alignment: Alignment.centerLeft,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            Text(
+              'Tags',
+              style: TextStyle(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(width: 8),
+            ...tags.map((tag) {
+              final selected = _selectedTags.contains(tag);
+              return Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: FilterChip(
+                  selected: selected,
+                  label: Text(_formatTag(tag)),
+                  onSelected: (_) => _toggleTag(tag),
+                ),
+              );
+            }),
+            const SizedBox(width: 4),
+            TextButton(
+              onPressed: _selectedTags.isEmpty ? null : _clearFilters,
+              child: const Text('Clear'),
+            ),
+            IconButton(
+              onPressed: _selectedTags.isEmpty ? null : _saveCurrentSmartView,
+              icon: const Icon(Icons.bookmark_add_outlined, size: 20),
+              tooltip: 'Save as Smart View',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmartViewsBar() {
+    if (_smartViews.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      alignment: Alignment.centerLeft,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            Text(
+              'Smart Views',
+              style: TextStyle(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(width: 8),
+            ..._smartViews.map((view) {
+              final active = view.tags.isNotEmpty &&
+                  view.tags.every((t) => _selectedTags.contains(t)) &&
+                  _selectedTags.length == view.tags.length;
+              return Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: ActionChip(
+                  backgroundColor: active
+                      ? theme.colorScheme.primaryContainer
+                      : theme.colorScheme.surfaceContainerHigh,
+                  label: Text(view.name),
+                  onPressed: () => _applySmartView(view),
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
   // 构建时间轴（显示所有录制的视频）
   Widget _buildTimeline() {
     final theme = Theme.of(context);
+    final videos = _visibleVideos;
 
-    if (_videos.isEmpty) {
+    if (videos.isEmpty) {
       return Container(
         height: 50,
         decoration: BoxDecoration(
@@ -210,9 +464,9 @@ class _VideoScreenState extends State<VideoScreen> {
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        itemCount: _videos.length,
+        itemCount: videos.length,
         itemBuilder: (context, index) {
-          final video = _videos[index];
+          final video = videos[index];
           final isPlaying = _currentVideo?.filename == video.filename;
           return _buildVideoTimelineNode(video, isPlaying);
         },
@@ -292,11 +546,24 @@ class _VideoScreenState extends State<VideoScreen> {
     );
   }
 
-  // 视频列表
-  Widget _buildVideoList() {
-    final theme = Theme.of(context);
+  Widget _buildOrganizedVideoList() {
+    switch (_organizeMode) {
+      case 'app':
+        return _buildByAppList();
+      case 'day':
+        return _buildByDayList();
+      case 'tag':
+        return _buildByTagList();
+      default:
+        return _buildVideoList();
+    }
+  }
 
-    if (_videos.isEmpty) {
+  // 视频列表（All）
+  Widget _buildVideoList() {
+    final videos = _visibleVideos;
+    if (videos.isEmpty) {
+      final theme = Theme.of(context);
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -305,7 +572,7 @@ class _VideoScreenState extends State<VideoScreen> {
                 size: 64, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: 16),
             Text(
-              '暂无录制视频',
+              _selectedTags.isEmpty ? '暂无录制视频' : '当前标签筛选下无视频',
               style: TextStyle(
                   color: theme.colorScheme.onSurfaceVariant, fontSize: 16),
             ),
@@ -316,112 +583,360 @@ class _VideoScreenState extends State<VideoScreen> {
 
     return ListView.separated(
       padding: const EdgeInsets.all(16),
-      itemCount: _videos.length,
-      separatorBuilder: (context, index) => Divider(
-        height: 1,
-        color: theme.dividerColor,
-      ),
+      itemCount: videos.length,
+      separatorBuilder: (context, index) => const SizedBox(height: 1),
       itemBuilder: (context, index) {
-        final v = _videos[index];
-        final isPlaying = _currentVideo?.filename == v.filename;
+        final v = videos[index];
+        return _buildVideoListTile(v);
+      },
+    );
+  }
 
+  Widget _buildByAppList() {
+    final grouped = <String, List<VideoItem>>{};
+    for (final v in _visibleVideos) {
+      final app = _extractAppName(v);
+      grouped.putIfAbsent(app, () => []).add(v);
+    }
+    final keys = grouped.keys.toList()
+      ..sort((a, b) {
+        final diff = grouped[b]!.length.compareTo(grouped[a]!.length);
+        if (diff != 0) return diff;
+        return a.compareTo(b);
+      });
+
+    return _buildSectionedList(
+      sectionKeys: keys,
+      sectionVideos: grouped,
+      sectionTitleBuilder: (k, list) => '$k · ${list.length} videos',
+    );
+  }
+
+  Widget _buildByDayList() {
+    final grouped = <String, List<VideoItem>>{};
+    for (final v in _visibleVideos) {
+      final day = _extractDay(v.timestamp);
+      grouped.putIfAbsent(day, () => []).add(v);
+    }
+    final keys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    return _buildSectionedList(
+      sectionKeys: keys,
+      sectionVideos: grouped,
+      sectionTitleBuilder: (k, list) {
+        final totalSeconds = list.fold<num>(0, (acc, x) => acc + x.duration);
+        return '$k · ${list.length} videos · ${totalSeconds.toStringAsFixed(0)}s';
+      },
+    );
+  }
+
+  Widget _buildByTagList() {
+    final grouped = <String, List<VideoItem>>{};
+    for (final v in _visibleVideos) {
+      final tags = _prioritizedTags(v.tags);
+      for (final tag in tags) {
+        grouped.putIfAbsent(tag, () => []).add(v);
+      }
+    }
+    final keys = grouped.keys.toList()
+      ..sort((a, b) {
+        final diff = grouped[b]!.length.compareTo(grouped[a]!.length);
+        if (diff != 0) return diff;
+        return a.compareTo(b);
+      });
+    return _buildSectionedList(
+      sectionKeys: keys,
+      sectionVideos: grouped,
+      sectionTitleBuilder: (k, list) =>
+          '${_formatTag(k)} · ${list.length} videos',
+    );
+  }
+
+  Widget _buildSectionedList({
+    required List<String> sectionKeys,
+    required Map<String, List<VideoItem>> sectionVideos,
+    required String Function(String key, List<VideoItem> items)
+        sectionTitleBuilder,
+  }) {
+    if (_visibleVideos.isEmpty) {
+      return _buildVideoList();
+    }
+    final theme = Theme.of(context);
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+      itemCount: sectionKeys.length,
+      itemBuilder: (context, sectionIndex) {
+        final key = sectionKeys[sectionIndex];
+        final items = sectionVideos[key] ?? const <VideoItem>[];
         return Container(
+          margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
-            color: isPlaying
-                ? theme.colorScheme.primaryContainer.withOpacity(0.3)
-                : Colors.transparent,
+            color: theme.colorScheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: theme.dividerColor),
           ),
-          child: ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            leading: Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: isPlaying
-                    ? theme.colorScheme.primaryContainer
-                    : theme.colorScheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: isPlaying
-                      ? theme.colorScheme.primary
-                      : theme.dividerColor,
-                  width: 1,
-                ),
-              ),
-              child: Icon(
-                Icons.movie,
-                color: isPlaying
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurfaceVariant,
-                size: 24,
-              ),
-            ),
-            title: Text(
-              v.filename.split('/').last,
-              style: TextStyle(
-                color: isPlaying
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurface,
-                fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
-                fontSize: 14,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Row(
-              children: [
-                Icon(Icons.access_time,
-                    size: 12, color: theme.colorScheme.onSurfaceVariant),
-                const SizedBox(width: 4),
-                Text(
-                  v.timestamp,
-                  style: TextStyle(
-                      color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '${v.duration}s',
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                    fontFamily: 'monospace',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHigh,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(10),
                   ),
                 ),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 播放按钮
-                IconButton(
-                  icon: Icon(
-                    isPlaying ? Icons.pause : Icons.play_arrow,
-                    color: isPlaying
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurfaceVariant,
+                child: Text(
+                  sectionTitleBuilder(key, items),
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
                   ),
-                  onPressed: () => _playVideo(v),
-                  tooltip: '播放',
                 ),
-                // 删除按钮
-                IconButton(
-                  icon: Icon(Icons.delete_outline,
-                      color: theme.colorScheme.error),
-                  onPressed: () => _deleteVideo(v, index),
-                  tooltip: '删除',
-                ),
-              ],
-            ),
-            onTap: () => _playVideo(v),
+              ),
+              ...items.asMap().entries.map((entry) {
+                final i = entry.key;
+                final v = entry.value;
+                return Column(
+                  children: [
+                    _buildVideoListTile(v),
+                    if (i != items.length - 1)
+                      Divider(height: 1, color: theme.dividerColor),
+                  ],
+                );
+              }),
+            ],
           ),
         );
       },
     );
   }
 
+  Widget _buildVideoListTile(VideoItem v) {
+    final theme = Theme.of(context);
+    final isPlaying = _currentVideo?.filename == v.filename;
+    final isReanalyzing = _reanalyzingFiles.contains(v.filename);
+    return Container(
+      decoration: BoxDecoration(
+        color: isPlaying
+            ? theme.colorScheme.primaryContainer.withOpacity(0.3)
+            : Colors.transparent,
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            color: isPlaying
+                ? theme.colorScheme.primaryContainer
+                : theme.colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isPlaying ? theme.colorScheme.primary : theme.dividerColor,
+              width: 1,
+            ),
+          ),
+          child: Icon(
+            Icons.movie,
+            color: isPlaying
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurfaceVariant,
+            size: 24,
+          ),
+        ),
+        title: Text(
+          v.filename.split('/').last,
+          style: TextStyle(
+            color: isPlaying
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurface,
+            fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
+            fontSize: 14,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Wrap(
+          spacing: 10,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _metaText(v.timestamp),
+            _metaText('${v.duration}s'),
+            _metaChip(_recordingModeLabel(v.recordingMode)),
+            _metaChip(_extractAppName(v)),
+            ..._prioritizedTags(v.tags).map((x) => _metaChip(_formatTag(x))),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: isReanalyzing
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.primary,
+                      ),
+                    )
+                  : Icon(Icons.auto_fix_high, color: theme.colorScheme.primary),
+              onPressed: isReanalyzing ? null : () => _reanalyzeVideo(v),
+              tooltip:
+                  isReanalyzing ? 'Reanalyzing...' : 'Reanalyze content tags',
+            ),
+            IconButton(
+              icon: Icon(
+                isPlaying ? Icons.pause : Icons.play_arrow,
+                color: isPlaying
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+              onPressed: () => _playVideo(v),
+              tooltip: '播放',
+            ),
+            IconButton(
+              icon: Icon(Icons.delete_outline, color: theme.colorScheme.error),
+              onPressed: () => _deleteVideo(v),
+              tooltip: '删除',
+            ),
+          ],
+        ),
+        onTap: () => _playVideo(v),
+      ),
+    );
+  }
+
+  Widget _metaText(String text) {
+    final theme = Theme.of(context);
+    return Text(
+      text,
+      style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
+    );
+  }
+
+  Widget _metaChip(String text) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        text,
+        style:
+            TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
+      ),
+    );
+  }
+
+  String _extractDay(String ts) {
+    if (ts.length >= 10) return ts.substring(0, 10);
+    return ts;
+  }
+
+  String _extractAppName(VideoItem v) {
+    if (v.appName != null && v.appName!.trim().isNotEmpty) {
+      return v.appName!.trim();
+    }
+    final title = (v.windowTitle ?? '').trim();
+    if (title.isNotEmpty) {
+      if (title.startsWith('Window: ')) {
+        final body = title.substring('Window: '.length);
+        final idx = body.indexOf(' · ');
+        if (idx > 0) return body.substring(0, idx).trim();
+        return body;
+      }
+      final idx = title.indexOf(' · ');
+      if (idx > 0) return title.substring(0, idx).trim();
+      return title;
+    }
+    if (v.recordingMode == 'fullscreen-single') return 'Single Screen';
+    if (v.recordingMode == 'region') return 'Region Capture';
+    return 'All Screens';
+  }
+
+  String _recordingModeLabel(String mode) {
+    switch (mode) {
+      case 'fullscreen-single':
+        return 'Single Screen';
+      case 'region':
+        return 'Region/Window';
+      default:
+        return 'Full Screen';
+    }
+  }
+
+  List<String> _topTags(List<String> tags) {
+    if (tags.isEmpty) return const [];
+    const allowedPrefixes = [
+      'topic:',
+      'purpose:',
+      'time:',
+      'length:',
+      'weekday:',
+      'audio:'
+    ];
+    final picked = <String>[];
+    for (final tag in tags) {
+      if (allowedPrefixes.any((p) => tag.startsWith(p))) {
+        picked.add(tag);
+      }
+    }
+    return picked.isEmpty ? tags : picked;
+  }
+
+  List<String> _prioritizedTags(List<String> tags) {
+    if (tags.isEmpty) return const [];
+    final topics = <String>[];
+    final purposes = <String>[];
+    final others = <String>[];
+    for (final t in _topTags(tags)) {
+      if (t.startsWith('topic:')) {
+        topics.add(t);
+      } else if (t.startsWith('purpose:')) {
+        purposes.add(t);
+      } else {
+        others.add(t);
+      }
+    }
+    return [...topics, ...purposes, ...others];
+  }
+
+  String _formatTag(String tag) {
+    if (tag.startsWith('topic:')) {
+      return 'Topic: ${tag.substring(6)}';
+    }
+    if (tag.startsWith('purpose:')) {
+      return 'Purpose: ${tag.substring(8)}';
+    }
+    if (tag.startsWith('time:')) {
+      return 'Time: ${tag.substring(5)}';
+    }
+    if (tag.startsWith('length:')) {
+      return 'Length: ${tag.substring(7)}';
+    }
+    if (tag.startsWith('weekday:')) {
+      return 'Weekday: ${tag.substring(8)}';
+    }
+    if (tag.startsWith('audio:')) {
+      return 'Audio: ${tag.substring(6)}';
+    }
+    if (tag.startsWith('mode:')) {
+      return 'Mode: ${tag.substring(5)}';
+    }
+    if (tag.startsWith('app:')) {
+      return 'App: ${tag.substring(4)}';
+    }
+    return tag;
+  }
+
   // 删除视频
-  Future<void> _deleteVideo(VideoItem video, int index) async {
+  Future<void> _deleteVideo(VideoItem video) async {
     final theme = Theme.of(context);
 
     // 确认删除

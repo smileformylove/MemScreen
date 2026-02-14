@@ -154,6 +154,11 @@ class AppState extends ChangeNotifier {
           } else if (rawScreenIndex is num) {
             screenIndex = rawScreenIndex.toInt();
           }
+          final rawWindowTitle = args['windowTitle'] ?? args['window_title'];
+          final windowTitle =
+              rawWindowTitle is String && rawWindowTitle.isNotEmpty
+                  ? rawWindowTitle
+                  : null;
 
           await _recordingApi.start(
             duration: 60,
@@ -161,11 +166,12 @@ class AppState extends ChangeNotifier {
             mode: mode,
             region: region,
             screenIndex: screenIndex,
+            windowTitle: windowTitle,
           );
           updateFloatingBallState(true);
           requestRecordingStatusRefresh();
           debugPrint(
-            '[AppState] Recording started from floating ball: mode=$mode, region=$region, screen=$screenIndex',
+            '[AppState] Recording started from floating ball: mode=$mode, region=$region, screen=$screenIndex, windowTitle=$windowTitle',
           );
         } catch (e) {
           debugPrint('[AppState] Error starting recording: $e');

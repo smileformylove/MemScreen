@@ -307,7 +307,7 @@ class FloatingBallWindow: NSPanel {
             let width = Int(max(0, (selectedRegion[2] - selectedRegion[0]).rounded()))
             let height = Int(max(0, (selectedRegion[3] - selectedRegion[1]).rounded()))
             self.toolbarPanel?.showStatus("Status: Starting region \(width)x\(height)...", color: NSColor.systemBlue)
-            self.invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: nil)
+            self.invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: nil, windowTitle: nil)
         }
         regionSelector?.show()
     }
@@ -366,7 +366,7 @@ class FloatingBallWindow: NSPanel {
             self.toolbarPanel?.setSelectedWindow(summary)
 
             self.toolbarPanel?.showStatus("Status: Starting \(summary)...", color: NSColor.systemBlue)
-            self.invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: nil)
+            self.invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: nil, windowTitle: summary)
         }
         windowSelector?.show()
     }
@@ -401,7 +401,7 @@ class FloatingBallWindow: NSPanel {
             let width = Int(max(0, (selectedRegion[2] - selectedRegion[0]).rounded()))
             let height = Int(max(0, (selectedRegion[3] - selectedRegion[1]).rounded()))
             toolbarPanel?.showStatus("Status: Starting region \(width)x\(height)...", color: NSColor.systemBlue)
-            invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: nil)
+            invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: nil, windowTitle: nil)
             collapseToolbar()
             return
         }
@@ -410,17 +410,17 @@ class FloatingBallWindow: NSPanel {
             consumeSelectedWindowOnRecordStart = true
             let title = selectedWindowSummaryForNextRecording ?? "window"
             toolbarPanel?.showStatus("Status: Starting \(title)...", color: NSColor.systemBlue)
-            invokeStartRecording(mode: "region", region: selectedWindowRegion, screenIndex: nil)
+            invokeStartRecording(mode: "region", region: selectedWindowRegion, screenIndex: nil, windowTitle: selectedWindowSummaryForNextRecording)
             collapseToolbar()
             return
         }
 
         if let idx = selectedScreenIndexForNextRecording {
             toolbarPanel?.showStatus("Status: Starting screen \(idx + 1) recording...", color: NSColor.systemBlue)
-            invokeStartRecording(mode: "fullscreen-single", region: nil, screenIndex: idx)
+            invokeStartRecording(mode: "fullscreen-single", region: nil, screenIndex: idx, windowTitle: nil)
         } else {
             toolbarPanel?.showStatus("Status: Starting full-screen recording...", color: NSColor.systemBlue)
-            invokeStartRecording(mode: "fullscreen", region: nil, screenIndex: nil)
+            invokeStartRecording(mode: "fullscreen", region: nil, screenIndex: nil, windowTitle: nil)
         }
         collapseToolbar()
     }
@@ -489,13 +489,16 @@ class FloatingBallWindow: NSPanel {
         return NSScreen.main ?? NSScreen.screens.first!
     }
 
-    private func invokeStartRecording(mode: String, region: [Double]?, screenIndex: Int?) {
+    private func invokeStartRecording(mode: String, region: [Double]?, screenIndex: Int?, windowTitle: String?) {
         var args: [String: Any] = ["mode": mode]
         if let region = region {
             args["region"] = region
         }
         if let screenIndex = screenIndex {
             args["screenIndex"] = screenIndex
+        }
+        if let windowTitle = windowTitle, !windowTitle.isEmpty {
+            args["windowTitle"] = windowTitle
         }
         flutterChannel?.invokeMethod("startRecording", arguments: args)
     }
