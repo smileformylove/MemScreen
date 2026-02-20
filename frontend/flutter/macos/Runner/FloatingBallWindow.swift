@@ -18,6 +18,7 @@ class FloatingBallWindow: NSPanel {
     var isPaused: Bool = false
     private var isToolbarExpanded: Bool = false
     private var selectedRegionForNextRecording: [Double]?
+    private var selectedRegionScreenIndexForNextRecording: Int?
     private var consumeSelectedRegionOnRecordStart = false
     private var selectedWindowRegionForNextRecording: [Double]?
     private var selectedWindowSummaryForNextRecording: String?
@@ -236,6 +237,7 @@ class FloatingBallWindow: NSPanel {
         isRecording = recording
         if recording, consumeSelectedRegionOnRecordStart {
             selectedRegionForNextRecording = nil
+            selectedRegionScreenIndexForNextRecording = nil
             consumeSelectedRegionOnRecordStart = false
         } else if recording, consumeSelectedWindowOnRecordStart {
             selectedWindowRegionForNextRecording = nil
@@ -275,6 +277,7 @@ class FloatingBallWindow: NSPanel {
         self.orderOut(nil)
 
         let screen = selectionScreen()
+        let selectionScreenIndex = NSScreen.screens.firstIndex(where: { $0 == screen })
         regionSelector = RegionSelectionPanel(screen: screen) { [weak self] result in
             guard let self = self else { return }
 
@@ -300,6 +303,7 @@ class FloatingBallWindow: NSPanel {
             self.selectedWindowSummaryForNextRecording = nil
             self.consumeSelectedWindowOnRecordStart = false
             self.selectedRegionForNextRecording = selectedRegion
+            self.selectedRegionScreenIndexForNextRecording = selectionScreenIndex
             self.consumeSelectedRegionOnRecordStart = true
             self.toolbarPanel?.setSelectedRegion(selectedRegion)
             self.toolbarPanel?.setSelectedWindow(nil)
@@ -307,7 +311,7 @@ class FloatingBallWindow: NSPanel {
             let width = Int(max(0, (selectedRegion[2] - selectedRegion[0]).rounded()))
             let height = Int(max(0, (selectedRegion[3] - selectedRegion[1]).rounded()))
             self.toolbarPanel?.showStatus("Status: Starting region \(width)x\(height)...", color: NSColor.systemBlue)
-            self.invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: nil, windowTitle: nil)
+            self.invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: selectionScreenIndex, windowTitle: nil)
         }
         regionSelector?.show()
     }
@@ -358,6 +362,7 @@ class FloatingBallWindow: NSPanel {
                 return
             }
             self.selectedRegionForNextRecording = nil
+            self.selectedRegionScreenIndexForNextRecording = nil
             self.consumeSelectedRegionOnRecordStart = false
             self.selectedWindowRegionForNextRecording = selectedRegion
             self.selectedWindowSummaryForNextRecording = summary
@@ -401,7 +406,7 @@ class FloatingBallWindow: NSPanel {
             let width = Int(max(0, (selectedRegion[2] - selectedRegion[0]).rounded()))
             let height = Int(max(0, (selectedRegion[3] - selectedRegion[1]).rounded()))
             toolbarPanel?.showStatus("Status: Starting region \(width)x\(height)...", color: NSColor.systemBlue)
-            invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: nil, windowTitle: nil)
+            invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: selectedRegionScreenIndexForNextRecording, windowTitle: nil)
             collapseToolbar()
             return
         }
@@ -1007,7 +1012,7 @@ private class WindowSelectionView: NSView {
             drawConfirmButton(under: localRect(for: windows[idx].bounds))
         } else {
             confirmButtonRect = .zero
-            drawHint("点击应用窗口进行录屏选择")
+            drawHint("Click an app window to select it for recording")
         }
     }
 
@@ -1126,9 +1131,9 @@ private class WindowSelectionView: NSView {
     private func drawSelectedWindowTitle(_ win: CandidateWindow) {
         let text: String
         if win.windowName.isEmpty {
-            text = "已选择: \(win.ownerName)"
+            text = "Selected: \(win.ownerName)"
         } else {
-            text = "已选择: \(win.ownerName) · \(win.windowName)"
+            text = "Selected: \(win.ownerName) · \(win.windowName)"
         }
         drawHint(text)
     }
@@ -1163,7 +1168,7 @@ private class WindowSelectionView: NSView {
         buttonPath.lineWidth = 1.2
         buttonPath.stroke()
 
-        let title = "✅ 确定录屏 (Enter)"
+        let title = "✅ Confirm Recording (Enter)"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
             .foregroundColor: NSColor.white
@@ -1175,7 +1180,7 @@ private class WindowSelectionView: NSView {
         )
         title.draw(at: textPoint, withAttributes: attrs)
 
-        let hint = "ESC 取消 · R 重选"
+        let hint = "ESC Cancel · R Reselect"
         let hintAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 11, weight: .regular),
             .foregroundColor: NSColor.white.withAlphaComponent(0.85)
@@ -1234,6 +1239,10 @@ private class RegionSelectionView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let location = convert(event.locationInWindow, from: nil)
+        if !confirmButtonRect.isEmpty, confirmButtonRect.contains(location), let region = lastConfirmedRegion {
+            completion(.confirmed(region))
+            return
+        }
         startPoint = location
         currentPoint = location
         needsDisplay = true
@@ -1303,14 +1312,12 @@ private class RegionSelectionView: NSView {
             return
         }
 
-        let x1 = panelFrame.origin.x + rect.minX
-        let x2 = panelFrame.origin.x + rect.maxX
-        let y1 = panelFrame.origin.y + rect.minY
-        let y2 = panelFrame.origin.y + rect.maxY
-
-        let mainHeight = NSScreen.main?.frame.height ?? panelFrame.height
-        let top = mainHeight - y2
-        let bottom = mainHeight - y1
+        // Return region in screen-local top-left coordinates.
+        // Backend will map it onto the selected screen using screen_index.
+        let x1 = rect.minX
+        let x2 = rect.maxX
+        let top = panelFrame.height - rect.maxY
+        let bottom = panelFrame.height - rect.minY
 
         let region: [Double] = [
             Double(floor(x1)),
@@ -1342,7 +1349,7 @@ private class RegionSelectionView: NSView {
         buttonPath.lineWidth = 1.2
         buttonPath.stroke()
 
-        let title = "✅ 确定录屏 (Enter)"
+        let title = "✅ Confirm Recording (Enter)"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
             .foregroundColor: NSColor.white
@@ -1354,7 +1361,7 @@ private class RegionSelectionView: NSView {
         )
         title.draw(at: textPoint, withAttributes: attrs)
 
-        let hint = "ESC 取消 · R 重选"
+        let hint = "ESC Cancel · R Reselect"
         let hintAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 11, weight: .regular),
             .foregroundColor: NSColor.white.withAlphaComponent(0.85)

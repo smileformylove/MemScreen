@@ -408,6 +408,8 @@ async def recording_start(body: RecordingStartBody):
         kwargs = {}
         if body.mode == "region" and body.region and len(body.region) == 4:
             kwargs["bbox"] = tuple(body.region)
+            if body.screen_index is not None:
+                kwargs["screen_index"] = body.screen_index
         elif body.mode == "fullscreen-single" and body.screen_index is not None:
             kwargs["screen_index"] = body.screen_index
         if body.window_title:

@@ -431,7 +431,7 @@ class RecordingPresenter(BasePresenter):
             mode: 'fullscreen', 'fullscreen-single', or 'region'
             **kwargs:
                 - bbox: region bbox tuple (for 'region' mode)
-                - screen_index: screen index (for 'fullscreen-single' mode)
+                - screen_index: screen index (for 'fullscreen-single' or screen-local 'region' mode)
 
         Returns:
             True if mode set successfully
@@ -462,13 +462,47 @@ class RecordingPresenter(BasePresenter):
             elif mode == 'region':
                 bbox = kwargs.get('bbox')
                 if bbox and len(bbox) == 4:
-                    # 确保bbox元素是整数，PIL的ImageGrab.grab需要整数坐标
-                    self.region_bbox = tuple(int(x) for x in bbox)
-                    self.screen_index = None
-                    if self.window_title:
-                        print(f"[RecordingPresenter] Mode set to: Window Region {bbox} ({self.window_title})")
+                    # Ensure bbox elements are integers for PIL ImageGrab.
+                    local_bbox = tuple(int(x) for x in bbox)
+                    screen_index = kwargs.get('screen_index')
+                    if screen_index is not None:
+                        from memscreen.utils import get_screen_by_index
+                        resolved_screen_index = int(screen_index)
+                        screen_info = get_screen_by_index(resolved_screen_index)
+                        if not screen_info:
+                            raise ValueError(f"Invalid screen_index for region mode: {resolved_screen_index}")
+
+                        # Region bbox from native selector is screen-local (top-left origin).
+                        # Convert to global bbox in PIL coordinate space.
+                        x1 = screen_info.x + local_bbox[0]
+                        y1 = screen_info.y + local_bbox[1]
+                        x2 = screen_info.x + local_bbox[2]
+                        y2 = screen_info.y + local_bbox[3]
+
+                        # Clamp to the selected screen bounds.
+                        screen_x1 = screen_info.x
+                        screen_y1 = screen_info.y
+                        screen_x2 = screen_info.x + screen_info.width
+                        screen_y2 = screen_info.y + screen_info.height
+
+                        x1 = max(screen_x1, min(screen_x2, x1))
+                        y1 = max(screen_y1, min(screen_y2, y1))
+                        x2 = max(screen_x1, min(screen_x2, x2))
+                        y2 = max(screen_y1, min(screen_y2, y2))
+
+                        if x2 <= x1 or y2 <= y1:
+                            raise ValueError("Invalid region after screen mapping")
+
+                        self.region_bbox = (x1, y1, x2, y2)
+                        self.screen_index = resolved_screen_index
                     else:
-                        print(f"[RecordingPresenter] Mode set to: Custom Region {bbox}")
+                        # Backward-compatible path: treat bbox as global coordinates.
+                        self.region_bbox = local_bbox
+                        self.screen_index = None
+                    if self.window_title:
+                        print(f"[RecordingPresenter] Mode set to: Window Region {self.region_bbox} ({self.window_title})")
+                    else:
+                        print(f"[RecordingPresenter] Mode set to: Custom Region {self.region_bbox}")
                 else:
                     raise ValueError("Invalid bbox for region mode")
 
