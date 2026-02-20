@@ -74,44 +74,44 @@ class ComplexityAnalyzer:
 
     # Simple queries - use tiny/small models
     SIMPLE_PATTERNS = [
-        r"^(你好|嗨|hello|hi|hey)[！。.!?]*$",
-        r"^(是|对|yes|no|ok|好的)[！。.!?]*$",
-        r"^(谢谢|感谢|thank)[！。.!?]*$",
-        r"^(再见|拜拜|bye|goodbye)[！。.!?]*$",
+        r"^(||hello|hi|hey)[.!?]*$",
+        r"^(||yes|no|ok|)[.!?]*$",
+        r"^(||thank)[.!?]*$",
+        r"^(||bye|goodbye)[.!?]*$",
     ]
 
     # Conversational patterns - use small models
     CONVERSATIONAL_PATTERNS = [
-        r"(怎么样|如何|怎么|how|what)",
-        r"(你觉得|你认为|think|believe)",
-        r"(可以|could|would|might)",
+        r"(|||how|what)",
+        r"(||think|believe)",
+        r"(|could|would|might)",
     ]
 
     # Complex reasoning - use medium/large models
     COMPLEX_PATTERNS = [
-        r"(为什么|为何|why|because).{0,5}(慢|错|问题|fail|error|issue)",
-        r"(分析|总结|对比|explain|analyze|summarize|compare)",
-        r"(原因|结果|影响|cause|effect|impact)",
-        r"(步骤|流程|如何|step|process|how to)",
-        r"(优缺点|利弊|advantage|disadvantage)",
-        r"(如何解决|怎么办|how to solve|what to do)",
-        r"(最佳|最优|best|optimal)",
+        r"(||why|because).{0,5}(|||fail|error|issue)",
+        r"(|||explain|analyze|summarize|compare)",
+        r"(|||cause|effect|impact)",
+        r"(|||step|process|how to)",
+        r"(||advantage|disadvantage)",
+        r"(||how to solve|what to do)",
+        r"(||best|optimal)",
     ]
 
     # Creative tasks - use medium models
     CREATIVE_PATTERNS = [
-        r"(写|创作|生成|write|create|generate).{0,10}(文章|故事|诗歌|代码|文案|content|story|poem|code)",
-        r"(想象|设想|imagine)",
-        r"(设计|规划|design|plan)",
+        r"(|||write|create|generate).{0,10}(|||||content|story|poem|code)",
+        r"(||imagine)",
+        r"(||design|plan)",
     ]
 
     # Factual queries - use small/medium models
     FACTUAL_PATTERNS = [
-        r"(什么是|是什么|what is|define|定义)",
-        r"(多少|几个|数量|how many|how much)",
-        r"(什么时候|何时|when|时间|time)",
-        r"(哪里|何地|where|地点|place)",
-        r"(谁|whose|who|人物|person)",
+        r"(||what is|define|)",
+        r"(|||how many|how much)",
+        r"(||when||time)",
+        r"(||where||place)",
+        r"(|whose|who||person)",
     ]
 
     def __init__(self):
@@ -155,11 +155,11 @@ class ComplexityAnalyzer:
 
         # Detect question
         analysis.is_question = ('?' in query) or any(
-            word in query_lower for word in ['什么', '哪', '谁', '怎么', '为什么', 'what', 'where', 'who', 'how', 'why']
+            word in query_lower for word in ['', '', '', '', '', 'what', 'where', 'who', 'how', 'why']
         )
 
         # Detect command
-        analysis.is_command = any(prefix in query_lower for prefix in ['!', '请', 'help', '搜索', 'search'])
+        analysis.is_command = any(prefix in query_lower for prefix in ['!', '', 'help', '', 'search'])
 
         # Detect conversational
         analysis.is_conversational = any(regex.search(query) for regex in self.conversational_regex)
@@ -178,7 +178,7 @@ class ComplexityAnalyzer:
             complexity += 0.3
 
         # Question marks and structure (0-0.2)
-        question_marks = query.count('?') + query.count('？')
+        question_marks = query.count('?') + query.count('')
         complexity += min(question_marks * 0.05, 0.2)
 
         # Complex patterns (0-0.3)
@@ -197,14 +197,14 @@ class ComplexityAnalyzer:
         analysis.factual_required = factual_matches > 0
 
         # Sentence complexity (0-0.15)
-        sentences = re.split(r'[。.]', query)
+        sentences = re.split(r'[.]', query)
         if len(sentences) > 2:
             complexity += 0.1
-        if any('，' in s or ',' in s for s in sentences):
+        if any('' in s or ',' in s for s in sentences):
             complexity += 0.05
 
         # Technical/specific terms (0-0.1)
-        technical_keywords = ['api', '代码', 'code', '算法', 'algorithm', '数据', 'data']
+        technical_keywords = ['api', '', 'code', '', 'algorithm', '', 'data']
         if any(kw in query_lower for kw in technical_keywords):
             complexity += 0.1
 
@@ -222,7 +222,7 @@ class ComplexityAnalyzer:
 
         # Extract keywords
         words = re.findall(r'[\w]+', query_lower)
-        stop_words = {'的', '是', '了', '在', '和', 'the', 'is', 'a', 'an', 'of', 'to'}
+        stop_words = {'', '', '', '', '', 'the', 'is', 'a', 'an', 'of', 'to'}
         analysis.keywords = [w for w in words if len(w) > 1 and w not in stop_words][:5]
 
         logger.info(f"Query analysis: score={analysis.complexity_score:.2f}, tier={analysis.tier.value}")

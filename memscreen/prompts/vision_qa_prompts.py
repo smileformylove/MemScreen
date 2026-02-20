@@ -110,15 +110,15 @@ class VisionQAPromptBuilder:
         query_lower = query.lower()
 
         # Find/locate queries
-        if any(kw in query_lower for kw in ['find', 'where', 'locate', '位置', '在哪']):
+        if any(kw in query_lower for kw in ['find', 'where', 'locate', '', '']):
             return 'find'
 
         # Content/what queries
-        elif any(kw in query_lower for kw in ['what', 'content', 'text', '什么', '内容']):
+        elif any(kw in query_lower for kw in ['what', 'content', 'text', '', '']):
             return 'content'
 
         # Action/how queries
-        elif any(kw in query_lower for kw in ['how', 'do', 'did', '操作', '怎么', '如何']):
+        elif any(kw in query_lower for kw in ['how', 'do', 'did', '', '', '']):
             return 'action'
 
         # General

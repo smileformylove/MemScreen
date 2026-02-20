@@ -1,103 +1,103 @@
-# MemScreen 脚本目录
+# MemScreen 
 
-这个目录包含所有用于MemScreen的安装、打包和维护脚本。
+MemScreen
 
-> **注意：** 项目的可执行启动脚本（如 `run_ui.sh`）现在位于 [`bin/`](../bin/) 目录。
+> ****  `run_ui.sh` [`bin/`](../bin/) 
 
-## 📂 目录结构
+## 📂 
 
-- **bin/** - 可执行启动脚本（用户日常使用）
-  - `run_ui.sh` - 主UI启动脚本
-- **scripts/** - 维护和安装脚本（本目录）
-  - 安装/卸载脚本
-  - 打包脚本
-  - 清理脚本
+- **bin/** - 
+  - `run_ui.sh` - UI
+- **scripts/** - 
+  - /
+  - 
+  - 
 
-## 📋 脚本列表
+## 📋 
 
-### 📦 安装与分发
+### 📦 
 
-| 脚本 | 说明 |
+|  |  |
 |------|------|
-| `install_ubuntu.sh` | Ubuntu自动安装脚本 |
-| `uninstall_ubuntu.sh` | Ubuntu卸载脚本 |
-| `package_source.sh` | 创建Ubuntu分发包 |
+| `install_ubuntu.sh` | Ubuntu |
+| `uninstall_ubuntu.sh` | Ubuntu |
+| `package_source.sh` | Ubuntu |
 
-### 🔧 维护工具
+### 🔧 
 
-| 脚本 | 说明 |
+|  |  |
 |------|------|
-| `cleanup_project.sh` | 清理项目临时文件 |
+| `cleanup_project.sh` |  |
 
-## 🚀 使用说明
+## 🚀 
 
-### Ubuntu用户
+### Ubuntu
 
-**安装：**
+****
 ```bash
 cd scripts
 ./install_ubuntu.sh
 ```
 
-**卸载：**
+****
 ```bash
 cd scripts
 ./uninstall_ubuntu.sh
 ```
 
-### 开发者
+### 
 
-**创建分发包：**
+****
 ```bash
 cd scripts
 ./package_source.sh
 ```
 
-**清理项目：**
+****
 ```bash
 cd scripts
 ./cleanup_project.sh
 ```
 
-## 📝 脚本详情
+## 📝 
 
 ### install_ubuntu.sh
 
-**用途：** 在Ubuntu系统上自动安装MemScreen及其所有依赖
+**** UbuntuMemScreen
 
-**功能：**
-- 检查并安装系统依赖
-- 安装Ollama（AI模型运行时）
-- 创建Python虚拟环境
-- 安装Python依赖（包括pysqlite3-binary修复）
-- 创建桌面快捷方式
+****
+- 
+- OllamaAI
+- Python
+- Pythonpysqlite3-binary
+- 
 
-**用法：**
+****
 ```bash
 chmod +x install_ubuntu.sh
 ./install_ubuntu.sh
 ```
 
-**系统要求：**
-- Ubuntu 20.04 LTS或更高版本
+****
+- Ubuntu 20.04 LTS
 - Python 3.8+
-- 4GB内存
-- 10GB可用磁盘空间
+- 4GB
+- 10GB
 
 ---
 
 ### uninstall_ubuntu.sh
 
-**用途：** 从Ubuntu系统完全卸载MemScreen
+**** UbuntuMemScreen
 
-**功能：**
-- 停止运行中的进程
-- 删除桌面快捷方式
-- 删除虚拟环境
-- 清理临时文件
-- 可选：删除用户数据
+****
+- 
+- 
+- 
+- 
+- 
 
-**用法：**
+****
 ```bash
 chmod +x uninstall_ubuntu.sh
 ./uninstall_ubuntu.sh
@@ -107,99 +107,99 @@ chmod +x uninstall_ubuntu.sh
 
 ### package_source.sh
 
-**用途：** 创建可分发的Ubuntu安装包
+**** Ubuntu
 
-**功能：**
-- 清理临时文件
-- 打包源代码和安装脚本
-- 创建tar.gz压缩包
-- 生成SHA256校验和
+****
+- 
+- 
+- tar.gz
+- SHA256
 
-**用法：**
+****
 ```bash
 chmod +x package_source.sh
 ./package_source.sh
 ```
 
-**输出：**
-- `MemScreen-0.5.0-ubuntu-installer.tar.gz` - 安装包
-- `MemScreen-0.5.0-ubuntu-installer.tar.gz.sha256` - 校验和
+****
+- `MemScreen-0.5.0-ubuntu-installer.tar.gz` - 
+- `MemScreen-0.5.0-ubuntu-installer.tar.gz.sha256` - 
 
 ---
 
 ### cleanup_project.sh
 
-**用途：** 清理项目中的临时文件和缓存
+**** 
 
-**功能：**
-- 删除Python缓存
-- 删除构建产物
-- 删除Node.js文件
-- 删除临时文件
-- 整理项目结构
+****
+- Python
+- 
+- Node.js
+- 
+- 
 
-**用法：**
+****
 ```bash
 chmod +x cleanup_project.sh
 ./cleanup_project.sh
 ```
 
-**建议：**
-- 每周运行一次
-- 发布版本前运行
-- 提交代码前运行
+****
+- 
+- 
+- 
 
-## 🔗 相关文档
+## 🔗 
 
-- [项目结构说明](../docs/PROJECT_STRUCTURE.md)
-- [Ubuntu安装指南](../docs/UBUNTU_INSTALLATION_GUIDE.md)
-- [故障排除](../docs/SQLITE_FIX.md)
+- [](../docs/PROJECT_STRUCTURE.md)
+- [Ubuntu](../docs/UBUNTU_INSTALLATION_GUIDE.md)
+- [](../docs/SQLITE_FIX.md)
 
-## 💡 提示
+## 💡 
 
-1. **脚本权限**：首次使用前需要添加执行权限
+1. ****
    ```bash
    chmod +x *.sh
    ```
 
-2. **返回上级目录**：脚本会自动返回项目根目录
+2. ****
    ```bash
    cd ..
    ```
 
-3. **查看帮助**：大多数脚本支持 `--help` 参数查看详细说明
+3. **** `--help` 
 
-## 🎯 快速参考
+## 🎯 
 
 ```bash
-# 运行MemScreen
-./run.sh                    # 快捷启动（推荐）
-./bin/run_ui.sh             # 直接启动
+# MemScreen
+./run.sh                    # 
+./bin/run_ui.sh             # 
 
-# 安装MemScreen（Ubuntu）
+# MemScreenUbuntu
 ./scripts/install_ubuntu.sh
 
-# 创建分发包
+# 
 ./scripts/package_source.sh
 
-# 清理项目
+# 
 ./scripts/cleanup_project.sh
 
-# 卸载MemScreen
+# MemScreen
 ./scripts/uninstall_ubuntu.sh
 ```
 
-## 📧 开发者提示
+## 📧 
 
-如需添加新脚本：
 
-1. 放在 `scripts/` 目录
-2. 添加可执行权限：`chmod +x script.sh`
-3. 在此README中添加说明
-4. 遵循现有的命名约定
 
-## 📞 联系方式
+1.  `scripts/` 
+2. `chmod +x script.sh`
+3. README
+4. 
 
-如有问题或建议，请：
-- 提交Issue到GitHub
-- 联系：jixiangluo85@gmail.com
+## 📞 
+
+
+- IssueGitHub
+- jixiangluo85@gmail.com

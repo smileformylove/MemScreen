@@ -1,76 +1,76 @@
-# Recording功能使用说明
+# Recording
 
-## 重要提示
+## 
 
-**Screen Recording功能目前在打包后的应用中不可用。**
+**Screen Recording**
 
-这是由于PyInstaller打包工具与OpenCV (cv2)的兼容性问题导致的。
+PyInstallerOpenCV (cv2)
 
-## 如何使用Recording功能
+## Recording
 
-### 方法1：从源代码运行（推荐）
+### 1
 
 ```bash
-# 在项目根目录
+# 
 python3 start.py
 ```
 
-这样recording功能将完全可用：
-- ✓ 屏幕预览
-- ✓ 开始/停止录制
-- ✓ 区域选择
-- ✓ 音频录制
+recording
+- ✓ 
+- ✓ /
+- ✓ 
+- ✓ 
 
-### 方法2：使用macOS系统自带录制功能
+### 2macOS
 
-在打包后的应用中，您可以使用macOS的系统录制功能：
+macOS
 
-1. **录制屏幕**：按 `Command + Shift + 5`
-2. **选择区域**：拖动鼠标选择要录制的区域
-3. **开始录制**：点击"录制"按钮
-4. **停止录制**：点击菜单栏的停止按钮
+1. **** `Command + Shift + 5`
+2. ****
+3. ****""
+4. ****
 
-录制的视频会保存到桌面或您指定的位置。
 
-### 方法3：使用独立录制工具
 
-推荐以下免费录制工具：
+### 3
 
-- **OBS Studio** (https://obsproject.com/) - 功能强大的开源录制工具
-- **QuickTime Player** - macOS自带，可录制屏幕
-- **Loom** (https://www.loom.com/) - 简单易用的录制工具
 
-录制完成后，将视频文件保存到以下目录，然后就可以在MemScreen中查看和分析：
+
+- **OBS Studio** (https://obsproject.com/) - 
+- **QuickTime Player** - macOS
+- **Loom** (https://www.loom.com/) - 
+
+MemScreen
 
 ```
 ~/.memscreen/db/videos/
 ```
 
-## 打包应用的其他功能
+## 
 
-打包后的应用中，以下功能完全可用：
 
-- ✓ **Chat** - AI对话功能
-- ✓ **Videos** - 查看和分析录制的视频
-- ✓ **Process Mining** - 工作流程跟踪和分析
-- ✓ **Memory Search** - 搜索录制的屏幕内容
 
-## 技术说明
+- ✓ **Chat** - AI
+- ✓ **Videos** - 
+- ✓ **Process Mining** - 
+- ✓ **Memory Search** - 
 
-### 为什么Recording功能在打包后不可用？
+## 
 
-PyInstaller和OpenCV的兼容性问题：
+### Recording
 
-1. **OpenCV的C扩展**：cv2包含大量C扩展模块，这些模块在打包时容易出现二进制兼容性问题
-2. **递归导入**：cv2的模块之间存在复杂的依赖关系，容易导致递归导入错误
-3. **动态链接库**：cv2依赖许多动态链接库（如SDL2），这些库在打包环境中难以正确配置
+PyInstallerOpenCV
 
-### 解决方案探索
+1. **OpenCVC**cv2C
+2. ****cv2
+3. ****cv2SDL2
 
-我们正在探索以下解决方案：
+### 
 
-1. **使用Docker容器**：在容器中打包完整的应用环境
-2. **独立Recording应用**：将recording功能打包为独立的应用
-3. **替代视频库**：使用其他视频处理库（如MoviePy + Pillow）
 
-敬请期待未来的更新！
+
+1. **Docker**
+2. **Recording**recording
+3. ****MoviePy + Pillow
+
+

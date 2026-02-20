@@ -350,20 +350,20 @@ class ChatPresenter(BasePresenter):
         # Complex task patterns (action + context combinations)
         complex_patterns = [
             # Report/Summary patterns
-            (r"(生成|创建|形成).{0,5}(报告|报表|总结|汇总)", "Report generation"),
-            (r"(总结|汇总|分析).{0,10}(过去|最近|本周|上周|今天|昨天|几天)", "Temporal summary"),
-            (r"(分析|研究|梳理).{0,10}(流程|模式|习惯|工作)", "Workflow analysis"),
+            (r"(generate|create).{0,5}(report|summary)", "Report generation"),
+            (r"(summary|analyze).{0,10}(past|recent|this week|last week|today|yesterday)", "Temporal summary"),
+            (r"(analyze|research|organize).{0,10}(workflow|pattern|habit|work)", "Workflow analysis"),
 
             # Multi-step patterns
-            (r"(搜索|查找|找).{0,10}(并|并且|然后|接着).{0,10}(总结|汇总|分析)", "Search + process"),
-            (r"(帮我|help).{0,20}(生成|创建|分析|总结)", "Complex help request"),
+            (r"(search|find).{0,10}(and|then).{0,10}(summary|analyze)", "Search + process"),
+            (r"(help me|help).{0,20}(generate|create|analyze|summary)", "Complex help request"),
 
             # Comprehensive queries
-            (r"找出所有|find all", "Comprehensive search"),
-            (r"全部|所有|everything", "All items query"),
+            (r"find all|everything", "Comprehensive search"),
+            (r"all|everything", "All items query"),
 
             # Workflow analysis
-            (r"工作流程|workflow|操作模式|习惯分析", "Workflow analysis"),
+            (r"workflow|operation pattern|habit analysis", "Workflow analysis"),
         ]
 
         # Check complex patterns first
@@ -375,8 +375,8 @@ class ChatPresenter(BasePresenter):
                 return True
 
         # Simple keywords that MUST be combined with task verbs
-        temporal_keywords = ["昨天", "今天", "过去", "最近", "本周", "上周", "yesterday", "today", "past", "recent"]
-        task_verbs = ["总结", "分析", "汇总", "报告", "生成", "summary", "analyze", "report", "generate"]
+        temporal_keywords = ["yesterday", "today", "past", "recent", "this week", "last week"]
+        task_verbs = ["summary", "analyze", "report", "generate"]
 
         has_temporal = any(kw in user_msg_lower for kw in temporal_keywords)
         has_task_verb = any(verb in user_msg_lower for verb in task_verbs)
@@ -386,11 +386,10 @@ class ChatPresenter(BasePresenter):
             print(f"[ChatPresenter]    Message: {user_message[:50]}...")
             return True
 
-        # "帮我" alone is not enough - need additional complexity indicators
-        if "帮我" in user_msg_lower or "help me" in user_msg_lower:
+        # "help me" alone is not enough - need additional complexity indicators
+        if "help me" in user_msg_lower:
             # Only trigger if it's clearly a complex task
-            complex_indicators = ["分析", "总结", "报告", "生成", "查找所有", "流程", "模式",
-                                   "analyze", "summary", "report", "generate", "find all", "workflow"]
+            complex_indicators = ["analyze", "summary", "report", "generate", "find all", "workflow", "pattern"]
             if any(ind in user_msg_lower for ind in complex_indicators):
                 print(f"[ChatPresenter] ✅ Detected Agent task: Complex help request")
                 print(f"[ChatPresenter]    Message: {user_message[:50]}...")
@@ -533,13 +532,12 @@ class ChatPresenter(BasePresenter):
         """
         q = query.lower()
         keywords = [
-            "什么时候", "何时", "今天", "昨天", "最近", "刚才", "刚刚",
-            "上午", "中午", "下午", "晚上", "夜里",
-            "看到", "看到了", "屏幕", "录屏", "录像", "哪里", "在哪", "位置", "出现",
-            "在看什么", "看了什么", "论文", "paper", "pdf", "arxiv",
             "when", "today", "yesterday", "recent", "just now",
-            "morning", "afternoon", "evening", "night",
-            "saw", "seen", "screen", "recording", "timeline", "what did i watch", "where",
+            "morning", "noon", "afternoon", "evening", "night",
+            "saw", "seen", "screen", "recording", "timeline",
+            "where", "location", "appear", "what did i watch",
+            "what was being viewed", "what was viewed",
+            "paper", "pdf", "arxiv",
         ]
         return any(k in q for k in keywords)
 
@@ -547,11 +545,10 @@ class ChatPresenter(BasePresenter):
         """Whether query asks for concrete visual details from recordings."""
         q = query.lower()
         keywords = [
-            "屏幕上看了什么", "看到了什么", "具体内容", "详细", "细节",
-            "有哪些字", "哪些字", "哪些物体", "物体", "画面", "整体描述",
-            "视频有什么", "这个视频", "这段视频",
-            "论文", "paper", "pdf", "arxiv", "title", "abstract",
-            "what did i see", "what was on screen", "details",
+            "what was on screen", "what did i see", "details", "detailed", "detail",
+            "what text appears", "which text", "which objects", "object", "frame", "summary",
+            "what is in the video", "this video", "this clip",
+            "paper", "pdf", "arxiv", "title", "abstract",
         ]
         return any(k in q for k in keywords)
 
@@ -559,9 +556,9 @@ class ChatPresenter(BasePresenter):
         """Whether query asks where/when a text or object appeared."""
         q = query.lower()
         keywords = [
-            "在哪里", "在哪", "什么地方", "哪个位置", "位置", "坐标", "出现在",
-            "什么时候出现", "何时出现", "对应时间", "对应位置", "在哪一帧",
-            "where", "which frame", "which timestamp", "where did", "appeared",
+            "where", "which place", "which location", "location", "coordinates", "appears at",
+            "when it appears", "corresponding time", "corresponding location",
+            "which frame", "which timestamp", "where did", "appeared",
         ]
         return any(k in q for k in keywords)
 
@@ -569,9 +566,8 @@ class ChatPresenter(BasePresenter):
         """Whether query asks for retrospective summary/suggestions."""
         q = query.lower()
         keywords = [
-            "总结", "回顾", "复盘", "过去做了什么", "我做了什么", "这段时间",
-            "给我建议", "下一步建议", "工作总结", "今天都做了什么",
-            "summary", "recap", "what did i do", "suggestion", "suggestions",
+            "summary", "recap", "review", "retrospective",
+            "past", "today", "what did i do", "suggestion", "suggestions",
         ]
         return any(k in q for k in keywords)
 
@@ -584,17 +580,17 @@ class ChatPresenter(BasePresenter):
             if val:
                 return val
         patterns = [
-            r"(.+?)出现在什么地方",
-            r"(.+?)出现在哪里",
-            r"(.+?)在哪里",
-            r"(.+?)在哪个位置",
+            r"(.+?) appears at which place",
+            r"(.+?) appears where",
+            r"(.+?) where",
+            r"(.+?) which location",
             r"where did (.+?) appear",
         ]
         for pat in patterns:
             m = re.search(pat, q, flags=re.IGNORECASE)
             if not m:
                 continue
-            target = m.group(1).strip(" ：:，,。.?？!")
+            target = m.group(1).strip(" :,.?!")
             if target:
                 return target
         return ""
@@ -603,7 +599,7 @@ class ChatPresenter(BasePresenter):
         """Whether user is asking assistant identity/capability."""
         q = query.lower().strip()
         keys = [
-            "你是谁", "你是啥", "你叫什么", "你能做什么", "介绍一下你",
+            "who are you", "who are you", "what are you called", "what can you do", "introduce yourself",
             "who are you", "what are you", "what can you do",
         ]
         return any(k in q for k in keys)
@@ -611,7 +607,7 @@ class ChatPresenter(BasePresenter):
     def _is_recent_focus_query(self, query: str) -> bool:
         """Whether query clearly focuses on very recent screen content."""
         q = query.lower()
-        recent_tokens = ["刚刚", "刚才", "刚", "最近", "现在", "just now", "recently", "latest"]
+        recent_tokens = ["just now", "recent", "recently", "latest", "now"]
         return any(tok in q for tok in recent_tokens)
 
     def _is_embedding_model(self, model_name: str) -> bool:
@@ -844,13 +840,13 @@ class ChatPresenter(BasePresenter):
     def _infer_time_window(self, query: str) -> Optional[Tuple[int, int]]:
         """Infer hour window from natural language query."""
         q = query.lower()
-        if "上午" in q or "morning" in q:
+        if "morning" in q or "morning" in q:
             return 6, 12
-        if "中午" in q or "noon" in q:
+        if "noon" in q or "noon" in q:
             return 11, 14
-        if "下午" in q or "afternoon" in q:
+        if "afternoon" in q or "afternoon" in q:
             return 12, 18
-        if "晚上" in q or "夜里" in q or "evening" in q or "night" in q:
+        if "evening" in q or "night" in q or "evening" in q or "night" in q:
             return 18, 24
         return None
 
@@ -879,17 +875,17 @@ class ChatPresenter(BasePresenter):
         q = (query or "").lower()
         hints: List[str] = []
         rules = {
-            "coding": ["code", "coding", "vscode", "xcode", "python", "写代码", "代码"],
-            "terminal": ["terminal", "shell", "bash", "zsh", "命令行"],
-            "debugging": ["error", "exception", "bug", "报错", "异常", "错误", "失败"],
-            "meeting": ["meeting", "zoom", "teams", "会议", "腾讯会议", "飞书会议"],
-            "research": ["research", "paper", "arxiv", "论文", "文献", "调研"],
-            "document": ["doc", "document", "pdf", "文档", "笔记"],
-            "browser": ["browser", "chrome", "safari", "网页", "浏览器"],
-            "chat": ["chat", "message", "slack", "discord", "微信", "消息", "沟通"],
-            "design": ["design", "figma", "sketch", "photoshop", "设计"],
-            "presentation": ["ppt", "slides", "keynote", "演示", "汇报"],
-            "dashboard": ["dashboard", "grafana", "analytics", "看板", "统计"],
+            "coding": ["code", "coding", "vscode", "xcode", "python", "coding", "code"],
+            "terminal": ["terminal", "shell", "bash", "zsh", "command line"],
+            "debugging": ["error", "exception", "bug", "error", "exception", "error", "failure"],
+            "meeting": ["meeting", "zoom", "teams", "meeting", "tencent meeting", "feishu meeting"],
+            "research": ["research", "paper", "arxiv", "paper", "literature", "research"],
+            "document": ["doc", "document", "pdf", "document", "notes"],
+            "browser": ["browser", "chrome", "safari", "web page", "browser"],
+            "chat": ["chat", "message", "slack", "discord", "wechat", "messages", "communication"],
+            "design": ["design", "figma", "sketch", "photoshop", "design"],
+            "presentation": ["ppt", "slides", "keynote", "presentation", "report"],
+            "dashboard": ["dashboard", "grafana", "analytics", "dashboard", ""],
         }
         for tag, keywords in rules.items():
             if any(k in q for k in keywords):
@@ -1079,8 +1075,8 @@ class ChatPresenter(BasePresenter):
         q = query.lower()
         tokens = re.findall(r"[a-zA-Z0-9_]+|[\u4e00-\u9fff]{2,}", q)
         stop_tokens = {
-            "什么时候", "什么", "刚刚", "刚才", "最近", "今天", "昨天",
-            "上午", "下午", "中午", "晚上", "夜里", "看到", "看了", "在看", "屏幕",
+            "when", "", "just now", "just now", "recent", "today", "yesterday",
+            "morning", "afternoon", "noon", "evening", "night", "saw", "", "", "screen",
             "what", "when", "today", "yesterday", "recent", "screen", "recording",
         }
         out: List[str] = []
@@ -1105,8 +1101,8 @@ class ChatPresenter(BasePresenter):
 
         research_hints = [
             "abstract", "introduction", "method", "results", "conclusion",
-            "arxiv", "doi", "paper", "pdf", "论文", "题目", "关键词",
-            "福昕", "editor", "search",
+            "arxiv", "doi", "paper", "pdf", "paper", "title", "keywords",
+            "foxit", "editor", "search",
         ]
         ui_hints = [
             "file", "edit", "view", "help", "terminal", "bash", "zsh", "chrome", "safari",
@@ -1181,22 +1177,22 @@ class ChatPresenter(BasePresenter):
     ) -> str:
         """Build a concrete overall scene description from extracted evidence."""
         merged = " ".join(text_items).lower()
-        if any(k in merged for k in ["arxiv", "abstract", "pdf", "论文", "福昕"]):
-            action = "画面以论文/PDF阅读为主"
+        if any(k in merged for k in ["arxiv", "abstract", "pdf", "paper", "foxit"]):
+            action = "Screen mainly shows paper/PDF reading"
         elif any(k in merged for k in ["terminal", "bash", "zsh", "ps aux", "grep"]):
-            action = "画面以终端命令操作为主"
+            action = "Screen mainly shows terminal operations"
         elif any(k in merged for k in ["vscode", "python", "git", "code"]):
-            action = "画面以代码编辑与开发为主"
+            action = "Screen mainly shows code editing and development"
         elif any(k in merged for k in ["chrome", "safari", "firefox", "browser"]):
-            action = "画面以浏览器浏览为主"
+            action = "Screen mainly shows browser usage"
         else:
-            action = "画面以桌面窗口操作为主"
+            action = "Screen mainly shows desktop window operations"
 
-        obj_part = "、".join(objects[:5]) if objects else "窗口、菜单栏、工具栏"
+        obj_part = "".join(objects[:5]) if objects else "windows, menu bar, toolbar"
         text_count = len(text_items)
         if scene_summaries:
-            return f"{action}；可见元素包括{obj_part}；识别到{text_count}条文字线索。{scene_summaries[0]}"
-        return f"{action}；可见元素包括{obj_part}；识别到{text_count}条文字线索。"
+            return f"{action}Visible elements include {obj_part}Detected {text_count} text clues{scene_summaries[0]}"
+        return f"{action}Visible elements include {obj_part}Detected {text_count} text clues"
 
     def _sample_video_frames(self, video_path: str, max_samples: int = 2) -> List[Tuple[float, Any]]:
         """Sample a few frames from video for vision analysis."""
@@ -1319,17 +1315,17 @@ class ChatPresenter(BasePresenter):
         """Infer UI objects from OCR snippets when vision object extraction is missing."""
         merged = " ".join(snippets).lower()
         mapping = [
-            (["pdf", "福昕", "foxit"], "PDF文档窗口"),
-            (["search", "查找"], "搜索栏"),
-            (["terminal", "bash", "zsh", "shell", "ps aux", "grep"], "终端窗口"),
-            (["vscode", "code"], "代码编辑器"),
-            (["chrome", "safari", "firefox", "browser"], "浏览器窗口"),
-            (["wecom", "企业微信"], "通讯应用窗口"),
-            (["desktop"], "桌面"),
-            (["flutter", "memscreen"], "应用主窗口"),
-            (["file", "edit", "view", "help", "编辑", "视图", "帮助"], "菜单栏"),
-            (["tool", "toolbar", "工具"], "工具栏按钮"),
-            (["page", "页", "缩放"], "页面视图区域"),
+            (["pdf", "foxit", "foxit"], "PDF document window"),
+            (["search", "find"], "search bar"),
+            (["terminal", "bash", "zsh", "shell", "ps aux", "grep"], "terminal window"),
+            (["vscode", "code"], "code editor"),
+            (["chrome", "safari", "firefox", "browser"], "browser window"),
+            (["wecom", "wecom"], "communication app window"),
+            (["desktop"], "desktop"),
+            (["flutter", "memscreen"], "main app window"),
+            (["file", "edit", "view", "help", "", "", ""], "menu bar"),
+            (["tool", "toolbar", ""], "toolbar buttons"),
+            (["page", "", ""], "page view area"),
         ]
         out: List[str] = []
         for keys, label in mapping:
@@ -1404,7 +1400,7 @@ class ChatPresenter(BasePresenter):
                 picked = self._extract_ocr_snippets(" | ".join(items), [], max_items=2)
                 if not picked:
                     picked = items[:2]
-                text = "；".join(picked)
+                text = "".join(picked)
                 if not text:
                     continue
                 t_sec = (idx / fps) if fps > 0 else 0.0
@@ -1427,40 +1423,40 @@ class ChatPresenter(BasePresenter):
     def _grid_location_label(self, x: float, y: float, width: float, height: float) -> str:
         """Map a point to a simple 3x3 screen-grid location label."""
         if width <= 0 or height <= 0:
-            return "未知"
+            return "unknown"
         col = 0 if x < (width / 3.0) else (1 if x < (2 * width / 3.0) else 2)
         row = 0 if y < (height / 3.0) else (1 if y < (2 * height / 3.0) else 2)
         labels = {
-            (0, 0): "左上",
-            (1, 0): "上方",
-            (2, 0): "右上",
-            (0, 1): "左侧",
-            (1, 1): "中间",
-            (2, 1): "右侧",
-            (0, 2): "左下",
-            (1, 2): "下方",
-            (2, 2): "右下",
+            (0, 0): "top-left",
+            (1, 0): "top-center",
+            (2, 0): "top-right",
+            (0, 1): "middle-left",
+            (1, 1): "center",
+            (2, 1): "middle-right",
+            (0, 2): "bottom-left",
+            (1, 2): "bottom-center",
+            (2, 2): "bottom-right",
         }
-        return labels.get((col, row), "未知")
+        return labels.get((col, row), "unknown")
 
     def _normalize_location_label(self, raw: str) -> str:
         """Normalize free-form location labels to compact Chinese tags."""
         text = " ".join(str(raw).lower().split())
         mappings = [
-            (["top-left", "left top", "upper left", "左上"], "左上"),
-            (["top-center", "top center", "upper center", "上方"], "上方"),
-            (["top-right", "right top", "upper right", "右上"], "右上"),
-            (["middle-left", "center-left", "left center", "左侧"], "左侧"),
-            (["center", "middle", "中间", "中央"], "中间"),
-            (["middle-right", "center-right", "right center", "右侧"], "右侧"),
-            (["bottom-left", "lower left", "左下"], "左下"),
-            (["bottom-center", "bottom center", "lower center", "下方"], "下方"),
-            (["bottom-right", "lower right", "右下"], "右下"),
+            (["top-left", "left top", "upper left", "top-left"], "top-left"),
+            (["top-center", "top center", "upper center", "top-center"], "top-center"),
+            (["top-right", "right top", "upper right", "top-right"], "top-right"),
+            (["middle-left", "center-left", "left center", "middle-left"], "middle-left"),
+            (["center", "middle", "center", "center"], "center"),
+            (["middle-right", "center-right", "right center", "middle-right"], "middle-right"),
+            (["bottom-left", "lower left", "bottom-left"], "bottom-left"),
+            (["bottom-center", "bottom center", "lower center", "bottom-center"], "bottom-center"),
+            (["bottom-right", "lower right", "bottom-right"], "bottom-right"),
         ]
         for keys, label in mappings:
             if any(k in text for k in keys):
                 return label
-        return "未知"
+        return "unknown"
 
     def _extract_frame_ocr_blocks(self, frame: Any, max_items: int = 10) -> List[Dict[str, Any]]:
         """Extract OCR blocks with approximate on-screen location."""
@@ -1522,7 +1518,7 @@ class ChatPresenter(BasePresenter):
                 for item in fallback_rows[:max_items]:
                     text = " ".join(str(item).split())
                     if len(text) >= 2:
-                        blocks.append({"text": text[:140], "confidence": 0.0, "location": "未知"})
+                        blocks.append({"text": text[:140], "confidence": 0.0, "location": "unknown"})
 
             blocks.sort(key=lambda b: (float(b.get("confidence", 0.0)), len(str(b.get("text", "")))), reverse=True)
             seen = set()
@@ -1661,7 +1657,7 @@ class ChatPresenter(BasePresenter):
                         loc = self._normalize_location_label(item.get("location", ""))
                     else:
                         name = " ".join(str(item).split())
-                        loc = "未知"
+                        loc = "unknown"
                     if name:
                         objects.append({"name": name[:80], "location": loc})
 
@@ -1671,7 +1667,7 @@ class ChatPresenter(BasePresenter):
                         loc = self._normalize_location_label(item.get("location", ""))
                     else:
                         text = " ".join(str(item).split())
-                        loc = "未知"
+                        loc = "unknown"
                     if len(text) >= 2:
                         visible_text.append({"text": text[:120], "location": loc})
 
@@ -1722,7 +1718,7 @@ class ChatPresenter(BasePresenter):
                 text = str(block.get("text", ""))
                 if not self._target_text_match(target_phrase, text):
                     continue
-                key = (frame_index, text.lower(), str(block.get("location", "未知")))
+                key = (frame_index, text.lower(), str(block.get("location", "unknown")))
                 if key in seen:
                     continue
                 seen.add(key)
@@ -1730,7 +1726,7 @@ class ChatPresenter(BasePresenter):
                     {
                         "frame_index": frame_index,
                         "time_offset": offset,
-                        "location": block.get("location", "未知"),
+                        "location": block.get("location", "unknown"),
                         "evidence": text[:120],
                         "source": "ocr",
                     }
@@ -1740,7 +1736,7 @@ class ChatPresenter(BasePresenter):
                 text = str(item.get("text", ""))
                 if not self._target_text_match(target_phrase, text):
                     continue
-                key = (frame_index, text.lower(), str(item.get("location", "未知")))
+                key = (frame_index, text.lower(), str(item.get("location", "unknown")))
                 if key in seen:
                     continue
                 seen.add(key)
@@ -1748,7 +1744,7 @@ class ChatPresenter(BasePresenter):
                     {
                         "frame_index": frame_index,
                         "time_offset": offset,
-                        "location": item.get("location", "未知"),
+                        "location": item.get("location", "unknown"),
                         "evidence": text[:120],
                         "source": "vision_text",
                     }
@@ -1758,7 +1754,7 @@ class ChatPresenter(BasePresenter):
                 name = str(item.get("name", ""))
                 if not self._target_text_match(target_phrase, name):
                     continue
-                key = (frame_index, name.lower(), str(item.get("location", "未知")))
+                key = (frame_index, name.lower(), str(item.get("location", "unknown")))
                 if key in seen:
                     continue
                 seen.add(key)
@@ -1766,7 +1762,7 @@ class ChatPresenter(BasePresenter):
                     {
                         "frame_index": frame_index,
                         "time_offset": offset,
-                        "location": item.get("location", "未知"),
+                        "location": item.get("location", "unknown"),
                         "evidence": name[:120],
                         "source": "object",
                     }
@@ -1891,7 +1887,7 @@ class ChatPresenter(BasePresenter):
 
         specific_hint = self._extract_specific_recording_hint(query)
         target_phrase = self._extract_visual_target_phrase(query)
-        paper_like = any(k in query.lower() for k in ["论文", "paper", "pdf", "arxiv", "title", "abstract"])
+        paper_like = any(k in query.lower() for k in ["paper", "paper", "pdf", "arxiv", "title", "abstract"])
         location_query = self._is_visual_location_query(query)
         window = self._infer_time_window(query)
         candidate_rows = self._filter_recordings_by_time_window(rows, window) or rows
@@ -1972,7 +1968,7 @@ class ChatPresenter(BasePresenter):
                 object_names = [str(item.get("name", "")) for item in object_entries if str(item.get("name", ""))]
 
                 merged_text = self._dedupe_text_items(ocr_texts + vis_texts, limit=6)
-                text_line = "；".join(merged_text[:3])
+                text_line = "".join(merged_text[:3])
                 frame_rows.append(
                     {
                         "frame_index": fidx,
@@ -1998,7 +1994,7 @@ class ChatPresenter(BasePresenter):
                         object_entries_pool.append(
                             {
                                 "name": str(obj.get("name", ""))[:80],
-                                "location": str(obj.get("location", "未知")),
+                                "location": str(obj.get("location", "unknown")),
                             }
                         )
                 summary = str(vision_payload.get("activity", "")).strip()
@@ -2058,12 +2054,12 @@ class ChatPresenter(BasePresenter):
         """Render harness evidence into deterministic, evidence-first answer."""
         if not evidence_list:
             return (
-                "没有找到可用录屏来回答这个视觉问题。\n"
-                "建议：先录制一次包含目标画面的操作，再重新提问。"
+                "No usable recordings were found for this visual question.\n"
+                "Suggestion: record the target screen first, then ask again."
             )
 
         target_phrase = self._extract_visual_target_phrase(query)
-        lines = ["我按“检索视频→逐帧抽取→OCR/视觉交叉验证”的链路整理了证据："]
+        lines = ["I organized evidence through: video retrieval -> frame sampling -> OCR/visual cross-validation:"]
         main_rows: List[List[str]] = []
         for ev in evidence_list:
             text_items = ev.get("ocr_snippets", []) or []
@@ -2073,28 +2069,28 @@ class ChatPresenter(BasePresenter):
                 str(ev.get("timestamp", "")),
                 str(ev.get("basename", "")),
                 f"{float(ev.get('duration', 0.0)):.1f}s",
-                "；".join(text_items[:6]) if text_items else "未识别到清晰文本",
-                "、".join(objects[:6]) if objects else "",
+                "; ".join(text_items[:6]) if text_items else "No clear text detected",
+                ", ".join(objects[:6]) if objects else "",
                 overall[:140],
             ])
-        lines.append(self._build_markdown_table(["时间", "视频", "时长", "可见文字", "主要元素", "整体描述"], main_rows))
+        lines.append(self._build_markdown_table(["Time", "Video", "Duration", "Visible text", "Main elements", "Summary"], main_rows))
 
         for ev in evidence_list:
             hits = ev.get("target_hits", []) or []
             if target_phrase:
                 if hits:
-                    lines.append(f"   命中位置（目标：{target_phrase}）：")
+                    lines.append(f"   Matched positions (target: {target_phrase} ):")
                     hit_rows: List[List[str]] = []
                     for hit in hits[:8]:
                         hit_rows.append([
                             f"frame{int(hit.get('frame_index', 0))}",
                             f"+{float(hit.get('time_offset', 0.0)):.1f}s",
-                            str(hit.get('location', '未知')),
+                            str(hit.get('location', 'unknown')),
                             str(hit.get('evidence', ''))[:120],
                         ])
-                    lines.append(self._build_markdown_table(["帧", "偏移", "位置", "证据"], hit_rows))
+                    lines.append(self._build_markdown_table(["Frame", "Offset", "location", "Evidence"], hit_rows))
                 else:
-                    lines.append(f"   命中位置（目标：{target_phrase}）：当前视频未命中")
+                    lines.append(f"   Matched positions (target: {target_phrase}): no matches in this video")
             else:
                 frame_rows = ev.get("frame_timeline_text", []) or []
                 if frame_rows:
@@ -2105,22 +2101,22 @@ class ChatPresenter(BasePresenter):
                             f"+{float(row.get('time_offset', 0.0)):.1f}s",
                             str(row.get('text', ''))[:140],
                         ])
-                    lines.append(self._build_markdown_table(["帧", "偏移", "证据文字"], fr_rows))
+                    lines.append(self._build_markdown_table(["Frame", "Offset", "Evidence text"], fr_rows))
 
         memory_lines = self._extract_memory_evidence_lines(memory_context, limit=6)
         if not memory_lines:
             memory_lines = self._collect_memory_recording_evidence(query, limit=4)
         if memory_lines:
-            lines.append("\n记忆系统证据（Memory）：")
+            lines.append("\nMemory evidence:")
             lines.append(self._build_memory_evidence_table(memory_lines[:6]))
 
-        lines.append("\n建议：")
+        lines.append("\nSuggestions:")
         if target_phrase:
-            lines.append("1. 先打开上述视频定位命中时间点，确认该文字/物体是否连续出现。")
-            lines.append("2. 如果要更精准，请补充完整关键词（如完整标题、按钮名或报错词）。")
+            lines.append("1. Open the videos above and verify whether the text/object appears continuously at matched timestamps.")
+            lines.append("2. For higher precision, provide complete keywords (full title, button name, or error text).")
         else:
-            lines.append("1. 打开同一视频按上述逐帧时间点复核。")
-            lines.append("2. 继续问“这个词/物体出现在哪一帧”，我会返回更精确位置证据。")
+            lines.append("1. Open the same video and re-check by the listed frame timestamps.")
+            lines.append("2. Ask which frame a word/object appears in, and I will return precise location evidence.")
         return "\n".join(lines)
 
     def _build_markdown_table(self, headers: List[str], rows: List[List[str]]) -> str:
@@ -2147,12 +2143,12 @@ class ChatPresenter(BasePresenter):
             if text.startswith("- "):
                 text = text[2:].strip()
             # Expected format:
-            # 2026-... basename.mp4：hint...
+            # 2026-... basename.mp4hint...
             when = ""
             file_name = ""
             evidence = text
             try:
-                head, tail = text.split("：", 1)
+                head, tail = text.split(" | ", 1)
                 evidence = tail.strip()
                 parts = head.strip().split(" ")
                 if len(parts) >= 3:
@@ -2166,7 +2162,7 @@ class ChatPresenter(BasePresenter):
             except ValueError:
                 pass
             rows.append([when, file_name, evidence])
-        return self._build_markdown_table(["时间", "录屏文件", "证据摘要"], rows)
+        return self._build_markdown_table(["Time", "Recording File", "Evidence Summary"], rows)
 
     def _collect_visual_detail_evidence(self, query: str, max_videos: int = 2) -> List[Dict[str, Any]]:
         """Collect rich visual evidence from recent recordings."""
@@ -2177,7 +2173,7 @@ class ChatPresenter(BasePresenter):
         window = self._infer_time_window(query)
         filtered = self._filter_recordings_by_time_window(rows, window)
         recent_focus = self._is_recent_focus_query(query)
-        paper_like = any(k in query.lower() for k in ["论文", "paper", "pdf", "arxiv", "title", "abstract"])
+        paper_like = any(k in query.lower() for k in ["paper", "paper", "pdf", "arxiv", "title", "abstract"])
 
         specific_hint = self._extract_specific_recording_hint(query)
         candidate_rows = filtered if filtered else rows
@@ -2267,13 +2263,13 @@ class ChatPresenter(BasePresenter):
         """Deterministic detailed answer fallback."""
         if not evidence_list:
             return (
-                "没有找到可用录屏来回答这个视觉细节问题。\n"
-                "建议：先录制一次包含目标画面的操作，再重新提问。"
+                "No usable recordings were found for this visual-detail question.\n"
+                "Suggestion: record the target screen first, then ask again."
             )
 
         specific_hint = self._extract_specific_recording_hint(query)
         frame_mode = bool(specific_hint)
-        lines = ["我基于最近录屏给你整理了可核验的画面证据："]
+        lines = ["I compiled verifiable visual evidence from recent recordings:"]
         main_rows: List[List[str]] = []
         for i, ev in enumerate(evidence_list, 1):
             text_items = ev.get("ocr_snippets", []) or ev.get("visible_text", [])
@@ -2285,11 +2281,11 @@ class ChatPresenter(BasePresenter):
                 str(ev.get('timestamp', '')),
                 str(ev.get('basename', '')),
                 f"{float(ev.get('duration', 0.0)):.1f}s",
-                "；".join(text_items[:6]) if text_items else "未识别到清晰文本",
-                "、".join(objs[:8]) if objs else "窗口、工具栏、文档区域（粗略）",
+                "; ".join(text_items[:6]) if text_items else "No clear text detected",
+                ", ".join(objs[:8]) if objs else "window, toolbar, document area (rough)",
                 str(overall)[:140],
             ])
-        lines.append(self._build_markdown_table(["时间", "视频", "时长", "可见文字", "主要元素", "整体描述"], main_rows))
+        lines.append(self._build_markdown_table(["Time", "Video", "Duration", "Visible text", "Main elements", "Summary"], main_rows))
 
         for ev in evidence_list:
             frame_rows = ev.get("frame_timeline_text", []) or []
@@ -2301,17 +2297,17 @@ class ChatPresenter(BasePresenter):
                         f"+{float(row.get('time_offset', 0.0)):.1f}s",
                         str(row.get('text', ''))[:140],
                     ])
-                lines.append(self._build_markdown_table(["帧", "偏移", "证据文字"], fr_rows))
+                lines.append(self._build_markdown_table(["Frame", "Offset", "Evidence text"], fr_rows))
             elif frame_rows:
                 compact = []
                 for row in frame_rows[:3]:
                     compact.append(f"+{float(row.get('time_offset', 0.0)):.1f}s {row.get('text', '')}")
                 if compact:
-                    lines.append("   关键帧内容：" + " | ".join(compact))
+                    lines.append("   Key frame content:" + " | ".join(compact))
 
-        lines.append("建议：")
-        lines.append("1. 打开上述视频并定位同一时间点复核。")
-        lines.append("2. 如果需要更准确结果，请补充“应用名/论文关键词/报错词”。")
+        lines.append("Suggestions:")
+        lines.append("1. Open the video above and verify at the same timestamps.")
+        lines.append("2. For better accuracy, provide app name/paper keywords/error text.")
         return "\n".join(lines)
 
     def _extract_memory_evidence_lines(self, context: str, limit: int = 6) -> List[str]:
@@ -2389,7 +2385,7 @@ class ChatPresenter(BasePresenter):
                 hint = " ".join(str(hint).split())
                 if len(hint) > 180:
                     hint = hint[:180] + "..."
-                out.append(f"- {when} {basename}：{hint}")
+                out.append(f"- {when} {basename} | {hint}")
                 if basename:
                     seen_file.add(basename)
                 if len(out) >= limit:
@@ -2436,18 +2432,18 @@ class ChatPresenter(BasePresenter):
             )
 
         synthesis_prompt = (
-            "你是 MemScreen 视觉记忆总结器。\n"
-            "只根据给定证据输出 3~5 行中文结论，不得编造。\n"
-            "如果用户问“在哪里/什么时候出现”，优先回答命中时间点+位置。\n"
-            "如果证据不足，要明确写“未找到足够证据”。\n"
-            "输出时不要重复整段时间线。"
+            "You are the MemScreen visual-memory summarizer.\n"
+            "Output 3-5 concise English conclusions strictly from evidence.\n"
+            "If asked where/when something appeared, prioritize matched timestamps and locations.\n"
+            "If evidence is insufficient, explicitly say so.\n"
+            "Do not repeat the full timeline."
         )
         summary_text = self._ollama_generate_once(
             model=model_name,
             prompt=(
-                f"{synthesis_prompt}\n\n用户问题：{query}\n"
-                f"链路统计：{json.dumps(harness_stats, ensure_ascii=False)}\n"
-                f"证据：{json.dumps(compact_evidence, ensure_ascii=False)}"
+                f"{synthesis_prompt}\n\nUser question:{query}\n"
+                f"Pipeline stats:{json.dumps(harness_stats, ensure_ascii=False)}\n"
+                f"Evidence:{json.dumps(compact_evidence, ensure_ascii=False)}"
             ),
             options={
                 "num_predict": 260,
@@ -2461,23 +2457,23 @@ class ChatPresenter(BasePresenter):
         )
         summary_text = self._sanitize_ai_text(summary_text)
         if summary_text and len(summary_text) >= 20:
-            return evidence_text + "\n\n综合结论：\n" + summary_text, model_name
+            return evidence_text + "\n\nCombined conclusion:\n" + summary_text, model_name
         return evidence_text, model_name
 
     def _classify_activity_kind(self, text: str) -> str:
         """Classify rough activity type from OCR/timeline text."""
         t = " ".join(str(text).lower().split())
-        if any(k in t for k in ["paper", "pdf", "arxiv", "abstract", "论文", "福昕"]):
-            return "论文/文档阅读"
+        if any(k in t for k in ["paper", "pdf", "arxiv", "abstract", "paper", "foxit"]):
+            return "paper/document reading"
         if any(k in t for k in ["terminal", "zsh", "bash", "python", "git", "error", "exception"]):
-            return "终端/开发调试"
+            return "terminal/development debugging"
         if any(k in t for k in ["vscode", "code", ".py", ".ts", "flutter"]):
-            return "代码编辑"
+            return "code editing"
         if any(k in t for k in ["chrome", "safari", "firefox", "search", "browser"]):
-            return "网页浏览/检索"
-        if any(k in t for k in ["wecom", "企业微信", "chat", "message"]):
-            return "沟通/消息处理"
-        return "通用窗口操作"
+            return "web browsing/search"
+        if any(k in t for k in ["wecom", "wecom", "chat", "message"]):
+            return "communication/message handling"
+        return "general window operations"
 
     def _collect_activity_timeline_entries(
         self,
@@ -2543,7 +2539,7 @@ class ChatPresenter(BasePresenter):
                 hint = self._quick_extract_video_text(str(row.get("filename", "")), dense=False)
                 hint = " ".join(str(hint).split())[:300]
                 if not hint:
-                    hint = f"录屏时长 {float(row.get('duration', 0.0)):.1f}s，帧数 {int(row.get('frame_count', 0))}"
+                    hint = f"Recording duration {float(row.get('duration', 0.0)):.1f}s, frame count {int(row.get('frame_count', 0))}"
                 entries.append(
                     {
                         "timestamp": ts,
@@ -2572,19 +2568,19 @@ class ChatPresenter(BasePresenter):
         entries = self._collect_activity_timeline_entries(query, limit=10)
         if not entries:
             return (
-                "我没有找到可用的录屏时间线来做总结。\n"
-                "建议：先录制关键操作后再问“帮我总结今天做了什么”。",
+                "I could not find a usable recording timeline for summary.\n"
+                "Suggestion: record key actions first, then ask for a daily summary.",
                 "activity-fallback",
             )
 
         kind_counts: Dict[str, int] = {}
         for item in entries:
-            kind = item.get("kind", "通用窗口操作")
+            kind = item.get("kind", "general window operations")
             kind_counts[kind] = kind_counts.get(kind, 0) + 1
         top_kinds = sorted(kind_counts.items(), key=lambda x: x[1], reverse=True)
-        focus = "、".join([f"{k}({v})" for k, v in top_kinds[:3]]) if top_kinds else "通用窗口操作"
+        focus = ", ".join([f"{k} ({v})" for k, v in top_kinds[:3]]) if top_kinds else "general window operations"
 
-        lines = ["我按录屏时间线整理了你最近做过的事情：", "时间线证据："]
+        lines = ["I summarized your recent activities by recording timeline:", "Timeline evidence:"]
         timeline_rows: List[List[str]] = []
         for item in entries[:6]:
             timeline_rows.append([
@@ -2593,38 +2589,39 @@ class ChatPresenter(BasePresenter):
                 str(item.get('kind', '')),
                 str(item.get('detail', ''))[:180],
             ])
-        lines.append(self._build_markdown_table(["时间", "视频", "活动类型", "证据摘要"], timeline_rows))
-        lines.append(f"主要活动类型：{focus}")
+        lines.append(self._build_markdown_table(["Time", "Video", "Activity type", "evidence summary"], timeline_rows))
+        lines.append(f"Primary activity types:{focus}")
 
         # Deterministic suggestion baseline.
         suggestions = []
-        if any("终端/开发调试" in k for k, _ in top_kinds):
-            suggestions.append("把报错关键词和修复动作记录成 checklist，避免重复排查。")
-        if any("论文/文档阅读" in k for k, _ in top_kinds):
-            suggestions.append("为论文阅读建立“标题-结论-待验证点”三栏笔记，方便后续检索。")
-        if any("沟通/消息处理" in k for k, _ in top_kinds):
-            suggestions.append("把消息中的待办转成明确任务，补上截止时间。")
+        if any("terminal/development debugging" in k for k, _ in top_kinds):
+            suggestions.append("Record error keywords and fixes as a checklist to avoid repeated debugging.")
+        if any("paper/document reading" in k for k, _ in top_kinds):
+            suggestions.append("Use a three-column note format for papers: title, conclusion, and points to verify.")
+        if any("communication/message handling" in k for k, _ in top_kinds):
+            suggestions.append("Convert message todos into explicit tasks with deadlines.")
         if not suggestions:
-            suggestions.append("按时间线回顾关键窗口，确认下一步唯一优先动作。")
+            suggestions.append("Review key windows along the timeline and confirm the next top-priority action.")
         if len(suggestions) < 2:
-            suggestions.append("把关键录屏片段打上标签（论文/报错/代码），后续追问会更快更准。")
+            suggestions.append("Tag key recording clips (paper/error/code) to improve later retrieval speed and precision.")
         if len(suggestions) < 3:
-            suggestions.append("每天结束前做一次 1 分钟复盘：今天完成、阻塞点、明天第一步。")
+            suggestions.append("Do a 1-minute daily review: completed work, blockers, and first step tomorrow.")
 
         model_name = self._select_large_text_model()
         if not self._is_vision_model(model_name):
             summary_prompt = (
-                "你是 MemScreen 复盘助手。只基于证据输出：\n"
-                "1) 最近在做什么（2-3行）；\n"
-                "2) 具体建议（2-3条）；\n"
-                "禁止编造，禁止脱离证据。"
+                "You are the MemScreen review assistant.\n"
+                "Based only on evidence, output:\n"
+                "1) What the user has been doing recently (2-3 lines)\n"
+                "2) Specific next-step suggestions (2-3 items)\n"
+                "No fabrication."
             )
             ai_summary = self._ollama_generate_once(
                 model=model_name,
                 prompt=(
-                    f"{summary_prompt}\n\n用户问题：{query}\n"
-                    f"证据：{json.dumps(entries[:8], ensure_ascii=False)}\n"
-                    f"已有记忆上下文：{memory_context[:800]}"
+                    f"{summary_prompt}\n\nUser question:{query}\n"
+                    f"Evidence:{json.dumps(entries[:8], ensure_ascii=False)}\n"
+                    f"Existing memory context:{memory_context[:800]}"
                 ),
                 options={
                     "num_predict": 300,
@@ -2638,10 +2635,10 @@ class ChatPresenter(BasePresenter):
             )
             ai_summary = self._sanitize_ai_text(ai_summary)
             if ai_summary and len(ai_summary) >= 20:
-                lines.append("\n复盘总结：")
+                lines.append("\nReview summary:")
                 lines.append(ai_summary)
 
-        lines.append("\n建议：")
+        lines.append("\nSuggestions:")
         for idx, item in enumerate(suggestions[:3], 1):
             lines.append(f"{idx}. {item}")
         return "\n".join(lines), model_name
@@ -2677,8 +2674,8 @@ class ChatPresenter(BasePresenter):
         time_window_note = ""
         if window and not target_rows:
             time_window_note = (
-                f"时间段筛选提示：没有找到 {window[0]:02d}:00-{window[1]:02d}:00 的录屏，"
-                "以下为最近可用录屏。"
+                f"Time-window filter note: no recordings found for {window[0]:02d}:00-{window[1]:02d}:00 "
+                "Showing the latest available recordings instead."
             )
             target_rows = rows[: min(4, len(rows))]
         elif window:
@@ -2698,14 +2695,14 @@ class ChatPresenter(BasePresenter):
                 f"{float(row.get('duration', 0.0)):.1f}s",
                 str(row.get('frame_count', 0)),
             ])
-        evidence_lines.append(self._build_markdown_table(["时间", "视频", "时长", "帧数"], db_rows_md))
-        stats["db_lines"] = [f"- {r[0]}：{r[1]}（{r[2]}, {r[3]} 帧）" for r in db_rows_md]
+        evidence_lines.append(self._build_markdown_table(["Time", "Video", "Duration", "Frame count"], db_rows_md))
+        stats["db_lines"] = [f"- {r[0]}: {r[1]} ({r[2]}, {r[3]} frames)" for r in db_rows_md]
 
         if time_window_note:
             evidence_lines.append(f"- {time_window_note}")
 
         query_keywords = self._extract_query_keywords(query)
-        paper_like = any(k in query.lower() for k in ["论文", "paper", "pdf", "arxiv"])
+        paper_like = any(k in query.lower() for k in ["paper", "paper", "pdf", "arxiv"])
         ocr_scan_rows = target_rows
         if paper_like:
             # For paper/doc queries prioritize longer recordings (more likely to contain readable document pages).
@@ -2732,7 +2729,7 @@ class ChatPresenter(BasePresenter):
             preview = " / ".join(snippets[:2]) if snippets else ocr_text
             if len(preview) > 180:
                 preview = preview[:180] + "..."
-            ocr_line = f"- {row.get('timestamp', 'Unknown time')}：{preview}"
+            ocr_line = f"- {row.get('timestamp', 'Unknown time')}{preview}"
             ocr_lines.append(ocr_line)
             stats["ocr_lines"].append(ocr_line)
             stats["ocr_details"].append(
@@ -2748,12 +2745,12 @@ class ChatPresenter(BasePresenter):
             ocr_rows_md: List[List[str]] = []
             for line in ocr_lines:
                 txt = line[2:] if line.startswith("- ") else line
-                if "：" in txt:
-                    t, pv = txt.split("：", 1)
+                if " | " in txt:
+                    t, pv = txt.split(" | ", 1)
                     ocr_rows_md.append([t.strip(), pv.strip()])
                 else:
                     ocr_rows_md.append(["", txt])
-            evidence_lines.append(self._build_markdown_table(["时间", "OCR证据"], ocr_rows_md))
+            evidence_lines.append(self._build_markdown_table(["Time", "OCR evidence"], ocr_rows_md))
 
         return "\n".join(evidence_lines), stats
 
@@ -2769,9 +2766,9 @@ class ChatPresenter(BasePresenter):
 
         query_lower = query.lower()
         temporal_keywords = [
-            "什么时候", "何时", "今天", "昨天", "最近", "当时", "看到", "看到了",
-            "上午", "中午", "下午", "晚上", "夜里", "在看什么", "看了什么",
-            "论文", "paper", "pdf", "arxiv",
+            "when", "when", "today", "yesterday", "recent", "at that time", "saw", "saw",
+            "morning", "noon", "afternoon", "evening", "night", "what was being viewed", "what was viewed",
+            "paper", "paper", "pdf", "arxiv",
             "when", "today", "yesterday", "recent", "saw", "seen",
             "morning", "afternoon", "evening", "night",
         ]
@@ -2786,8 +2783,8 @@ class ChatPresenter(BasePresenter):
                     for row in db_rows:
                         context_parts.append(
                             f"- {row.get('timestamp', 'Unknown time')}: "
-                            f"录屏文件 {row.get('basename', '')}"
-                            f"（{row.get('duration', 0.0):.1f}s, {row.get('frame_count', 0)} frames）"
+                            f"Recording file {row.get('basename', '')}"
+                            f"{row.get('duration', 0.0):.1f}s, {row.get('frame_count', 0)} frames"
                         )
                     stats["recording_count"] = len(db_rows)
                     stats["total_memories"] = len(db_rows)
@@ -2897,7 +2894,7 @@ class ChatPresenter(BasePresenter):
                 duration = row.get("duration", 0.0)
                 frame_count = row.get("frame_count", 0)
                 db_recording_timeline.append(
-                    f"- {when}: 录屏文件 {basename}（{duration:.1f}s, {frame_count} frames）"
+                    f"- {when}: Recording file {basename}{duration:.1f}s, {frame_count} frames"
                 )
 
             if db_recording_timeline:
@@ -3207,12 +3204,12 @@ class ChatPresenter(BasePresenter):
 
                 if self._is_identity_query(user_message):
                     ai_text = (
-                        "我是 MemScreen 助手，主要基于你的录屏与记忆数据回答问题。\n"
-                        "我可以：\n"
-                        "1. 按时间线回忆你屏幕上出现的文字和内容。\n"
-                        "2. 给出对应录屏证据（时间点、视频文件、OCR文本）。\n"
-                        "3. 根据最近活动给出下一步建议。\n"
-                        "如果你愿意，现在可以直接问我：刚刚屏幕上有哪些字/物体？"
+                        " MemScreen recording\n"
+                        "\n"
+                        "1. Timescreenappear\n"
+                        "2. recordingEvidenceTimeVideoOCR\n"
+                        "3. recent\n"
+                        "You can ask now: what text/objects appeared on my screen just now?"
                     )
                     self.conversation_history.append(ChatMessage("user", user_message))
                     self.conversation_history.append(ChatMessage("assistant", ai_text))
@@ -3304,9 +3301,9 @@ class ChatPresenter(BasePresenter):
                 if self._is_memory_sensitive_query(user_message) and context_stats.get("recording_count", 0) == 0:
                     recent_recordings = self._load_recent_recordings_from_db(limit=3)
                     if recent_recordings:
-                        # For "paper/论文" queries, do a quick OCR pass on matching time-window recordings.
+                        # For "paper/paper" queries, do a quick OCR pass on matching time-window recordings.
                         q_lower = user_message.lower()
-                        paper_like = any(k in q_lower for k in ["论文", "paper", "arxiv", "pdf"])
+                        paper_like = any(k in q_lower for k in ["paper", "paper", "arxiv", "pdf"])
                         ocr_hint = ""
                         if paper_like:
                             win = self._infer_time_window(user_message)
@@ -3317,8 +3314,8 @@ class ChatPresenter(BasePresenter):
                                 hint = self._quick_extract_video_text(row.get("filename", ""))
                                 if hint:
                                     ocr_hint = (
-                                        f"\n我从最近录屏里识别到的文本线索：\n"
-                                        f"- {row.get('timestamp', 'Unknown time')}：{hint}"
+                                        f"\nText cues recognized from recent recordings:\n"
+                                        f"- {row.get('timestamp', 'Unknown time')}{hint}"
                                     )
                                     break
                         else:
@@ -3327,25 +3324,25 @@ class ChatPresenter(BasePresenter):
                                 hint = self._quick_extract_video_text(row.get("filename", ""))
                                 if hint:
                                     ocr_hint = (
-                                        f"\n我从最近录屏里识别到的画面内容：\n"
-                                        f"- {row.get('timestamp', 'Unknown time')}：{hint}"
+                                        f"\nVisual content recognized from recent recordings:\n"
+                                        f"- {row.get('timestamp', 'Unknown time')}{hint}"
                                     )
                                     break
 
                         lines = []
                         for row in recent_recordings:
                             lines.append(
-                                f"- {row.get('timestamp', 'Unknown time')}："
+                                f"- {row.get('timestamp', 'Unknown time')}"
                                 f"{row.get('basename', '')}"
-                                f"（{row.get('duration', 0.0):.1f}s, {row.get('frame_count', 0)} 帧）"
+                                f"{row.get('duration', 0.0):.1f}s, {row.get('frame_count', 0)} Frame"
                             )
                         ai_text = (
-                            "我没有检索到可用的录屏向量时间线，但从最近录屏记录看：\n"
+                            "No vector timeline was found, but recent recording logs show:\n"
                             + "\n".join(lines)
                             + ocr_hint
-                            + "\n建议：\n"
-                            + "1. 先打开最近一条录屏确认画面内容。\n"
-                            + "2. 再用关键词问我（如“终端/浏览器/报错词”），我会给更准确的时间线。"
+                            + "\nSuggestions:\n"
+                            + "1. Open the most recent recording and verify the visual content.\n"
+                            + "2. Ask again with keywords (e.g., terminal/browser/error terms) for a more accurate timeline."
                         )
                         self.conversation_history.append(ChatMessage("user", user_message))
                         self.conversation_history.append(ChatMessage("assistant", ai_text))
@@ -3360,10 +3357,10 @@ class ChatPresenter(BasePresenter):
                         return
 
                     ai_text = (
-                        "我暂时没有在记忆中找到对应的录屏时间线证据。\n"
-                        "建议：\n"
-                        "1. 先开启录屏后再复现一次关键操作。\n"
-                        "2. 用更具体关键词再问一次（例如应用名/报错词）。"
+                        "I could not find matching recording timeline evidence in memory.\n"
+                        "Suggestions:\n"
+                        "1. Start recording and reproduce the key action once.\n"
+                        "2. Ask again with more specific keywords (e.g., app name/error term)."
                     )
                     self.conversation_history.append(ChatMessage("user", user_message))
                     self.conversation_history.append(ChatMessage("assistant", ai_text))
@@ -3407,15 +3404,15 @@ class ChatPresenter(BasePresenter):
                     else:
                         base_prompt = ChatPromptBuilder.build_without_context(user_message, query_type)
                 except Exception:
-                    base_prompt = "你是 MemScreen，一个基于记忆回答的助手。"
+                    base_prompt = "You are MemScreen, an assistant that answers from memory evidence."
 
                 system_prompt = (
                     base_prompt
-                    + "\n\n[执行约束]\n"
-                    + "1. 仅根据给定记忆上下文作答，禁止编造。\n"
-                    + "2. 优先使用具体时间和录屏文件名作为证据。\n"
-                    + "3. 若证据不足，明确说明“未找到”并给出下一步建议。\n"
-                    + "4. 回答语言使用中文，禁止输出 <think> 或推理过程。"
+                    + "\n\n[Execution constraints]\n"
+                    + "1. Answer only from the provided memory context. No fabrication.\n"
+                    + "2. Prioritize specific timestamps and recording filenames as evidence.\n"
+                    + "3. If evidence is insufficient, clearly state not found and give next-step suggestions.\n"
+                    + "4. Respond in English and do not output <think> or reasoning traces."
                 )
 
                 messages: List[Dict[str, str]] = []
@@ -3430,11 +3427,11 @@ class ChatPresenter(BasePresenter):
                 ai_text = str(response).strip() if response else ""
                 ai_text = self._sanitize_ai_text(ai_text)
                 if not ai_text:
-                    ai_text = "我暂时没有生成有效回复，请重试一次。"
+                    ai_text = "I could not generate a valid reply. Please try again."
 
                 # Ensure timeline answers always include concrete recent recording evidence.
                 if self._is_memory_sensitive_query(user_message) and context_stats.get("recording_count", 0) > 0:
-                    paper_like = any(k in user_message.lower() for k in ["论文", "paper", "pdf", "arxiv"])
+                    paper_like = any(k in user_message.lower() for k in ["paper", "paper", "pdf", "arxiv"])
                     has_time = bool(re.search(r"\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}", ai_text))
                     has_file = ".mp4" in ai_text.lower()
                     need_append = (not (has_time and has_file)) or paper_like
@@ -3449,21 +3446,21 @@ class ChatPresenter(BasePresenter):
                                 ln for ln in hybrid_text.splitlines()
                                 if ln.strip().startswith("- ")
                             ]
-                            if hybrid_lines and "最近录屏证据：" not in ai_text:
+                            if hybrid_lines and "Recent recording evidence:" not in ai_text:
                                 ai_text = (
                                     ai_text.rstrip()
-                                    + "\n\n最近录屏证据：\n"
+                                    + "\n\nRecent recording evidence:\n"
                                     + "\n".join(hybrid_lines[:6])
                                 )
                             ocr_lines = hybrid_stats.get("ocr_lines", []) or []
-                            if ocr_lines and "对应视频画面内容：" not in ai_text:
+                            if ocr_lines and "Corresponding video content:" not in ai_text:
                                 ai_text = (
                                     ai_text.rstrip()
-                                    + "\n\n对应视频画面内容：\n"
+                                    + "\n\nCorresponding video content:\n"
                                     + "\n".join(ocr_lines[:2])
                                 )
 
-                    if "对应视频画面内容：" not in ai_text:
+                    if "Corresponding video content:" not in ai_text:
                         _, quick_stats = self._build_hybrid_visual_evidence(
                             user_message,
                             db_limit=4,
@@ -3473,17 +3470,17 @@ class ChatPresenter(BasePresenter):
                         if quick_ocr_lines:
                             ai_text = (
                                 ai_text.rstrip()
-                                + "\n\n对应视频画面内容：\n"
+                                + "\n\nCorresponding video content:\n"
                                 + "\n".join(quick_ocr_lines[:1])
                             )
 
                 # If answer is still vague for visual-memory queries, append hybrid evidence directly.
                 if self._is_memory_sensitive_query(user_message):
-                    vague_answer = any(k in ai_text for k in ["未找到", "没有找到", "不确定", "无法确定"])
+                    vague_answer = any(k in ai_text for k in ["find", "find", "", ""])
                     if (
                         vague_answer
-                        and "可核验的录屏证据：" not in ai_text
-                        and "最近录屏证据：" not in ai_text
+                        and "Verifiable recording evidence:" not in ai_text
+                        and "Recent recording evidence:" not in ai_text
                     ):
                         hybrid_text, _ = self._build_hybrid_visual_evidence(user_message, db_limit=4, ocr_limit=2)
                         if hybrid_text:
@@ -3494,7 +3491,7 @@ class ChatPresenter(BasePresenter):
                             if hybrid_lines:
                                 ai_text = (
                                     ai_text.rstrip()
-                                    + "\n\n可核验的录屏证据：\n"
+                                    + "\n\nVerifiable recording evidence:\n"
                                     + "\n".join(hybrid_lines[:8])
                                 )
 
@@ -3506,20 +3503,20 @@ class ChatPresenter(BasePresenter):
                         ocr_limit=3,
                     )
                     detail_rows = detail_stats.get("ocr_details", []) or []
-                    if detail_rows and "对应视频画面内容：" not in ai_text:
+                    if detail_rows and "Corresponding video content:" not in ai_text:
                         detail_lines: List[str] = []
                         for row in detail_rows[:2]:
                             snippets = row.get("snippets", []) or []
                             if not snippets:
                                 continue
                             detail_lines.append(
-                                f"- {row.get('timestamp', 'Unknown time')} {row.get('basename', '')}："
-                                + "；".join(snippets[:3])
+                                f"- {row.get('timestamp', 'Unknown time')} {row.get('basename', '')}"
+                                + "".join(snippets[:3])
                             )
                         if detail_lines:
                             ai_text = (
                                 ai_text.rstrip()
-                                + "\n\n对应视频画面内容：\n"
+                                + "\n\nCorresponding video content:\n"
                                 + "\n".join(detail_lines)
                             )
 
@@ -3638,49 +3635,49 @@ class ChatPresenter(BasePresenter):
         """Format intelligent agent result into chat response"""
 
         if not result.get("success"):
-            return "抱歉，处理您的请求时出错。"
+            return "Sorry, an error occurred while processing your request."
 
         handler = result.get("handler", "")
         data = result.get("data", {})
 
         # Format based on handler type
         if handler == "greet":
-            return data.get("response", "你好！")
+            return data.get("response", "Hello!")
 
         elif handler == "smart_search":
             # Format search results
             memories = data.get("results", [])
             if memories:
-                response = f"🔍 找到 {len(memories)} 条相关信息：\n\n"
+                response = f"🔍 Found {len(memories)} \n\n"
                 for i, item in enumerate(memories[:5], 1):
                     memory_text = item.get("memory", item.get("text", ""))
                     response += f"{i}. {memory_text}\n"
                 return response
-            return "未找到相关信息。"
+            return "No related information found."
 
         elif handler == "manage_task":
-            return "✅ 任务已添加到列表中。"
+            return "✅ Task added to the list."
 
         elif handler == "add_task":
-            return "✅ 已记住这个任务。"
+            return "✅ Task remembered."
 
         elif handler == "code_assistant":
-            return data.get("response", "这是我的代码分析。")
+            return data.get("response", "Here is my code analysis.")
 
         elif handler == "find_procedure":
             procedures = data.get("results", [])
             if procedures:
-                return f"📋 找到相关操作步骤：\n\n{procedures[0]}"
-            return "未找到相关操作步骤。"
+                return f"📋 find\n\n{procedures[0]}"
+            return "No related operation steps found."
 
         elif handler == "general_query":
-            return data.get("response", "已为您处理。")
+            return data.get("response", "Done.")
 
         else:
             # Default response
             if isinstance(data, dict) and "response" in data:
                 return data["response"]
-            return "已处理完成。"
+            return "Completed."
 
     def _execute_standard_chat(self, user_message: str) -> bool:
         """Execute standard chat flow as fallback (OPTIMIZED)"""

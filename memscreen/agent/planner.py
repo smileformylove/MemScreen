@@ -130,32 +130,32 @@ class Planner:
 
         skills_list = "\n".join(f"- {skill}" for skill in self.available_skills)
 
-        prompt = f"""你是 MemScreen 的任务规划器。你的工作是将用户的目标分解成可执行的步骤。
+        prompt = f""" MemScreen 
 
-## 用户目标
+## 
 {goal}
 
-## 可用技能
+## 
 {skills_list}
 
-## 规划指南
+## 
 
-1. **分解目标**：将目标分解为 2-5 个具体的执行步骤
-2. **选择技能**：为每个步骤选择最合适的技能
-3. **定义参数**：明确每个步骤需要的参数
-4. **识别依赖**：标记步骤间的依赖关系
+1. **** 2-5 
+2. ****
+3. ****
+4. ****
 
-## 输出格式
+## 
 
-请严格按照以下 JSON 格式输出：
+ JSON 
 
 ```json
 {{
   "steps": [
     {{
       "step_id": 1,
-      "description": "步骤描述",
-      "skill_name": "技能名称",
+      "description": "",
+      "skill_name": "",
       "parameters": {{
         "param1": "value1"
       }},
@@ -163,8 +163,8 @@ class Planner:
     }},
     {{
       "step_id": 2,
-      "description": "另一个步骤",
-      "skill_name": "技能名称",
+      "description": "",
+      "skill_name": "",
       "parameters": {{}},
       "depends_on": [1]
     }}
@@ -172,20 +172,20 @@ class Planner:
 }}
 ```
 
-## 注意事项
+## 
 
-- 步骤必须具体且可执行
-- 只使用列出的可用技能
-- step_id 从 1 开始连续编号
-- depends_on 包含此步骤依赖的前置步骤 ID
-- parameters 是执行此步骤所需的参数
+- 
+- 
+- step_id  1 
+- depends_on  ID
+- parameters 
 
-现在请为用户目标创建执行计划（只输出 JSON，不要其他内容）：
+ JSON
 """
 
         if context:
             context_str = json.dumps(context, ensure_ascii=False, indent=2)
-            prompt += f"\n\n## 附加上下文\n{context_str}\n"
+            prompt += f"\n\n## \n{context_str}\n"
 
         return prompt
 
@@ -211,7 +211,7 @@ class Planner:
             "steps": [
                 {
                     "step_id": 1,
-                    "description": "分析请求",
+                    "description": "",
                     "skill_name": "analyze",
                     "parameters": {},
                     "depends_on": []
@@ -270,7 +270,7 @@ class Planner:
                 steps=[
                     PlanStep(
                         step_id=1,
-                        description="执行目标",
+                        description="",
                         skill_name="general",
                         parameters={"goal": goal},
                         depends_on=[]

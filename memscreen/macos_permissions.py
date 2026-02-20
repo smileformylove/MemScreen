@@ -92,22 +92,22 @@ def create_permission_message() -> str:
     """Create a helpful message for granting screen recording permission."""
     return """
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-缺少屏幕录制权限
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-MemScreen 需要屏幕录制权限才能录屏。
+MemScreen 
 
-请按以下步骤授予权限：
 
-1. 打开"系统设置"
-2. 点击"隐私与安全性"
-3. 选择"屏幕录制"
-4. 点击"+"按钮
-5. 从"应用程序"文件夹中选择 MemScreen.app
-6. 确保 MemScreen.app 旁边的开关已打开 ✓
-7. 重新启动 MemScreen 应用
 
-注意：您可能需要先退出 MemScreen 才能看到更改。
+1. ""
+2. ""
+3. ""
+4. "+"
+5. "" MemScreen.app
+6.  MemScreen.app  ✓
+7.  MemScreen 
+
+ MemScreen 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """

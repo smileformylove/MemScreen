@@ -299,12 +299,12 @@ class _VideoScreenState extends State<VideoScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // 视频录制时间轴 - 始终显示
+                //  - 
                 _buildTimeline(),
                 _buildOrganizationBar(),
                 _buildTagFilterBar(),
                 _buildSmartViewsBar(),
-                // 视频播放器或列表区域
+                // 
                 Expanded(
                   child: _currentVideo != null
                       ? _buildVideoPlayer()
@@ -427,7 +427,7 @@ class _VideoScreenState extends State<VideoScreen> {
     );
   }
 
-  // 构建时间轴（显示所有录制的视频）
+  // 
   Widget _buildTimeline() {
     final theme = Theme.of(context);
     final videos = _visibleVideos;
@@ -443,7 +443,7 @@ class _VideoScreenState extends State<VideoScreen> {
         ),
         child: Center(
           child: Text(
-            '暂无录制视频',
+            'No recordings yet',
             style: TextStyle(
               color: theme.colorScheme.onSurfaceVariant,
               fontSize: 12,
@@ -474,7 +474,7 @@ class _VideoScreenState extends State<VideoScreen> {
     );
   }
 
-  // 视频时间轴节点 - 圆形设计
+  //  - 
   Widget _buildVideoTimelineNode(VideoItem video, bool isPlaying) {
     final theme = Theme.of(context);
     return Padding(
@@ -484,7 +484,7 @@ class _VideoScreenState extends State<VideoScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 圆形节点
+            // 
             Container(
               width: 24,
               height: 24,
@@ -526,7 +526,7 @@ class _VideoScreenState extends State<VideoScreen> {
               ),
             ),
             const SizedBox(height: 2),
-            // 时间标签 - 更小的字体
+            //  - 
             Text(
               video.timestamp,
               style: TextStyle(
@@ -559,7 +559,7 @@ class _VideoScreenState extends State<VideoScreen> {
     }
   }
 
-  // 视频列表（All）
+  // All
   Widget _buildVideoList() {
     final videos = _visibleVideos;
     if (videos.isEmpty) {
@@ -572,7 +572,7 @@ class _VideoScreenState extends State<VideoScreen> {
                 size: 64, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: 16),
             Text(
-              _selectedTags.isEmpty ? '暂无录制视频' : '当前标签筛选下无视频',
+              _selectedTags.isEmpty ? 'No recordings yet' : 'No videos match current tag filters',
               style: TextStyle(
                   color: theme.colorScheme.onSurfaceVariant, fontSize: 16),
             ),
@@ -796,12 +796,12 @@ class _VideoScreenState extends State<VideoScreen> {
                     : theme.colorScheme.onSurfaceVariant,
               ),
               onPressed: () => _playVideo(v),
-              tooltip: '播放',
+              tooltip: 'Play',
             ),
             IconButton(
               icon: Icon(Icons.delete_outline, color: theme.colorScheme.error),
               onPressed: () => _deleteVideo(v),
-              tooltip: '删除',
+              tooltip: 'Delete',
             ),
           ],
         ),
@@ -935,30 +935,30 @@ class _VideoScreenState extends State<VideoScreen> {
     return tag;
   }
 
-  // 删除视频
+  // 
   Future<void> _deleteVideo(VideoItem video) async {
     final theme = Theme.of(context);
 
-    // 确认删除
+    // 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: theme.colorScheme.surfaceContainerHigh,
         title:
-            Text('删除视频', style: TextStyle(color: theme.colorScheme.onSurface)),
+            Text('Delete Video', style: TextStyle(color: theme.colorScheme.onSurface)),
         content: Text(
-          '确定要删除这个视频吗？\n${video.filename.split('/').last}',
+          'Delete this video?\n${video.filename.split('/').last}',
           style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('取消',
+            child: Text('Cancel',
                 style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text('删除', style: TextStyle(color: theme.colorScheme.error)),
+            child: Text('Delete', style: TextStyle(color: theme.colorScheme.error)),
           ),
         ],
       ),
@@ -966,7 +966,7 @@ class _VideoScreenState extends State<VideoScreen> {
 
     if (confirmed == true && mounted) {
       try {
-        // 删除文件
+        // 
         final path = video.filename.startsWith('/')
             ? video.filename
             : '/Users/jixiangluo/.memscreen/videos/${video.filename}';
@@ -975,18 +975,18 @@ class _VideoScreenState extends State<VideoScreen> {
           await file.delete();
         }
 
-        // 如果正在播放这个视频，先关闭
+        // 
         if (_currentVideo?.filename == video.filename) {
           _closeVideo();
         }
 
-        // 刷新列表
+        // 
         await _load();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('视频已删除'),
+              content: Text('Video deleted'),
               duration: Duration(seconds: 2),
             ),
           );
@@ -995,7 +995,7 @@ class _VideoScreenState extends State<VideoScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('删除失败: $e'),
+              content: Text('Delete failed: $e'),
               backgroundColor: Colors.red.shade700,
             ),
           );
@@ -1004,7 +1004,7 @@ class _VideoScreenState extends State<VideoScreen> {
     }
   }
 
-  // 视频播放器
+  // 
   Widget _buildVideoPlayer() {
     final theme = Theme.of(context);
 
@@ -1018,7 +1018,7 @@ class _VideoScreenState extends State<VideoScreen> {
     return Stack(
       alignment: Alignment.center,
       children: [
-        // 视频显示
+        // 
         Center(
           child: AspectRatio(
             aspectRatio: _controller!.value.aspectRatio,
@@ -1026,7 +1026,7 @@ class _VideoScreenState extends State<VideoScreen> {
           ),
         ),
 
-        // 控制面板
+        // 
         Positioned(
           bottom: 0,
           left: 0,
@@ -1047,7 +1047,7 @@ class _VideoScreenState extends State<VideoScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 进度条
+                // 
                 Row(
                   children: [
                     Text(
@@ -1091,7 +1091,7 @@ class _VideoScreenState extends State<VideoScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // 控制按钮
+                // 
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -1121,7 +1121,7 @@ class _VideoScreenState extends State<VideoScreen> {
                 ),
                 const SizedBox(height: 8),
 
-                // 视频信息
+                // 
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(

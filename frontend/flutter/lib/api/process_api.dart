@@ -56,17 +56,17 @@ class ProcessApi {
     return m['deleted'] as int? ?? 0;
   }
 
-  /// 键盘/鼠标采集：开始（后端机器需辅助功能权限）
+  /// /
   Future<void> startTracking() async {
     await client.post('/process/tracking/start');
   }
 
-  /// 停止采集
+  /// 
   Future<void> stopTracking() async {
     await client.post('/process/tracking/stop');
   }
 
-  /// 采集状态
+  /// 
   Future<TrackingStatus> getTrackingStatus() async {
     final m = await client.get('/process/tracking/status');
     return TrackingStatus(
@@ -75,7 +75,7 @@ class ProcessApi {
     );
   }
 
-  /// 将当前采集到的事件保存为一条会话（不停止采集）
+  /// 
   Future<SaveFromTrackingResult> saveSessionFromTracking() async {
     final m = await client.post('/process/sessions/from-tracking');
     return SaveFromTrackingResult(

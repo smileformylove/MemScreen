@@ -2296,7 +2296,7 @@ class ProcessScreen(BaseScreen):
         # Start Tracking button (full width)
         self.track_btn = Button(
             text='Start Tracking',
-            font_name='chinese',  # 使用Roboto字体
+            font_name='chinese',  # Roboto
             font_size='24',
             bold=True,
             size_hint_y=None,
@@ -2310,7 +2310,7 @@ class ProcessScreen(BaseScreen):
         # Current Session Stats
         self.session_stats = Label(
             text='Events: 0 | Keystrokes: 0 | Mouse Clicks: 0',
-            font_name='chinese',  # 使用Roboto字体
+            font_name='chinese',  # Roboto
             font_size='18',
             size_hint_y=None,
             height=40,
@@ -2322,7 +2322,7 @@ class ProcessScreen(BaseScreen):
         # Current Session Section (15% height)
         session_label = Label(
             text='Current Session',
-            font_name='chinese',  # 使用Roboto字体
+            font_name='chinese',  # Roboto
             font_size='20',
             bold=True,
             size_hint_y=None,
@@ -2343,7 +2343,7 @@ class ProcessScreen(BaseScreen):
 
         history_label = Label(
             text='Session History',
-            font_name='chinese',  # 使用Roboto字体
+            font_name='chinese',  # Roboto
             font_size='20',
             bold=True,
             size_hint_x=0.6,
@@ -2391,7 +2391,7 @@ class ProcessScreen(BaseScreen):
         # Session Analysis Section (40% height, centered)
         analysis_label = Label(
             text='Session Analysis',
-            font_name='chinese',  # 使用Roboto字体
+            font_name='chinese',  # Roboto
             font_size='20',
             bold=True,
             size_hint_y=None,
@@ -2421,7 +2421,7 @@ class ProcessScreen(BaseScreen):
 
         self.analysis_content = Label(
             text='Select a session to view analysis\n\nTap on any session in Session History to see detailed categorization',
-            font_name='chinese',  # 使用Roboto字体
+            font_name='chinese',  # Roboto
             font_size='18',
             color=(0.5, 0.5, 0.5, 1),
             halign='center',
@@ -2544,7 +2544,7 @@ class ProcessScreen(BaseScreen):
 
         time_label = Label(
             text=timestamp,
-            font_name='chinese',  # 使用Roboto字体
+            font_name='chinese',  # Roboto
             font_size='16',
             size_hint_x=0.15,
             color=(0.5, 0.5, 0.5, 1)
@@ -2553,7 +2553,7 @@ class ProcessScreen(BaseScreen):
 
         event_label = Label(
             text=text,
-            font_name='chinese',  # 使用Roboto字体
+            font_name='chinese',  # Roboto
             font_size='17',
             size_hint_x=0.85,
             color=color_map.get(event_type, (0.2, 0.2, 0.2, 1)),

@@ -120,16 +120,16 @@ class SummarySkill(BaseSkill):
 
         instruction = style_instructions.get(style, style_instructions["brief"])
 
-        prompt = f"""请总结以下内容：
+        prompt = f"""
 
 {instruction}
 
-最多 {max_length} 个字符。
+ {max_length} 
 
-内容：
+
 {content}
 
-总结："""
+"""
 
         return prompt
 

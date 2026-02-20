@@ -102,7 +102,7 @@ class EnhancedModelRouter:
         # Check if visual reasoning is needed
         vision_keywords = [
             'recognize', 'detect', 'analyze', 'compare',
-            '识别', '检测', '分析', '比较'
+            '', '', '', ''
         ]
 
         needs_vision_reasoning = any(

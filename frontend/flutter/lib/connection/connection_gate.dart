@@ -31,13 +31,13 @@ class ConnectionGate extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              '无法连接 MemScreen 后端',
+              'Unable to connect to MemScreen backend',
               style: theme.textTheme.titleLarge,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              connectionState.message ?? '请确认 API 服务已启动（conda activate MemScreen 后执行 python -m memscreen.api）',
+              connectionState.message ?? 'Please make sure the API service is running (conda activate MemScreen, then python -m memscreen.api).',
               style: theme.textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
@@ -52,13 +52,13 @@ class ConnectionGate extends StatelessWidget {
             FilledButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
-              label: const Text('重试'),
+              label: const Text('Retry'),
             ),
             if (onConfigureUrl != null) ...[
               const SizedBox(height: 8),
               TextButton(
                 onPressed: () => _showUrlDialog(context),
-                child: const Text('配置 API 地址'),
+                child: const Text('Configure API URL'),
               ),
             ],
           ],
@@ -74,7 +74,7 @@ class ConnectionGate extends StatelessWidget {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('API 地址'),
+        title: const Text('API URL'),
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(
@@ -85,7 +85,7 @@ class ConnectionGate extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () {
@@ -95,7 +95,7 @@ class ConnectionGate extends StatelessWidget {
                 onConfigureUrl?.call(url);
               }
             },
-            child: const Text('确定'),
+            child: const Text('Confirm'),
           ),
         ],
       ),

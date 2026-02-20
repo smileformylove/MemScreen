@@ -219,21 +219,21 @@ class InputTracker:
                 # No permission - raise error with helpful message
                 error_msg = """
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-缺少辅助功能权限
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-MemScreen 需要辅助功能权限才能记录键盘和鼠标事件。
+MemScreen 
 
-请按以下步骤授予权限：
 
-1. 打开"系统设置"
-2. 点击"隐私与安全性"
-3. 选择"辅助功能"
-4. 点击"+"按钮
-5. 从"应用程序"文件夹中选择 MemScreen.app
-6. 确保 MemScreen.app 旁边的开关已打开 ✓
 
-完成后，重新启动 MemScreen 应用。
+1. ""
+2. ""
+3. ""
+4. "+"
+5. "" MemScreen.app
+6.  MemScreen.app  ✓
+
+ MemScreen 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """

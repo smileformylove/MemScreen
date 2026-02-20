@@ -511,7 +511,7 @@ Provide helpful assistance."""
     ) -> Dict[str, Any]:
         """Handle greetings"""
         greetings = [
-            "你好！我是 MemScreen AI 助手，很高兴为您服务！",
+            " MemScreen AI ",
             "Hello! I'm MemScreen AI assistant, ready to help!",
         ]
         return {

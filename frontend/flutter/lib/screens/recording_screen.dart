@@ -21,31 +21,31 @@ class _RecordingScreenState extends State<RecordingScreen> {
   bool _loading = true;
   Timer? _pollTimer;
 
-  // 录制模式
+  // 
   String _mode = 'fullscreen';
   int? _screenIndex;
 
-  // 区域选择（用比例）
+  // 
   double _regionLeft = 0.0;
   double _regionTop = 0.0;
   double _regionRight = 1.0;
   double _regionBottom = 1.0;
 
-  // 屏幕尺寸
+  // 
   double _screenWidth = 1920.0;
   double _screenHeight = 1080.0;
 
-  // 录制参数
+  // 
   final _durationController = TextEditingController(text: '60');
   final _intervalController = TextEditingController(text: '2.0');
 
-  // 区域输入控制器
+  // 
   final _regionLeftController = TextEditingController(text: '0');
   final _regionTopController = TextEditingController(text: '0');
   final _regionRightController = TextEditingController(text: '1920');
   final _regionBottomController = TextEditingController(text: '1080');
 
-  // 屏幕截图相关
+  // 
   ui.Image? _screenshotImage;
   String? _screenshotPath;
   bool _capturing = false;
@@ -63,7 +63,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
       _appState!.addListener(_onAppStateChanged);
     });
 
-    // 添加监听器实时更新区域显示
+    // 
     _regionLeftController.addListener(_updateRegionFromControllers);
     _regionTopController.addListener(_updateRegionFromControllers);
     _regionRightController.addListener(_updateRegionFromControllers);
@@ -149,23 +149,23 @@ class _RecordingScreenState extends State<RecordingScreen> {
     _pollTimer = null;
   }
 
-  // 捕获屏幕截图
+  // 
   Future<void> _captureScreen() async {
     if (_capturing) return;
     setState(() => _capturing = true);
 
     try {
-      // 使用macOS的screencapture命令截取主屏幕
+      // macOSscreencapture
       final tempDir = Directory.systemTemp;
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final path = '${tempDir.path}/screenshot_$timestamp.png';
 
-      // 执行截图命令（截取主屏幕）
+      // 
       final result = await Process.run('screencapture',
           ['-x', '-t', 'png', '-R', '0,0,$_screenWidth,$_screenHeight', path]);
 
       if (result.exitCode == 0 || File(path).existsSync()) {
-        // 读取截图并显示
+        // 
         final bytes = await File(path).readAsBytes();
         final codec = await ui.instantiateImageCodec(bytes);
         final frame = await codec.getNextFrame();
@@ -177,11 +177,11 @@ class _RecordingScreenState extends State<RecordingScreen> {
             _screenshotImage = image;
             _capturing = false;
           });
-          // 显示区域选择对话框
+          // 
           _showRegionSelector();
         }
       } else {
-        // 如果特定区域失败，尝试全屏截图
+        // 
         final fullPath = '${tempDir.path}/screenshot_full_$timestamp.png';
         await Process.run('screencapture', ['-x', '-t', 'png', fullPath]);
 
@@ -218,7 +218,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
     }
   }
 
-  // 显示区域选择对话框
+  // 
   void _showRegionSelector() {
     if (_screenshotImage == null) return;
 
@@ -253,7 +253,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
     int? screenIndex;
 
     if (_mode == 'region') {
-      // 将比例转换为实际像素坐标
+      // 
       final leftPx = (_regionLeft * _screenWidth).round();
       final topPx = (_regionTop * _screenHeight).round();
       final rightPx = (_regionRight * _screenWidth).round();
@@ -457,7 +457,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
       ),
       const SizedBox(height: 24),
 
-      // 录制参数设置
+      // 
       Row(
         children: [
           Expanded(
@@ -652,7 +652,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 总是提供有效的status对象
+    // status
     final s = _status ??
         RecordingStatus(
           isRecording: false,
@@ -689,7 +689,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 状态显示
+                // 
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -746,10 +746,10 @@ class _RecordingScreenState extends State<RecordingScreen> {
 
                 const SizedBox(height: 24),
 
-                // 录制模式选择
+                // 
                 ..._buildModeSelection(),
 
-                // 屏幕选择或区域设置
+                // 
                 ..._buildFullscreenSingleMode(),
                 ..._buildRegionMode(),
                 ..._buildWindowMode(),
@@ -763,7 +763,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
   }
 }
 
-// 区域选择对话框
+// 
 class _RegionSelectorDialog extends StatefulWidget {
   final ui.Image screenshotImage;
   final double screenWidth;
@@ -796,7 +796,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
   late double _right;
   late double _bottom;
 
-  // 拖动状态
+  // 
   bool _isDragging = false;
   bool _isDraggingLeft = false;
   bool _isDraggingTop = false;
@@ -804,7 +804,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
   bool _isDraggingBottom = false;
   bool _isMovingRegion = false;
 
-  // 拖动起始位置
+  // 
   double _dragStartX = 0;
   double _dragStartY = 0;
   double _dragStartLeft = 0;
@@ -812,12 +812,12 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
   double _dragStartRight = 0;
   double _dragStartBottom = 0;
 
-  // 显示尺寸
+  // 
   double get _displayWidth => 800;
   double get _displayHeight =>
       _displayWidth * (widget.screenHeight / widget.screenWidth);
 
-  // 转换系数
+  // 
   double get _scale => _displayWidth / widget.screenWidth;
 
   @override
@@ -829,7 +829,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
     _bottom = widget.initialBottom;
   }
 
-  // 处理拖动开始
+  // 
   void _handleDragStart(DragStartDetails details) {
     final localPosition = details.localPosition;
     final dx = localPosition.dx;
@@ -840,14 +840,14 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
     final rightPx = _right * _displayWidth;
     final bottomPx = _bottom * _displayHeight;
 
-    // 检查是否点击了边框或角落
+    // 
     const handleSize = 20.0;
     _isDraggingLeft = (dx - leftPx).abs() < handleSize;
     _isDraggingTop = (dy - topPx).abs() < handleSize;
     _isDraggingRight = (dx - rightPx).abs() < handleSize;
     _isDraggingBottom = (dy - bottomPx).abs() < handleSize;
 
-    // 检查是否在区域内
+    // 
     if (!_isDraggingLeft &&
         !_isDraggingTop &&
         !_isDraggingRight &&
@@ -874,7 +874,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
     }
   }
 
-  // 处理拖动更新
+  // 
   void _handleDragUpdate(DragUpdateDetails details) {
     if (!_isDragging) return;
 
@@ -905,7 +905,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
     });
   }
 
-  // 处理拖动结束
+  // 
   void _handleDragEnd(DragEndDetails details) {
     setState(() {
       _isDragging = false;
@@ -948,7 +948,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
                     ?.copyWith(color: Colors.grey.shade600),
               ),
               const SizedBox(height: 16),
-              // 截图显示区域
+              // 
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: GestureDetector(
@@ -972,7 +972,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
                 ),
               ),
               const SizedBox(height: 16),
-              // 区域信息显示
+              // 
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -1013,7 +1013,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
                 ),
               ),
               const SizedBox(height: 16),
-              // 按钮行
+              // 
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -1050,7 +1050,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
   }
 }
 
-// 截图画家，绘制图片和区域选择框
+// 
 class _ScreenshotPainter extends CustomPainter {
   final ui.Image image;
   final double left;
@@ -1072,36 +1072,36 @@ class _ScreenshotPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 绘制截图
+    // 
     final srcRect =
         Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
     final dstRect = Rect.fromLTWH(0, 0, displayWidth, displayHeight);
     canvas.drawImageRect(image, srcRect, dstRect, Paint());
 
-    // 计算区域位置
+    // 
     final leftPx = left * displayWidth;
     final topPx = top * displayHeight;
     final rightPx = right * displayWidth;
     final bottomPx = bottom * displayHeight;
 
-    // 绘制半透明遮罩（区域外部）
+    // 
     final maskPaint = Paint()..color = Colors.black.withOpacity(0.5);
 
-    // 顶部遮罩
+    // 
     canvas.drawRect(Rect.fromLTWH(0, 0, displayWidth, topPx), maskPaint);
-    // 底部遮罩
+    // 
     canvas.drawRect(
         Rect.fromLTWH(0, bottomPx, displayWidth, displayHeight - bottomPx),
         maskPaint);
-    // 左侧遮罩
+    // 
     canvas.drawRect(
         Rect.fromLTWH(0, topPx, leftPx, bottomPx - topPx), maskPaint);
-    // 右侧遮罩
+    // 
     canvas.drawRect(
         Rect.fromLTWH(rightPx, topPx, displayWidth - rightPx, bottomPx - topPx),
         maskPaint);
 
-    // 绘制选择框
+    // 
     final borderPaint = Paint()
       ..color = Colors.red
       ..style = PaintingStyle.stroke
@@ -1111,26 +1111,26 @@ class _ScreenshotPainter extends CustomPainter {
         Rect.fromLTWH(leftPx, topPx, rightPx - leftPx, bottomPx - topPx),
         borderPaint);
 
-    // 绘制角落手柄
+    // 
     final handlePaint = Paint()..color = Colors.red;
     const handleSize = 8.0;
 
-    // 左上角
+    // 
     canvas.drawRect(
         Rect.fromLTWH(leftPx - handleSize / 2, topPx - handleSize / 2,
             handleSize, handleSize),
         handlePaint);
-    // 右上角
+    // 
     canvas.drawRect(
         Rect.fromLTWH(rightPx - handleSize / 2, topPx - handleSize / 2,
             handleSize, handleSize),
         handlePaint);
-    // 左下角
+    // 
     canvas.drawRect(
         Rect.fromLTWH(leftPx - handleSize / 2, bottomPx - handleSize / 2,
             handleSize, handleSize),
         handlePaint);
-    // 右下角
+    // 
     canvas.drawRect(
         Rect.fromLTWH(rightPx - handleSize / 2, bottomPx - handleSize / 2,
             handleSize, handleSize),

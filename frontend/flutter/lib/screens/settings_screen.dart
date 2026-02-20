@@ -43,12 +43,12 @@ class SettingsScreen extends StatelessWidget {
                   ),
                   ListTile(
                     leading: const Icon(Icons.folder),
-                    title: const Text('数据库目录'),
+                    title: const Text('Database Directory'),
                     subtitle: Text(c.dbDir),
                   ),
                   ListTile(
                     leading: const Icon(Icons.video_file),
-                    title: const Text('视频目录'),
+                    title: const Text('Videos Directory'),
                     subtitle: Text(c.videosDir),
                   ),
                 ],
@@ -104,7 +104,7 @@ class _AboutScreenState extends State<AboutScreen> {
                     style:
                         TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Text('版本: $version'),
+                Text('Version: $version'),
                 const SizedBox(height: 16),
                 const Text(
                   'Optional Flutter frontend for MemScreen, coexisting with the default Kivy UI. '

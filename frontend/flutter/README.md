@@ -1,24 +1,33 @@
-# MemScreen Flutter 前端
+# MemScreen Flutter Frontend
 
-MemScreen 的可选 Flutter 客户端，通过 HTTP API 连接后端。默认 API 地址：`http://127.0.0.1:8765`。
+Optional Flutter client for MemScreen, connected through HTTP API.
+Default API URL: `http://127.0.0.1:8765`.
 
-## 快速运行
+## Quick Start
 
-1. **启动后端 API**（在仓库根目录，Conda 环境 `MemScreen`）：
-   ```bash
-   conda activate MemScreen
-   python -m memscreen.api
-   ```
+1. Start backend API (at repo root, Conda env `MemScreen`):
 
-2. **运行 Flutter 应用**：
-   ```bash
-   flutter pub get
-   flutter run
-   ```
+```bash
+conda activate MemScreen
+python -m memscreen.api
+```
 
-若未生成平台工程，可先执行：`flutter create . --project-name memscreen_flutter`。
+2. Run Flutter app:
 
-## 配置
+```bash
+cd frontend/flutter
+flutter pub get
+flutter run -d macos
+```
 
-- API 地址：默认 `http://127.0.0.1:8765`。连接失败时可在应用内点击「配置 API 地址」修改。
-- 更多说明见仓库 [docs/FLUTTER.md](../../docs/FLUTTER.md)。
+If platform files are missing, run:
+
+```bash
+flutter create . --project-name memscreen_flutter
+```
+
+## Configuration
+
+- API URL: default is `http://127.0.0.1:8765`.
+- If connection fails, use in-app API URL configuration.
+- See [docs/FLUTTER.md](../../docs/FLUTTER.md) for details.

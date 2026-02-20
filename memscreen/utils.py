@@ -66,10 +66,10 @@ def extract_python_dict(input_str):
     Removes enclosing triple backticks and optional language tags if present.
     If no valid dictionary is found, returns None.
     """
-    # 移除 markdown 代码块标记（```python、```json、```等）
+    #  markdown ```python```json```
     cleaned_str = re.sub(r'```[\w]*', '', input_str).strip()
 
-    # Step 1: 如果整个字符串就是合法 JSON
+    # Step 1:  JSON
     try:
         parsed = json.loads(cleaned_str)
         if isinstance(parsed, dict):
@@ -77,7 +77,7 @@ def extract_python_dict(input_str):
     except Exception:
         pass
 
-    # Step 2: 如果整个字符串是合法 Python dict
+    # Step 2:  Python dict
     try:
         parsed = ast.literal_eval(cleaned_str)
         if isinstance(parsed, dict):
@@ -85,19 +85,19 @@ def extract_python_dict(input_str):
     except Exception:
         pass
 
-    # Step 3: 提取所有 {...} 片段
+    # Step 3:  {...} 
     candidates = re.findall(r'\{.*?\}', cleaned_str, flags=re.DOTALL)
     
     for candidate in candidates:
         candidate = candidate.strip()
-        # 尝试 JSON 解析
+        #  JSON 
         try:
             parsed = json.loads(candidate)
             if isinstance(parsed, dict):
                 return parsed
         except Exception:
             pass
-        # 尝试 Python 字面量解析
+        #  Python 
         try:
             parsed = ast.literal_eval(candidate)
             if isinstance(parsed, dict):
@@ -110,35 +110,35 @@ def extract_python_dict(input_str):
 
 def fix_and_parse_json(json_str: str):
     """
-    修复格式错误的JSON字符串，特别优化了包含单引号的多种场景
+    JSON
     """
     original_str = json_str
     
-    # Step 1: 移除Markdown代码块包裹
+    # Step 1: Markdown
     json_str = re.sub(r"```(?:json)?\s*|\s*```", "", json_str).strip()
     if not json_str:
-        raise ValueError("处理后JSON字符串为空")
+        raise ValueError("JSON")
 
-    # Step 2: 修复单引号问题（核心逻辑）
-    # 处理键名的单引号：'key' → "key"
+    # Step 2: 
+    # 'key' → "key"
     json_str = re.sub(
-        r"'([^']+)'(?=\s*:)",  # 匹配作为键名的单引号
+        r"'([^']+)'(?=\s*:)",  # 
         lambda m: '"' + m.group(1).replace('"', '\\"') + '"',
         json_str
     )
     
-    # 处理值的单引号：精确匹配最外层单引号，忽略内部单引号
-    # 使用否定前瞻确保只匹配最外层的单引号
+    # 
+    # 
     json_str = re.sub(
-        r":\s*'((?:[^']|'(?!\s*[,}\]]))*)'",  # 忽略内部单引号
+        r":\s*'((?:[^']|'(?!\s*[,}\]]))*)'",  # 
         lambda m: ': "' + m.group(1).replace('"', '\\"') + '"',
         json_str
     )
 
     s = json_str.strip()
 
-    # Step 3: 修复结构错误
-    # 处理数组和对象闭合不匹配的情况
+    # Step 3: 
+    # 
     if re.match(r'^\{.*\}\s*\]\s*\}?$', s, re.DOTALL):
         obj_part = re.sub(r'\}\s*\]\s*\}?$', '}', s)
         s = f'[{obj_part}]'
@@ -147,7 +147,7 @@ def fix_and_parse_json(json_str: str):
     elif s.startswith("[") and s.endswith("}]"):
         s = s[:-1]
 
-    # Step 4: 补全括号
+    # Step 4: 
     brace_diff = s.count("{") - s.count("}")
     if brace_diff > 0:
         s += "}" * brace_diff
@@ -160,19 +160,19 @@ def fix_and_parse_json(json_str: str):
     elif bracket_diff < 0:
         s = "[" * (-bracket_diff) + s
 
-    # Step 5: 提取并解析JSON
+    # Step 5: JSON
     match = re.search(r"(\{.*\}|\[.*\])", s, re.DOTALL)
     if not match:
-        raise ValueError(f"未找到有效的JSON片段: {original_str}")
+        raise ValueError(f"JSON: {original_str}")
     candidate = match.group(0)
 
     try:
         return json.loads(candidate)
     except json.JSONDecodeError as e:
         raise ValueError(
-            f"解析失败: {e}\n"
-            f"原始内容: {original_str[:200]}\n"
-            f"修复后内容: {candidate[:200]}"
+            f": {e}\n"
+            f": {original_str[:200]}\n"
+            f": {candidate[:200]}"
         ) from e
 
 

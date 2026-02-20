@@ -45,11 +45,11 @@ class InputClassifier:
             r'^explain',
             r'^define',
             # Chinese patterns
-            r'^(什么|如何|为什么|什么时候|在哪里|谁|哪个|能否|可以|是否)\b',
-            r'^(什么是|怎么|如何|为什么|什么时候)\b',
+            r'^(|||||||||)\b',
+            r'^(||||)\b',
             r'\?$',
-            r'吗\?$',
-            r'？$',
+            r'\?$',
+            r'$',
         ],
         MemoryCategory.TASK: [
             # English patterns
@@ -57,10 +57,10 @@ class InputClassifier:
             r'^\s*[-*+]\s',  # Bullet list items
             r'^\s*\d+\.\s',  # Numbered list items
             # Chinese patterns
-            r'(记得|别忘了|需要|必须|要做|待办|任务)',
-            r'(记得.*吗|别忘了.*|需要.*|必须.*)',
+            r'(||||||)',
+            r'(.*|.*|.*|.*)',
             r'^\s*[-*+]\s',  # Bullet list items
-            r'^\s*\d+[.、]\s',  # Numbered list items
+            r'^\s*\d+[.]\s',  # Numbered list items
         ],
         MemoryCategory.CODE: [
             # Code patterns (language-agnostic)
@@ -68,57 +68,57 @@ class InputClassifier:
             r'\b(function|class|def|import|from|return|if __name__)\b',
             r'\b(var|let|const|function|=>|async|await)\b',
             # Chinese patterns
-            r'(代码|函数|类|定义|导入)',
+            r'(||||)',
         ],
         MemoryCategory.PROCEDURE: [
             # English patterns
             r'\b(step \d+|first|second|then|next|after that|finally)\b',
             r'\b(how to|how do i|instructions|guide|tutorial)\b',
             # Chinese patterns
-            r'(步骤|第一步|第二步|然后|接着|最后|首先|其次)',
-            r'(如何.*|怎么.*|操作指南|教程|说明书)',
-            r'(步骤\s*\d+|第.*步)',
+            r'(|||||||)',
+            r'(.*|.*|||)',
+            r'(\s*\d+|.*)',
         ],
         MemoryCategory.GREETING: [
             # English patterns
             r'^(hi|hello|hey|good morning|good afternoon|good evening|greetings)',
             # Chinese patterns
-            r'^(你好|您好|早上好|下午好|晚上好|嗨|嘿)',
+            r'^(||||||)',
         ],
         MemoryCategory.DOCUMENT: [
             # English patterns
             r'\b(file|document|attachment|save|open|read)\b',
             r'\.(txt|md|pdf|doc|docx)\b',
             # Chinese patterns
-            r'(文件|文档|附件|保存|打开|读取)',
+            r'(|||||)',
         ],
         MemoryCategory.IMAGE: [
             # English patterns
             r'\b(image|screenshot|photo|picture|snapshot)\b',
             r'\.(png|jpg|jpeg|gif|bmp)\b',
             # Chinese patterns
-            r'(图片|截图|照片|图像|屏幕截图)',
+            r'(||||)',
         ],
         MemoryCategory.PERSONAL: [
             # English patterns
             r'\b(my preference|i prefer|i like|i dislike|i want)\b',
             r'\b(remember that|i always|i usually)\b',
             # Chinese patterns
-            r'(我的.*|我喜欢|我不喜欢|我想要|我偏好)',
-            r'(记得.*|我总是|我通常)',
+            r'(.*||||)',
+            r'(.*||)',
         ],
         MemoryCategory.REFERENCE: [
             # English patterns
             r'https?://',  # URLs
             r'\b(link|reference|check out|see also)\b',
             # Chinese patterns
-            r'(链接|参考|参见|查看)',
+            r'(|||)',
         ],
         MemoryCategory.CONVERSATION: [
             # Chinese patterns for conversation
-            r'(我们讨论|我们说过|提到|谈到|之前说过|之前讨论)',
-            r'(刚才说|前面提到)',
-            r'(我们.*讨论过|我们.*说过)',
+            r'(|||||)',
+            r'(|)',
+            r'(.*|.*)',
         ],
     }
 
@@ -129,48 +129,48 @@ class InputClassifier:
             r'\b(what is|what are|tell me about|define|explain)\b',
             r'\b(remember|recall|lookup)\b',
             # Chinese patterns
-            r'(什么是|什么是|告诉我|解释|定义)',
-            r'(记得.*|回想.*|查找)',
+            r'(||||)',
+            r'(.*|.*|)',
         ],
         QueryIntent.FIND_PROCEDURE: [
             # English patterns
             r'\b(how to|how do i|how can i|steps for|instructions)\b',
             r'\b(guide|tutorial|walkthrough)\b',
             # Chinese patterns
-            r'(如何.*|怎么.*|怎么才能.*|步骤|操作指南)',
-            r'(教程|指南|操作步骤)',
+            r'(.*|.*|.*||)',
+            r'(||)',
         ],
         QueryIntent.SEARCH_CONVERSATION: [
             # English patterns
             r'\b(we talk(ed|ing)? about|you said|we discuss(ed|ing)?|mention(ed)?|said about)\b',
             r'\b(earlier|before|previously|last time|our conversation)\b',
             # Chinese patterns
-            r'(我们讨论|我们说过|提到|谈到|之前讨论|之前说过)',
-            r'(刚才|前面|之前|上次|我们的对话)',
+            r'(|||||)',
+            r'(||||)',
         ],
         QueryIntent.LOCATE_CODE: [
             # English patterns
             r'\b(code|function|class|implementation|script)\b',
             r'\b(show me the|find the|where is the)\s+(code|function|class)',
             # Chinese patterns
-            r'(代码|函数|类|实现|脚本)',
-            r'(给我看|找到|在哪里).*代码',
+            r'(||||)',
+            r'(||).*',
         ],
         QueryIntent.FIND_DOCUMENT: [
             # English patterns
             r'\b(document|file|note|saved)\b',
             r'\b(where did i|find the|locate the)\s+(document|file|note)',
             # Chinese patterns
-            r'(文档|文件|笔记|保存)',
-            r'(我在哪里|找到|定位).*(文档|文件|笔记)',
+            r'(|||)',
+            r'(||).*(||)',
         ],
         QueryIntent.GET_TASKS: [
             # English patterns
             r'\b(todo|tasks|to-do|action items|what do i need to)\b',
             r'\b(what\'s next|what should i do|pending)\b',
             # Chinese patterns
-            r'(待办|任务|事项|需要做什么)',
-            r'(接下来|应该做什么|未完成)',
+            r'(|||)',
+            r'(||)',
         ],
     }
 

@@ -83,69 +83,69 @@ class AgentExecutor:
         user_msg_lower = user_message.lower()
 
         # Screen analysis (current screen)
-        if any(kw in user_msg_lower for kw in ["屏幕上", "现在屏幕", "当前屏幕", "截屏", "screenshot", "what's on screen", "屏幕有什么", "看看屏幕"]):
+        if any(kw in user_msg_lower for kw in ["", "", "", "", "screenshot", "what's on screen", "", ""]):
             return {
                 "type": "screen_analysis",
-                "description": "屏幕分析",
+                "description": "",
                 "steps": [
-                    {"type": "capture_screen", "description": "捕获并分析当前屏幕"},
-                    {"type": "format", "description": "展示结果"}
+                    {"type": "capture_screen", "description": ""},
+                    {"type": "format", "description": ""}
                 ]
             }
 
         # Report generation
-        if any(kw in user_msg_lower for kw in ["报告", "生成报告", "形成报告", "report"]):
+        if any(kw in user_msg_lower for kw in ["", "", "", "report"]):
             return {
                 "type": "report",
-                "description": "报告生成",
+                "description": "",
                 "steps": [
-                    {"type": "search", "description": "搜索相关屏幕记录"},
-                    {"type": "summarize", "description": "生成内容摘要"},
-                    {"type": "format", "description": "格式化报告"}
+                    {"type": "search", "description": ""},
+                    {"type": "summarize", "description": ""},
+                    {"type": "format", "description": ""}
                 ]
             }
 
         # Summary task
-        elif any(kw in user_msg_lower for kw in ["总结", "汇总", "summary"]):
+        elif any(kw in user_msg_lower for kw in ["", "", "summary"]):
             return {
                 "type": "summary",
-                "description": "内容总结",
+                "description": "",
                 "steps": [
-                    {"type": "search", "description": "搜索相关内容"},
-                    {"type": "summarize", "description": "生成摘要"}
+                    {"type": "search", "description": ""},
+                    {"type": "summarize", "description": ""}
                 ]
             }
 
         # Search and process
-        elif any(kw in user_msg_lower for kw in ["搜索", "查找"]) and \
-             any(kw in user_msg_lower for kw in ["并", "然后", "and", "then"]):
+        elif any(kw in user_msg_lower for kw in ["", ""]) and \
+             any(kw in user_msg_lower for kw in ["", "", "and", "then"]):
             return {
                 "type": "search_and_process",
-                "description": "搜索与处理",
+                "description": "",
                 "steps": [
-                    {"type": "search", "description": "执行搜索"},
-                    {"type": "summarize", "description": "处理结果"}
+                    {"type": "search", "description": ""},
+                    {"type": "summarize", "description": ""}
                 ]
             }
 
         # Analysis task
-        elif any(kw in user_msg_lower for kw in ["分析", "流程", "模式", "analyze", "workflow"]):
+        elif any(kw in user_msg_lower for kw in ["", "", "", "analyze", "workflow"]):
             return {
                 "type": "analysis",
-                "description": "数据分析",
+                "description": "",
                 "steps": [
-                    {"type": "search", "description": "收集数据"},
-                    {"type": "summarize", "description": "生成分析"}
+                    {"type": "search", "description": ""},
+                    {"type": "summarize", "description": ""}
                 ]
             }
 
         # Default: search only
         return {
             "type": "search",
-            "description": "内容搜索",
+            "description": "",
             "steps": [
-                {"type": "search", "description": "搜索记录"},
-                {"type": "format", "description": "展示结果"}
+                {"type": "search", "description": ""},
+                {"type": "format", "description": ""}
             ]
         }
 
@@ -212,14 +212,14 @@ class AgentExecutor:
             print(f"[AgentExecutor] 👁️ Analyzing with vision model...")
 
             # Build prompt for vision understanding
-            vision_prompt = f"""请详细描述你在这个截图中看到的内容。包括：
-1. 主要应用程序或窗口
-2. 界面布局和元素
-3. 文本内容（如果有的话）
-4. 图表、图片或数据
-5. 任何显著的特征或活动
+            vision_prompt = f"""
+1. 
+2. 
+3. 
+4. 
+5. 
 
-用户的问题：{query}"""
+{query}"""
 
             try:
                 # Use Ollama vision API
@@ -278,7 +278,7 @@ class AgentExecutor:
 
                     return {
                         "success": True,
-                        "analysis": f"通过OCR提取的屏幕文本内容：\n\n{text[:1000]}",
+                        "analysis": f"OCR\n\n{text[:1000]}",
                         "screenshot_path": temp_path,
                         "type": "ocr_fallback"
                     }
@@ -286,7 +286,7 @@ class AgentExecutor:
                     # Final fallback
                     return {
                         "success": True,
-                        "analysis": "已捕获屏幕截图，但视觉分析暂时不可用。截图已保存。",
+                        "analysis": "",
                         "screenshot_path": temp_path,
                         "type": "capture_only"
                     }
@@ -316,7 +316,7 @@ class AgentExecutor:
             if not content_items:
                 return {
                     "success": True,
-                    "summary": "没有找到相关内容。建议先录制一些屏幕内容，然后再尝试查询。"
+                    "summary": ""
                 }
 
             # Build content for summarization
@@ -329,11 +329,11 @@ class AgentExecutor:
 
             # Generate summary using LLM
             try:
-                summary_prompt = f"""请简洁总结以下屏幕记录内容（不超过150字）：
+                summary_prompt = f"""150
 
 {combined_content}
 
-总结："""
+"""
 
                 response = requests.post(
                     f"{self.ollama_base_url}/api/generate",
@@ -362,7 +362,7 @@ class AgentExecutor:
             except Exception as e:
                 print(f"[AgentExecutor] ⚠️ LLM error: {e}")
                 # Fallback
-                summary = f"找到 {len(content_items)} 条记录，包括：{', '.join(set(item['type'] for item in content_items))}。"
+                summary = f" {len(content_items)} {', '.join(set(item['type'] for item in content_items))}"
                 return {"success": True, "summary": summary}
 
         except Exception as e:
@@ -374,20 +374,20 @@ class AgentExecutor:
         parts = []
 
         # Header
-        parts.append(f"🤖 **AI Agent {workflow['description']}报告**\n")
+        parts.append(f"🤖 **AI Agent {workflow['description']}**\n")
 
         # Steps and results
         for i, (step, result) in enumerate(zip(workflow["steps"], results), 1):
-            parts.append(f"⏳ 步骤 {i}: {step['description']}")
+            parts.append(f"⏳  {i}: {step['description']}")
 
             if result.get("success"):
                 if "count" in result:
                     count = result["count"]
-                    parts.append(f"✅ 完成：找到 {count} 条记录")
+                    parts.append(f"✅  {count} ")
 
                     # Show top results
                     if result.get("results") and len(result["results"]) > 0:
-                        parts.append(f"\n📌 **最相关结果**:")
+                        parts.append(f"\n📌 ****:")
                         for j, item in enumerate(result["results"][:3], 1):
                             if isinstance(item, dict):
                                 content = item.get("content", "")[:120]
@@ -400,28 +400,28 @@ class AgentExecutor:
                     result_type = result.get("type", "unknown")
 
                     if result_type == "screen_capture":
-                        parts.append(f"[OK] 完成\n")
-                        parts.append(f"[Eye] **屏幕视觉分析**:\n{analysis}\n")
+                        parts.append(f"[OK] \n")
+                        parts.append(f"[Eye] ****:\n{analysis}\n")
                     elif result_type == "ocr_fallback":
-                        parts.append(f"[OK] 完成（OCR模式）\n")
-                        parts.append(f"[Doc] **文本提取**:\n{analysis}\n")
+                        parts.append(f"[OK] OCR\n")
+                        parts.append(f"[Doc] ****:\n{analysis}\n")
                     else:
-                        parts.append(f"[OK] 完成\n")
-                        parts.append(f"[Chart] **分析结果**:\n{analysis}\n")
+                        parts.append(f"[OK] \n")
+                        parts.append(f"[Chart] ****:\n{analysis}\n")
 
                 elif "summary" in result:
                     summary = result["summary"]
-                    parts.append(f"[OK] 完成\n")
-                    parts.append(f"[Note] **摘要**:\n{summary}\n")
+                    parts.append(f"[OK] \n")
+                    parts.append(f"[Note] ****:\n{summary}\n")
                 else:
-                    parts.append("[OK] 完成\n")
+                    parts.append("[OK] \n")
             else:
                 error = result.get("error", "Unknown error")
-                parts.append(f"✗ 失败: {error}\n")
+                parts.append(f"✗ : {error}\n")
 
         # Execution time
         exec_time = time.time() - start_time
-        parts.append(f"\n[Time] 执行时间: {exec_time:.2f} 秒")
+        parts.append(f"\n[Time] : {exec_time:.2f} ")
 
         return "\n".join(parts)
 

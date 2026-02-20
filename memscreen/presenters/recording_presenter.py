@@ -1258,10 +1258,10 @@ When users ask about what was on their screen or what they were doing, always re
                     "duration": duration,
                     "timestamp": timestamp,  # human-readable seen time
                     "seen_at": timestamp,
-                    "content_description": "录屏已完成，详细画面分析进行中。",
+                    "content_description": "Recording saved. Detailed visual analysis is in progress.",
                     "timeline_text": f"+0.00s: recording saved ({base_name})",
                     "frame_details_json": "[]",
-                    "suggestions": "等待几秒后再问我“什么时候看到什么”，我会基于时间线回答。",
+                    "suggestions": "Wait a few seconds, then ask what appeared and when. I will answer from the timeline.",
                     "analysis_status": "pending",
                     "ocr_text": base_name,
                 },
@@ -1462,16 +1462,16 @@ When users ask about what was on their screen or what they were doing, reference
         suggestions = []
 
         if any(k in merged_text for k in ["error", "exception", "failed", "warning", "permission denied"]):
-            suggestions.append("你刚刚遇到错误信息，建议先记录报错关键词并优先排查权限/依赖问题。")
+            suggestions.append("An error was detected. Record the key error text first, then check permissions and dependencies.")
 
         if any(k in merged_text for k in ["todo", "deadline", "meeting", "plan", "task"]):
-            suggestions.append("检测到任务/日程相关内容，建议把关键事项整理成待办并设置提醒。")
+            suggestions.append("Task/schedule content was detected. Convert key items into todos and add reminders.")
 
         if any(k in merged_text for k in ["code", "terminal", "vscode", "python", "git"]):
-            suggestions.append("检测到开发工作流，建议记录本次改动要点并及时提交代码。")
+            suggestions.append("A development workflow was detected. Capture the key changes and commit code promptly.")
 
         if not suggestions:
-            suggestions.append("建议按时间线回顾关键画面，确认下一步要执行的操作。")
+            suggestions.append("Review key frames in timeline order and confirm the next action.")
 
         return suggestions[:3]
 
@@ -1492,18 +1492,18 @@ When users ask about what was on their screen or what they were doing, reference
         tags: List[str] = []
 
         tag_rules = {
-            "coding": ["vscode", "xcode", "pycharm", "intellij", "source code", "代码", "编程"],
-            "terminal": ["terminal", "shell", "bash", "zsh", "powershell", "命令行"],
-            "debugging": ["error", "exception", "traceback", "failed", "warning", "报错", "异常", "失败"],
-            "meeting": ["zoom", "teams", "meeting", "会议", "腾讯会议", "飞书会议", "google meet"],
-            "browser": ["chrome", "safari", "firefox", "edge", "browser", "网页", "浏览器"],
-            "research": ["paper", "arxiv", "abstract", "reference", "论文", "文献", "研究"],
-            "document": ["doc", "document", "pdf", "notion", "word", "文档", "笔记"],
-            "spreadsheet": ["excel", "spreadsheet", "sheet", "表格"],
-            "chat": ["slack", "discord", "wechat", "telegram", "chat", "message", "消息", "聊天"],
-            "design": ["figma", "sketch", "photoshop", "design", "ui", "画板", "设计"],
-            "presentation": ["ppt", "slides", "keynote", "演示", "汇报"],
-            "dashboard": ["dashboard", "grafana", "datadog", "analytics", "统计", "看板"],
+            "coding": ["vscode", "xcode", "pycharm", "intellij", "source code", "coding"],
+            "terminal": ["terminal", "shell", "bash", "zsh", "powershell", "command line"],
+            "debugging": ["error", "exception", "traceback", "failed", "warning"],
+            "meeting": ["zoom", "teams", "meeting", "feishu", "google meet"],
+            "browser": ["chrome", "safari", "firefox", "edge", "browser", "web"],
+            "research": ["paper", "arxiv", "abstract", "reference", "research"],
+            "document": ["doc", "document", "pdf", "notion", "word", "notes"],
+            "spreadsheet": ["excel", "spreadsheet", "sheet", "table"],
+            "chat": ["slack", "discord", "wechat", "telegram", "chat", "message"],
+            "design": ["figma", "sketch", "photoshop", "design", "ui", "canvas"],
+            "presentation": ["ppt", "slides", "keynote", "presentation"],
+            "dashboard": ["dashboard", "grafana", "datadog", "analytics", "metrics"],
         }
 
         for tag, keywords in tag_rules.items():

@@ -89,7 +89,7 @@ class HomeScaffoldState extends State<HomeScaffold> {
   }
 }
 
-/// 顶部连接状态条：未连接时显示，提供重试与配置 API 入口
+///  API 
 class _ConnectionBanner extends StatelessWidget {
   const _ConnectionBanner({required this.state});
 

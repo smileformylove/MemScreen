@@ -24,9 +24,9 @@ class _ChatScreenState extends State<ChatScreen> {
   int _thinkingStep = 0;
   String? _selectedContext;
   final List<String> _thinkingLabels = const [
-    '正在检索最近记忆...',
-    '正在整理时间线证据...',
-    '正在生成建议...',
+    'Searching recent memories...',
+    'Compiling timeline evidence...',
+    'Generating suggestions...',
   ];
 
   @override

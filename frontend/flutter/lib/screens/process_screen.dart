@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import '../api/process_api.dart';
 import '../app_state.dart';
 
-/// 单条事件约定：type (keypress/click/info)、text、time（与 API_HTTP.md / CORE_API 一致）
+/// type (keypress/click/info)texttime API_HTTP.md / CORE_API 
 class SessionEvent {
   SessionEvent({this.type = 'info', this.text = '', this.time = ''});
   String type;
@@ -195,7 +195,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // 键盘/鼠标采集（与 Kivy 一致）
+                  // / Kivy 
                   Card(
                     margin: const EdgeInsets.only(bottom: 16),
                     child: Padding(
@@ -304,7 +304,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
   }
 }
 
-/// 单行事件编辑：type 下拉 + text/time 输入
+/// type  + text/time 
 class _EventRow extends StatefulWidget {
   const _EventRow({super.key, required this.event, required this.onRemove});
 
@@ -385,7 +385,7 @@ class _EventRowState extends State<_EventRow> {
   }
 }
 
-/// 保存会话：收集 start_time、end_time、events，调用 POST /process/sessions
+///  start_timeend_timeevents POST /process/sessions
 class _SaveSessionSheet extends StatefulWidget {
   const _SaveSessionSheet({required this.onSaved, required this.onCancel});
 
@@ -556,7 +556,7 @@ class ProcessAnalysisScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 统计概览卡片
+            // 
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -607,7 +607,7 @@ class ProcessAnalysisScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            // 分类统计卡片
+            // 
             if (analysis.categories.isNotEmpty)
               Card(
                 child: Padding(
@@ -639,7 +639,7 @@ class ProcessAnalysisScreen extends StatelessWidget {
             if (analysis.categories.isNotEmpty && analysis.patterns.isNotEmpty)
               const SizedBox(height: 16),
 
-            // 模式分析卡片
+            // 
             if (analysis.patterns.isNotEmpty)
               Card(
                 child: Padding(

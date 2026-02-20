@@ -509,10 +509,10 @@ def test_file_loader():
     import tempfile
 
     test_cases = [
-        ('utf-8', '你好世界 Hello World 🌍'),
-        ('gbk', '你好世界'),
-        ('gb2312', '测试文件'),
-        ('big5', '繁體中文'),
+        ('utf-8', ' Hello World 🌍'),
+        ('gbk', ''),
+        ('gb2312', ''),
+        ('big5', ''),
         ('utf-8-sig', '\ufeffUTF-8 with BOM'),
     ]
 

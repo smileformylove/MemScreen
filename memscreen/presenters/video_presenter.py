@@ -88,15 +88,15 @@ class VideoInfo:
 
         # Purpose heuristic
         lower = f"{app_name} {(self.window_title or '')}".lower()
-        if any(x in lower for x in ["zoom", "teams", "meeting", "会议", "腾讯会议", "feishu"]):
+        if any(x in lower for x in ["zoom", "teams", "meeting", "feishu"]):
             tags.append("purpose:meeting")
         if any(x in lower for x in ["code", "vscode", "xcode", "pycharm", "terminal", "intellij"]):
             tags.append("purpose:coding")
-        if any(x in lower for x in ["chrome", "safari", "firefox", "edge", "浏览器"]):
+        if any(x in lower for x in ["chrome", "safari", "firefox", "edge", "browser"]):
             tags.append("purpose:research")
         if any(x in lower for x in ["figma", "sketch", "photoshop", "design"]):
             tags.append("purpose:design")
-        if any(x in lower for x in ["slack", "discord", "wechat", "钉钉", "telegram"]):
+        if any(x in lower for x in ["slack", "discord", "wechat", "dingtalk", "telegram"]):
             tags.append("purpose:communication")
 
         # Content-centric tags from vision/OCR enrichment (high priority).

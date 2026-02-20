@@ -308,11 +308,11 @@ async def process_delete_all_sessions():
     return {"deleted": n}
 
 
-# ---------- Process: 键盘/鼠标采集 (InputTracker) ----------
+# ---------- Process: Keyboard/Mouse Tracking (InputTracker) ----------
 
 @app.post("/process/tracking/start")
 async def process_tracking_start():
-    """Start keyboard/mouse tracking on the backend machine (same as Kivy 开始采集)."""
+    """Start keyboard/mouse tracking on the backend machine (same behavior as Kivy tracking start)."""
     from . import deps
     presenter = deps.get_process_mining_presenter()
     if not presenter:
@@ -354,7 +354,7 @@ async def process_tracking_status():
 
 @app.post("/process/sessions/from-tracking")
 async def process_save_session_from_tracking():
-    """Save current session from recent keyboard/mouse events (same as Kivy 保存当前会话)."""
+    """Save current session from recent keyboard/mouse events (same behavior as Kivy save-current-session)."""
     import datetime
     from . import deps
     from memscreen.services import session_analysis

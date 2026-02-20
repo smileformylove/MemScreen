@@ -48,7 +48,7 @@ class RecordingApi {
     );
   }
 
-  /// 可选屏幕列表（用于单屏模式）
+  /// 
   Future<List<RecordingScreenInfo>> getScreens() async {
     final m = await client.get('/recording/screens');
     final list = m['screens'];
