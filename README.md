@@ -153,10 +153,8 @@ Everything runs on your machine
 
 Watch MemScreen in action:
 
-[![MemScreen Demo 1](https://img.youtube.com/vi/BZ3t9hNFTEA/0.jpg)](https://youtu.be/BZ3t9hNFTEA)
-[![MemScreen Demo 2](https://img.youtube.com/vi/AAtEKUjOAbE/0.jpg)](https://youtu.be/AAtEKUjOAbE)
-
-*Click the thumbnails to watch the full demos*
+- [Demo Video 1](https://youtu.be/BZ3t9hNFTEA) - Recording and Screen Selection
+- [Demo Video 2](https://youtu.be/AAtEKUjOAbE) - AI Chat and Visual Search
 
 ---
 
