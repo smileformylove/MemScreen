@@ -149,6 +149,17 @@ Everything runs on your machine
 
 ---
 
+## 🎥 Demo Videos
+
+Watch MemScreen in action:
+
+[![MemScreen Demo 1](https://img.youtube.com/vi/BZ3t9hNFTEA/0.jpg)](https://youtu.be/BZ3t9hNFTEA)
+[![MemScreen Demo 2](https://img.youtube.com/vi/AAtEKUjOAbE/0.jpg)](https://youtu.be/AAtEKUjOAbE)
+
+*Click the thumbnails to watch the full demos*
+
+---
+
 ## ⚡ Quick Start
 
 Get up and running in **3 minutes** — **no API keys, no cloud, no signup!**
