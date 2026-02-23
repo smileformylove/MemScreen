@@ -1,0 +1,31 @@
+# MemScreen API image (headless)
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Runtime libs commonly needed by cv2/pillow stack in headless mode
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ffmpeg \
+    libglib2.0-0 \
+    libgl1 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml /app/
+COPY memscreen /app/memscreen
+COPY setup /app/setup
+
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install -e .
+
+# Default API port
+EXPOSE 8765
+
+CMD ["python", "-m", "memscreen.api"]

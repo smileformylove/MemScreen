@@ -178,7 +178,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -e .
 
 # 4. Launch 🚀
-./scripts/start_flutter.sh
+./scripts/launch.sh
 ```
 
 ✅ **That's it!** The Flutter app will launch automatically.
@@ -225,23 +225,25 @@ The easiest way to start Flutter frontend with all dependencies:
 
 ```bash
 # From project root
-./scripts/start_flutter.sh
+./scripts/launch.sh
 ```
 
 **This script automatically:**
-- ✅ Activates the virtual environment
+- ✅ Creates/uses a local virtual environment (`.venv` or `venv`)
+- ✅ Installs Python dependencies automatically when needed
 - ✅ Starts the API backend (if not running)
 - ✅ Installs Flutter dependencies
 - ✅ Builds and launches the Flutter app
 - ✅ Handles cleanup on exit
 
 **What happens:**
-1. Script checks for existing API at `http://127.0.0.1:8765`
-2. If not running, starts API backend in background
-3. Waits for API to be ready (health check)
-4. Builds Flutter app in release mode
-5. Launches the app and keeps both processes running
-6. On app exit, automatically shuts down API (if started by script)
+1. Script bootstraps Python environment and dependencies
+2. Script checks for existing API at `http://127.0.0.1:8765`
+3. If not running, starts API backend in background
+4. Waits for API to be ready (health check)
+5. Builds Flutter app in release mode
+6. Launches the app and keeps both processes running
+7. On app exit, automatically shuts down API (if started by script)
 
 #### Option 2: Manual Launch
 
@@ -286,7 +288,7 @@ flutter run -d linux     # Linux
 - ✅ DevTools integration
 - ❌ Slower performance
 
-**Release Mode** (default in `start_flutter.sh`):
+**Release Mode** (default in `scripts/launch.sh` / `scripts/start_flutter.sh`):
 - ✅ Optimized performance
 - ✅ Smaller binary size
 - ✅ Production-ready
@@ -411,11 +413,20 @@ setup\install\install.bat   # Windows
 **Isolated environment** - No dependencies to install!
 
 ```bash
-cd setup/docker
-docker-compose up --build
+./scripts/docker-launch.sh
 ```
 
-📚 **See:** [Docker Guide](docs/guides/DOCKER_TEST.md) for advanced options
+Optional (pull models immediately):
+
+```bash
+./scripts/docker-launch.sh --pull-models
+```
+
+This starts:
+- API: `http://127.0.0.1:8765`
+- Ollama: `http://127.0.0.1:11434`
+
+📚 **See:** [Docker Guide](setup/docker/README.md) for details
 
 ---
 

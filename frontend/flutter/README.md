@@ -5,10 +5,17 @@ Default API URL: `http://127.0.0.1:8765`.
 
 ## Quick Start
 
-1. Start backend API (at repo root, Conda env `MemScreen`):
+### Recommended: one command from project root
 
 ```bash
-conda activate MemScreen
+./scripts/launch.sh
+```
+
+### Manual flow
+
+1. Start backend API:
+
+```bash
 python -m memscreen.api
 ```
 

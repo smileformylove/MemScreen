@@ -1,49 +1,43 @@
-version: '3.8'
-
 services:
-  # MemScreen Application
-    memscreen:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: memscreen-app
+  ollama:
+    image: ollama/ollama:latest
+    container_name: memscreen-ollama
     restart: unless-stopped
     ports:
-      - "5901:5901"  # VNC port for web UI
-      - "11434:11434"  # Ollama API
+      - "11434:11434"
     volumes:
-      # Persist data
-      - memscreen_data:/app/db
-      # Model cache (optional - share models between containers)
-      - ollama_models:/root/.ollama
-    environment:
-      - DISPLAY=:99
-      - OLLAMA_HOST=0.0.0.0:11434
-      - OLLAMA_NUM_PARALLEL=2
-    # GPU support (uncomment if you have NVIDIA GPU)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
-    stdin_open: true
-    tty: true
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
-  # Optional: Web VNC for browser access
-  # novnc:
-  #   image: novnc/novnc:latest
-  #   container_name: memscreen-novnc
-  #   ports:
-  #     - "6080:6080"
-  #   environment:
-  #     - DISPLAY=vnc:0.0
-  #   depends_on:
-  #     - memscreen
+  memscreen-api:
+    build:
+      context: ../..
+      dockerfile: setup/docker/Dockerfile.api
+    container_name: memscreen-api
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      MEMSCREEN_API_HOST: 0.0.0.0
+      MEMSCREEN_API_PORT: 8765
+      MEMSCREEN_OLLAMA_URL: http://ollama:11434
+      # Persist everything under container user's home
+      HOME: /root
+    ports:
+      - "8765:8765"
+    volumes:
+      - memscreen_data:/root/.memscreen
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8765/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
 volumes:
   memscreen_data:
-    driver: local
-  ollama_models:
-    driver: local
+  ollama_data:

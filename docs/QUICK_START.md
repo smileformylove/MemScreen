@@ -10,10 +10,12 @@ cd MemScreen
 python3 -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -e .
-./scripts/start_flutter.sh
+./scripts/launch.sh
 ```
 
-What `./scripts/start_flutter.sh` does:
+What `./scripts/launch.sh` does:
+- Creates/uses a local virtual environment automatically
+- Installs Python dependencies automatically when needed
 - Starts the backend API
 - Installs Flutter dependencies (if needed)
 - Builds and launches the Flutter app
@@ -56,6 +58,22 @@ cd frontend/flutter
 flutter pub get
 flutter run -d macos
 ```
+
+## Option 3: Docker One-Command Start
+
+```bash
+./scripts/docker-launch.sh
+```
+
+Optional (pull default models during startup):
+
+```bash
+./scripts/docker-launch.sh --pull-models
+```
+
+Endpoints after startup:
+- API: `http://127.0.0.1:8765`
+- Ollama: `http://127.0.0.1:11434`
 
 ## Common Issues
 

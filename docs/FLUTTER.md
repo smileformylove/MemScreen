@@ -10,10 +10,12 @@ MemScreen provides a Flutter desktop client that communicates with the backend o
 ## Start with one command (recommended)
 
 ```bash
-./scripts/start_flutter.sh
+./scripts/launch.sh
 ```
 
 This script will:
+- Create/use a local virtual environment
+- Install Python dependencies automatically when needed
 - Start backend API at `http://127.0.0.1:8765`
 - Install Flutter dependencies
 - Build and run the Flutter app
