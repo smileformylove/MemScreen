@@ -12,13 +12,15 @@ import threading
 import sqlite3
 import json
 import hashlib
+import re
 import numpy as np
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
 
 from .base_presenter import BasePresenter
 from memscreen.audio import AudioRecorder, AudioSource
-from memscreen.cv2_loader import get_cv2, is_cv2_available
+from memscreen.cv2_loader import get_cv2
+from memscreen.services.model_capability import RecordingModelCapabilityService
 
 
 class RecordingPresenter(BasePresenter):
@@ -39,7 +41,15 @@ class RecordingPresenter(BasePresenter):
     - Handle button clicks
     """
 
-    def __init__(self, view=None, memory_system=None, db_path=None, output_dir=None, audio_dir=None):
+    def __init__(
+        self,
+        view=None,
+        memory_system=None,
+        db_path=None,
+        output_dir=None,
+        audio_dir=None,
+        model_capability: Optional[RecordingModelCapabilityService] = None,
+    ):
         """
         Initialize recording presenter.
 
@@ -97,6 +107,11 @@ class RecordingPresenter(BasePresenter):
         self.region_bbox = None  # (left, top, right, bottom) or None
         self.screen_index = None  # Index of screen to record (None = all screens/primary)
         self.window_title = None  # Optional window/app label for region-window mode
+        self._window_follow_enabled = False
+        self._window_follow_owner: Optional[str] = None
+        self._window_follow_name: Optional[str] = None
+        self._window_follow_window_id: Optional[int] = None
+        self._window_follow_import_failed = False
         self.content_tags: List[str] = []
         self.content_summary: Optional[str] = None
 
@@ -104,7 +119,11 @@ class RecordingPresenter(BasePresenter):
         self.region_config = None
 
         self._is_initialized = False
-        self._easyocr_reader = None
+        self.last_start_error: Optional[str] = None
+        self.model_capability = model_capability or RecordingModelCapabilityService(
+            ollama_base_url=config.ollama_base_url,
+            vision_model=config.ollama_vision_model,
+        )
 
         # Check if cv2 is available
         self.cv2_available = self._check_cv2_available()
@@ -288,8 +307,10 @@ class RecordingPresenter(BasePresenter):
         Returns:
             True if recording started successfully
         """
+        self.last_start_error = None
         if self.is_recording:
-            self.show_error("Recording is already in progress")
+            self.last_start_error = "Recording is already in progress"
+            self.show_error(self.last_start_error)
             return False
 
         # Check if cv2 is available
@@ -297,6 +318,7 @@ class RecordingPresenter(BasePresenter):
             error_msg = "Video recording requires opencv-python (cv2), but it's not available. "
             error_msg += "This is likely due to missing SDL2 dependencies. "
             error_msg += "Please check the console for details."
+            self.last_start_error = error_msg
             self.show_error(error_msg)
             print("[RecordingPresenter] ERROR: Cannot start recording - cv2 not available")
             return False
@@ -319,7 +341,11 @@ class RecordingPresenter(BasePresenter):
             if "permission" in error_msg or "denied" in error_msg or "screen" in error_msg:
                 print(f"[RecordingPresenter] ✗ Pre-flight permission check failed: {test_error}")
                 self._preview_permission_denied = True
-                self.show_error("Screen recording permission is required. Please grant permission in System Settings > Privacy & Security > Screen Recording, then restart the app.")
+                self.last_start_error = (
+                    "Screen recording permission is required. Please grant permission in "
+                    "System Settings > Privacy & Security > Screen Recording, then restart the app."
+                )
+                self.show_error(self.last_start_error)
                 return False
             # If it's some other error, log but continue
             print(f"[RecordingPresenter] Warning: Pre-flight check had non-permission error: {test_error}")
@@ -351,6 +377,7 @@ class RecordingPresenter(BasePresenter):
 
         except Exception as e:
             self.is_recording = False
+            self.last_start_error = str(e)
             self.handle_error(e, "Failed to start recording")
             return False
 
@@ -437,6 +464,7 @@ class RecordingPresenter(BasePresenter):
             True if mode set successfully
         """
         try:
+            self.last_start_error = None
             self.recording_mode = mode
             window_title = kwargs.get('window_title')
             self.window_title = window_title.strip() if isinstance(window_title, str) and window_title.strip() else None
@@ -446,6 +474,7 @@ class RecordingPresenter(BasePresenter):
                 self.region_bbox = None
                 self.screen_index = None
                 self.window_title = None
+                self._reset_window_follow()
                 print("[RecordingPresenter] Mode set to: Full Screen (all screens)")
 
             elif mode == 'fullscreen-single':
@@ -455,6 +484,7 @@ class RecordingPresenter(BasePresenter):
                     self.screen_index = int(screen_index)
                     self.region_bbox = None
                     self.window_title = None
+                    self._reset_window_follow()
                     print(f"[RecordingPresenter] Mode set to: Full Screen {self.screen_index + 1}")
                 else:
                     raise ValueError("screen_index is required for fullscreen-single mode")
@@ -500,8 +530,10 @@ class RecordingPresenter(BasePresenter):
                         self.region_bbox = local_bbox
                         self.screen_index = None
                     if self.window_title:
+                        self._enable_window_follow(self.window_title)
                         print(f"[RecordingPresenter] Mode set to: Window Region {self.region_bbox} ({self.window_title})")
                     else:
+                        self._reset_window_follow()
                         print(f"[RecordingPresenter] Mode set to: Custom Region {self.region_bbox}")
                 else:
                     raise ValueError("Invalid bbox for region mode")
@@ -512,8 +544,209 @@ class RecordingPresenter(BasePresenter):
             return True
 
         except Exception as e:
+            self.last_start_error = str(e)
             self.handle_error(e, f"Failed to set recording mode to {mode}")
             return False
+
+    def _reset_window_follow(self) -> None:
+        """Disable dynamic window-follow tracking."""
+        self._window_follow_enabled = False
+        self._window_follow_owner = None
+        self._window_follow_name = None
+        self._window_follow_window_id = None
+
+    def _enable_window_follow(self, window_title: str) -> None:
+        """Enable dynamic window-follow tracking for app-window recording mode."""
+        text = (window_title or "").strip()
+        if not text:
+            self._reset_window_follow()
+            return
+        # Expected format: "Window: <owner> · <name>" (or owner only).
+        text = re.sub(r"^window\s*:\s*", "", text, flags=re.IGNORECASE).strip()
+        owner = text
+        name = None
+        if "·" in text:
+            parts = [p.strip() for p in text.split("·", 1)]
+            owner = parts[0] if parts else text
+            name = parts[1] if len(parts) > 1 and parts[1] else None
+        self._window_follow_enabled = bool(owner)
+        self._window_follow_owner = owner or None
+        self._window_follow_name = name
+
+    def _refresh_window_follow_bbox_if_needed(self) -> None:
+        """
+        Refresh region bbox from live window bounds so recording follows move/resize.
+        Only applies to region mode with selected app window metadata.
+        """
+        if not self._window_follow_enabled or self.recording_mode != "region":
+            return
+        if self._window_follow_import_failed:
+            return
+        try:
+            from Quartz import (  # type: ignore
+                CGWindowListCopyWindowInfo,
+                kCGNullWindowID,
+                kCGWindowLayer,
+                kCGWindowBounds,
+                kCGWindowOwnerName,
+                kCGWindowName,
+                kCGWindowNumber,
+            )
+        except Exception:
+            self._window_follow_import_failed = True
+            print("[RecordingPresenter] Window-follow disabled: Quartz is unavailable")
+            return
+
+        try:
+            info_list = CGWindowListCopyWindowInfo(
+                1 | 16,  # .optionOnScreenOnly | .excludeDesktopElements
+                kCGNullWindowID,
+            )
+            if not info_list:
+                return
+
+            owner_key = (self._window_follow_owner or "").lower().strip()
+            name_key = (self._window_follow_name or "").lower().strip()
+            best_bbox = None
+            best_window_id: Optional[int] = None
+            fallback_bbox = None
+            fallback_window_id: Optional[int] = None
+            best_overlap = -1.0
+
+            for info in info_list:
+                layer = int(info.get(kCGWindowLayer, 0))
+                if layer != 0:
+                    continue
+
+                owner = str(info.get(kCGWindowOwnerName, "") or "").strip()
+                if not owner:
+                    continue
+                owner_l = owner.lower()
+                if owner_key and owner_key not in owner_l:
+                    continue
+
+                win_name = str(info.get(kCGWindowName, "") or "").strip()
+                win_name_l = win_name.lower()
+                if name_key and name_key not in win_name_l and win_name_l not in name_key:
+                    continue
+
+                bounds = info.get(kCGWindowBounds) or {}
+                x = int(bounds.get("X", 0))
+                y = int(bounds.get("Y", 0))
+                w = int(bounds.get("Width", 0))
+                h = int(bounds.get("Height", 0))
+                if w < 50 or h < 40:
+                    continue
+
+                candidate_bbox = (x, y, x + w, y + h)
+                raw_window_id = (
+                    info.get(kCGWindowNumber)
+                    or info.get("kCGWindowNumber")
+                    or info.get("WindowNumber")
+                    or 0
+                )
+                candidate_window_id = int(raw_window_id or 0)
+
+                # Primary match: owner/name textual match.
+                if owner_key and owner_key in owner_l:
+                    if not name_key or name_key in win_name_l or win_name_l in name_key:
+                        best_bbox = candidate_bbox
+                        best_window_id = candidate_window_id if candidate_window_id > 0 else None
+                        break  # list order is top-most first
+
+                # Fallback candidate: maximize overlap with current region.
+                if self.region_bbox:
+                    overlap = self._bbox_overlap_ratio(self.region_bbox, candidate_bbox)
+                    if overlap > best_overlap:
+                        best_overlap = overlap
+                        fallback_bbox = candidate_bbox
+                        fallback_window_id = candidate_window_id if candidate_window_id > 0 else None
+                elif fallback_bbox is None:
+                    fallback_bbox = candidate_bbox
+                    fallback_window_id = candidate_window_id if candidate_window_id > 0 else None
+
+            final_bbox = best_bbox or fallback_bbox
+            final_window_id = best_window_id if best_bbox else fallback_window_id
+            if final_bbox and final_bbox != self.region_bbox:
+                self.region_bbox = final_bbox
+                print(f"[RecordingPresenter] Window-follow bbox updated: {self.region_bbox}")
+            if final_window_id and final_window_id != self._window_follow_window_id:
+                self._window_follow_window_id = final_window_id
+                print(f"[RecordingPresenter] Window-follow target id updated: {self._window_follow_window_id}")
+        except Exception as e:
+            print(f"[RecordingPresenter] Window-follow refresh failed: {e}")
+
+    def _capture_window_frame_by_id(self, window_id: Optional[int]):
+        """
+        Capture one window directly by CGWindow ID.
+        This avoids occlusion by other top windows.
+        Returns BGR ndarray or None on failure.
+        """
+        if not window_id:
+            return None
+        try:
+            cv2 = get_cv2()
+            if cv2 is None:
+                return None
+
+            from Quartz import (  # type: ignore
+                CGWindowListCreateImage,
+                CGRectNull,
+                kCGWindowListOptionIncludingWindow,
+                kCGWindowImageBoundsIgnoreFraming,
+                CGImageGetWidth,
+                CGImageGetHeight,
+                CGImageGetBytesPerRow,
+                CGImageGetDataProvider,
+                CGDataProviderCopyData,
+            )
+
+            cg_img = CGWindowListCreateImage(
+                CGRectNull,
+                kCGWindowListOptionIncludingWindow,
+                int(window_id),
+                kCGWindowImageBoundsIgnoreFraming,
+            )
+            if cg_img is None:
+                return None
+
+            width = int(CGImageGetWidth(cg_img))
+            height = int(CGImageGetHeight(cg_img))
+            if width <= 0 or height <= 0:
+                return None
+
+            provider = CGImageGetDataProvider(cg_img)
+            data = CGDataProviderCopyData(provider)
+            if data is None:
+                return None
+
+            bytes_per_row = int(CGImageGetBytesPerRow(cg_img))
+            raw = np.frombuffer(data, dtype=np.uint8)
+            if raw.size < bytes_per_row * height:
+                return None
+
+            rgba = raw.reshape((height, bytes_per_row // 4, 4))[:, :width, :]
+            frame = cv2.cvtColor(rgba, cv2.COLOR_BGRA2BGR)
+            return frame
+        except Exception:
+            return None
+
+    def _bbox_overlap_ratio(self, a: Tuple[int, int, int, int], b: Tuple[int, int, int, int]) -> float:
+        """Compute overlap ratio between two bboxes (intersection over smaller area)."""
+        ax1, ay1, ax2, ay2 = a
+        bx1, by1, bx2, by2 = b
+        ix1 = max(ax1, bx1)
+        iy1 = max(ay1, by1)
+        ix2 = min(ax2, bx2)
+        iy2 = min(ay2, by2)
+        iw = max(0, ix2 - ix1)
+        ih = max(0, iy2 - iy1)
+        inter = float(iw * ih)
+        if inter <= 0:
+            return 0.0
+        area_a = float(max(1, (ax2 - ax1) * (ay2 - ay1)))
+        area_b = float(max(1, (bx2 - bx1) * (by2 - by1)))
+        return inter / min(area_a, area_b)
 
     def get_recording_mode(self) -> Dict[str, Any]:
         """
@@ -552,6 +785,11 @@ class RecordingPresenter(BasePresenter):
             # Capture screen with region and screen selection support
             try:
                 if self.region_bbox:
+                    self._refresh_window_follow_bbox_if_needed()
+                    if self._window_follow_enabled:
+                        win_frame = self._capture_window_frame_by_id(self._window_follow_window_id)
+                        if win_frame is not None:
+                            return win_frame
                     # Custom region mode
                     screenshot = ImageGrab.grab(bbox=self.region_bbox)
                 elif self.screen_index is not None:
@@ -711,7 +949,7 @@ class RecordingPresenter(BasePresenter):
             )
 
             # Refresh memory metadata/text as well when memory is available.
-            if self.memory_system:
+            if self.model_capability.can_enrich_memory(self.memory_system):
                 timeline_lines, timeline_text = self._build_recording_timeline(captured_at, frame_details)
                 suggestion_items = self._generate_recording_suggestions(content_description, frame_details)
                 frame_summary = "\n".join(timeline_lines) if timeline_lines else "No frame analysis available."
@@ -876,10 +1114,18 @@ Content Tags: {", ".join(content_tags)}
                 time_since_last_shot = current_time - last_screenshot_time
                 if time_since_last_shot >= self.interval:
                     try:
+                        frame = None
                         # Capture screen with region and screen selection support
                         if self.region_bbox:
+                            self._refresh_window_follow_bbox_if_needed()
+                            if self._window_follow_enabled:
+                                frame = self._capture_window_frame_by_id(self._window_follow_window_id)
+                                if frame is None:
+                                    # If direct window capture fails temporarily, fall back to region.
+                                    screenshot = ImageGrab.grab(bbox=self.region_bbox)
+                            else:
+                                screenshot = ImageGrab.grab(bbox=self.region_bbox)
                             # Custom region mode
-                            screenshot = ImageGrab.grab(bbox=self.region_bbox)
                         elif self.screen_index is not None:
                             # Single screen mode - get screen bbox from screen utils
                             try:
@@ -897,42 +1143,50 @@ Content Tags: {", ".join(content_tags)}
                             # Full screen mode (all screens)
                             screenshot = ImageGrab.grab()
 
-                        # Convert to numpy array
-                        frame_array = np.array(screenshot)
+                        if frame is None:
+                            # Convert to numpy array
+                            frame_array = np.array(screenshot)
 
-                        # Debug: print dtype
-                        if self.frame_count == 0:
-                            print(f"[Recording] Initial frame dtype: {frame_array.dtype}, shape: {frame_array.shape}")
+                            # Debug: print dtype
+                            if self.frame_count == 0:
+                                print(f"[Recording] Initial frame dtype: {frame_array.dtype}, shape: {frame_array.shape}")
 
-                        # Handle different data types
-                        if frame_array.dtype == np.float64 or frame_array.dtype == np.float32:
-                            # Float images - normalize to 0-255
-                            if frame_array.max() <= 1.0:
-                                frame_array = np.clip(frame_array * 255, 0, 255).astype(np.uint8)
-                            else:
+                            # Handle different data types
+                            if frame_array.dtype == np.float64 or frame_array.dtype == np.float32:
+                                # Float images - normalize to 0-255
+                                if frame_array.max() <= 1.0:
+                                    frame_array = np.clip(frame_array * 255, 0, 255).astype(np.uint8)
+                                else:
+                                    frame_array = np.clip(frame_array, 0, 255).astype(np.uint8)
+                            elif frame_array.dtype != np.uint8:
+                                # Any other non-uint8 type
                                 frame_array = np.clip(frame_array, 0, 255).astype(np.uint8)
-                        elif frame_array.dtype != np.uint8:
-                            # Any other non-uint8 type
-                            frame_array = np.clip(frame_array, 0, 255).astype(np.uint8)
 
-                        # Ensure we have the right shape and channels
-                        if len(frame_array.shape) == 2:
-                            # Grayscale - convert to RGB
-                            frame_array = cv2.cvtColor(frame_array, cv2.COLOR_GRAY2RGB)
-                        elif len(frame_array.shape) == 3 and frame_array.shape[2] == 4:
-                            # RGBA - convert to RGB
-                            frame_array = cv2.cvtColor(frame_array, cv2.COLOR_RGBA2RGB)
+                            # Ensure we have the right shape and channels
+                            if len(frame_array.shape) == 2:
+                                # Grayscale - convert to RGB
+                                frame_array = cv2.cvtColor(frame_array, cv2.COLOR_GRAY2RGB)
+                            elif len(frame_array.shape) == 3 and frame_array.shape[2] == 4:
+                                # RGBA - convert to RGB
+                                frame_array = cv2.cvtColor(frame_array, cv2.COLOR_RGBA2RGB)
 
-                        # Now convert RGB to BGR for OpenCV
-                        if len(frame_array.shape) == 3 and frame_array.shape[2] == 3:
-                            frame = cv2.cvtColor(frame_array, cv2.COLOR_RGB2BGR)
-                        else:
-                            frame = frame_array
+                            # Now convert RGB to BGR for OpenCV
+                            if len(frame_array.shape) == 3 and frame_array.shape[2] == 3:
+                                frame = cv2.cvtColor(frame_array, cv2.COLOR_RGB2BGR)
+                            else:
+                                frame = frame_array
 
                         # Validate final frame
                         if frame.dtype != np.uint8:
                             print(f"[Recording] Warning: frame dtype is still {frame.dtype}, converting...")
                             frame = frame.astype(np.uint8)
+
+                        # Keep frame size stable for VideoWriter (window move/resize can change bbox).
+                        if self.recording_frames:
+                            base_h, base_w = self.recording_frames[0].shape[:2]
+                            cur_h, cur_w = frame.shape[:2]
+                            if cur_h != base_h or cur_w != base_w:
+                                frame = cv2.resize(frame, (base_w, base_h))
 
                         # Add to frames list
                         self.recording_frames.append(frame)
@@ -1221,7 +1475,7 @@ Content Tags: {", ".join(content_tags)}
         2) async enrichment with timeline/content analysis
         """
         try:
-            if not self.memory_system:
+            if not self.model_capability.can_enrich_memory(self.memory_system):
                 self._memory_index_ready_event.set()
                 return
 
@@ -1287,6 +1541,10 @@ When users ask about what was on their screen or what they were doing, always re
 
         except Exception as e:
             self._memory_index_ready_event.set()
+            if self.model_capability.consume_model_error(
+                e, f"memory write for recording {os.path.basename(filename)}"
+            ):
+                return
             self.handle_error(e, "Failed to add video to memory")
 
     def _enrich_recording_memory(
@@ -1308,7 +1566,7 @@ When users ask about what was on their screen or what they were doing, always re
                 content_tags=content_tags,
             )
 
-            if not self.memory_system:
+            if not self.model_capability.can_enrich_memory(self.memory_system):
                 print(f"[RecordingPresenter] Content tags saved without memory_system: {filename} -> {content_tags}")
                 return
             timeline_lines, timeline_text = self._build_recording_timeline(captured_at, frame_details)
@@ -1371,6 +1629,10 @@ When users ask about what was on their screen or what they were doing, reference
                 print(f"[RecordingPresenter] ✅ Recording memory enriched via fallback add: {filename}")
 
         except Exception as e:
+            if self.model_capability.consume_model_error(
+                e, f"memory enrichment for recording {os.path.basename(filename)}"
+            ):
+                return
             self.handle_error(e, "Failed to enrich recording memory")
 
     def _update_recording_memory_entry(
@@ -1590,7 +1852,7 @@ When users ask about what was on their screen or what they were doing, reference
                     timestamp = frame_idx / fps if fps > 0 else 0
 
                     # Use vision model only for the first few samples to reduce latency.
-                    frame_text = self._extract_text_from_frame(
+                    frame_text = self.model_capability.extract_text_from_frame(
                         frame,
                         use_vision=(sample_idx < 2),
                     )
@@ -1617,140 +1879,6 @@ When users ask about what was on their screen or what they were doing, reference
         except Exception as e:
             self.handle_error(e, "Failed to analyze video content")
             return "Screen recording (content analysis unavailable)", []
-
-    def _get_easyocr_reader(self):
-        """Lazy-init easyocr reader for local OCR fallback."""
-        if self._easyocr_reader is not None:
-            return self._easyocr_reader
-        try:
-            import easyocr  # type: ignore
-
-            self._easyocr_reader = easyocr.Reader(["ch_sim", "en"], gpu=False, verbose=False)
-            return self._easyocr_reader
-        except Exception as e:
-            print(f"[RecordingPresenter] easyocr unavailable: {e}")
-            self._easyocr_reader = False
-            return None
-
-    def _extract_text_with_easyocr(self, frame) -> str:
-        """Extract meaningful text using easyocr as a robust local fallback."""
-        try:
-            cv2 = get_cv2()
-            if cv2 is None:
-                return ""
-
-            reader = self._get_easyocr_reader()
-            if not reader:
-                return ""
-
-            h, w = frame.shape[:2]
-            img = frame
-            if w > 1600:
-                new_w = 1600
-                new_h = int(h * (new_w / w))
-                img = cv2.resize(frame, (new_w, new_h))
-
-            try:
-                results = reader.readtext(img, detail=0, paragraph=True)
-            except Exception:
-                results = []
-
-            clean_items = []
-            for item in results:
-                text = " ".join(str(item).split())
-                if len(text) >= 5:
-                    clean_items.append(text)
-                if len(clean_items) >= 6:
-                    break
-
-            if not clean_items:
-                return ""
-            return " | ".join(clean_items)
-        except Exception as e:
-            print(f"[RecordingPresenter] easyocr fallback failed: {e}")
-            return ""
-
-    def _extract_text_from_frame(self, frame, use_vision: bool = True):
-        """Extract text and understand scene context from frame"""
-        try:
-            cv2 = get_cv2()
-            if cv2 is None:
-                return "Screen captured (analysis unavailable: cv2 not available)"
-
-            if use_vision:
-                import requests
-                import base64
-
-                # Encode frame to base64
-                _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-                img_str = base64.b64encode(buffer).decode('utf-8')
-
-                # Keep prompt/response compact for faster timeline availability.
-                prompt = (
-                    "Describe this screenshot briefly for memory timeline.\n"
-                    "Return one line with: App, Key text, Main action."
-                )
-
-                response = requests.post(
-                    "http://127.0.0.1:11434/api/generate",
-                    json={
-                        "model": "qwen2.5vl:3b",
-                        "prompt": prompt,
-                        "images": [img_str],
-                        "stream": False,
-                        "options": {
-                            "num_predict": 160,
-                            "temperature": 0.2,
-                            "top_p": 0.8,
-                        }
-                    },
-                    timeout=6,
-                )
-
-                if response.status_code == 200:
-                    result = response.json()
-                    content = result.get("response", "").strip()
-                    if content and content.lower() not in ["no text", "none", "no text found"]:
-                        return content
-
-        except Exception as e:
-            if "timed out" in str(e).lower():
-                print("[Recording] Vision API timeout (6s), using fallback")
-            else:
-                print(f"[Recording] Vision API error: {e}")
-
-        # Local OCR fallback (more informative than heuristic density-only fallback).
-        ocr_text = self._extract_text_with_easyocr(frame)
-        if ocr_text:
-            return f"OCR detected: {ocr_text}"
-
-        # Enhanced fallback analysis
-        try:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-            # Analyze image characteristics
-            text_density = np.sum(gray > 200) / gray.size
-            brightness = np.mean(gray)
-
-            # Determine content type
-            if brightness > 200:
-                lighting = "light theme"
-            elif brightness < 80:
-                lighting = "dark theme"
-            else:
-                lighting = "mixed theme"
-
-            if text_density > 0.4:
-                content = "text-heavy content (code, document, or terminal)"
-            elif text_density > 0.2:
-                content = "mixed content (text and graphics)"
-            else:
-                content = "graphical content (images, video, or design)"
-
-            return f"Screen capture showing {content} with {lighting}"
-
-        except Exception as e:
-            return f"Screen captured (analysis unavailable: {str(e)[:30]})"
 
     def delete_recording(self, filename):
         """Delete a recording file and database entry"""

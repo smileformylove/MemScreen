@@ -5,6 +5,7 @@ Mirrors Kivy's Memory + Presenter initialization so API uses same config and dat
 
 from __future__ import annotations
 
+import os
 from typing import Optional, Any, TYPE_CHECKING
 
 from memscreen.config import get_config
@@ -67,11 +68,22 @@ def create_chat_presenter(memory: Optional[Memory]) -> Optional["ChatPresenter"]
     """Create ChatPresenter (view=None for API)."""
     try:
         from memscreen.presenters.chat_presenter import ChatPresenter
+        from memscreen.services.chat_model_capability import (
+            ChatModelCapabilityService,
+            NoopChatModelCapabilityService,
+        )
         cfg = get_config()
+        disable_models = os.getenv("MEMSCREEN_DISABLE_MODELS", "").strip().lower() in {"1", "true", "yes", "on"}
+        capability = (
+            NoopChatModelCapabilityService()
+            if disable_models
+            else ChatModelCapabilityService(cfg.ollama_base_url)
+        )
         p = ChatPresenter(
             view=None,
             memory_system=memory,
             ollama_base_url=cfg.ollama_base_url,
+            model_capability=capability,
         )
         p.initialize()
         return p
@@ -86,11 +98,25 @@ def create_recording_presenter(memory: Optional[Memory]) -> Optional["RecordingP
     """Create RecordingPresenter (view=None)."""
     try:
         from memscreen.presenters.recording_presenter import RecordingPresenter
+        from memscreen.services.model_capability import (
+            RecordingModelCapabilityService,
+            NoopRecordingModelCapabilityService,
+        )
         cfg = get_config()
+        disable_models = os.getenv("MEMSCREEN_DISABLE_MODELS", "").strip().lower() in {"1", "true", "yes", "on"}
+        capability = (
+            NoopRecordingModelCapabilityService()
+            if disable_models
+            else RecordingModelCapabilityService(
+                ollama_base_url=cfg.ollama_base_url,
+                vision_model=cfg.ollama_vision_model,
+            )
+        )
         p = RecordingPresenter(
             view=None,
             memory_system=memory,
             db_path=str(cfg.db_path),
+            model_capability=capability,
         )
         p.initialize()
         return p

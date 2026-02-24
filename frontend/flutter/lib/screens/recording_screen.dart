@@ -21,34 +21,31 @@ class _RecordingScreenState extends State<RecordingScreen> {
   bool _loading = true;
   Timer? _pollTimer;
 
-  // 
+  //
   String _mode = 'fullscreen';
   int? _screenIndex;
 
-  // 
+  //
   double _regionLeft = 0.0;
   double _regionTop = 0.0;
   double _regionRight = 1.0;
   double _regionBottom = 1.0;
 
-  // 
+  //
   double _screenWidth = 1920.0;
   double _screenHeight = 1080.0;
 
-  // 
-  final _durationController = TextEditingController(text: '60');
-  final _intervalController = TextEditingController(text: '2.0');
-
-  // 
+  //
   final _regionLeftController = TextEditingController(text: '0');
   final _regionTopController = TextEditingController(text: '0');
   final _regionRightController = TextEditingController(text: '1920');
   final _regionBottomController = TextEditingController(text: '1080');
 
-  // 
+  //
   ui.Image? _screenshotImage;
   String? _screenshotPath;
   bool _capturing = false;
+  bool _wasRecording = false;
   AppState? _appState;
   int _lastRecordingStatusVersion = -1;
 
@@ -63,7 +60,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
       _appState!.addListener(_onAppStateChanged);
     });
 
-    // 
+    //
     _regionLeftController.addListener(_updateRegionFromControllers);
     _regionTopController.addListener(_updateRegionFromControllers);
     _regionRightController.addListener(_updateRegionFromControllers);
@@ -78,8 +75,6 @@ class _RecordingScreenState extends State<RecordingScreen> {
     _regionTopController.dispose();
     _regionRightController.dispose();
     _regionBottomController.dispose();
-    _durationController.dispose();
-    _intervalController.dispose();
     super.dispose();
   }
 
@@ -108,9 +103,13 @@ class _RecordingScreenState extends State<RecordingScreen> {
       final api = context.read<AppState>().recordingApi;
       final s = await api.getStatus();
       final screens = await api.getScreens();
+      final justStopped = _wasRecording && !s.isRecording;
       if (mounted) {
         setState(() {
           _status = s;
+          if (justStopped) {
+            _mode = 'fullscreen';
+          }
           _screens = screens;
           _loading = false;
           if (screens.isNotEmpty) {
@@ -129,6 +128,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
           }
         });
       }
+      _wasRecording = s.isRecording;
       if (s.isRecording) {
         _startPolling();
       } else {
@@ -149,7 +149,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
     _pollTimer = null;
   }
 
-  // 
+  //
   Future<void> _captureScreen() async {
     if (_capturing) return;
     setState(() => _capturing = true);
@@ -160,12 +160,12 @@ class _RecordingScreenState extends State<RecordingScreen> {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final path = '${tempDir.path}/screenshot_$timestamp.png';
 
-      // 
+      //
       final result = await Process.run('screencapture',
           ['-x', '-t', 'png', '-R', '0,0,$_screenWidth,$_screenHeight', path]);
 
       if (result.exitCode == 0 || File(path).existsSync()) {
-        // 
+        //
         final bytes = await File(path).readAsBytes();
         final codec = await ui.instantiateImageCodec(bytes);
         final frame = await codec.getNextFrame();
@@ -177,11 +177,11 @@ class _RecordingScreenState extends State<RecordingScreen> {
             _screenshotImage = image;
             _capturing = false;
           });
-          // 
+          //
           _showRegionSelector();
         }
       } else {
-        // 
+        //
         final fullPath = '${tempDir.path}/screenshot_full_$timestamp.png';
         await Process.run('screencapture', ['-x', '-t', 'png', fullPath]);
 
@@ -218,7 +218,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
     }
   }
 
-  // 
+  //
   void _showRegionSelector() {
     if (_screenshotImage == null) return;
 
@@ -246,14 +246,15 @@ class _RecordingScreenState extends State<RecordingScreen> {
   }
 
   Future<void> _start() async {
-    final duration = int.tryParse(_durationController.text.trim()) ?? 60;
-    final interval = double.tryParse(_intervalController.text.trim()) ?? 2.0;
+    final appState = context.read<AppState>();
+    final duration = appState.recordingDurationSec;
+    final interval = appState.recordingIntervalSec;
     String? mode = _mode;
     List<double>? region;
     int? screenIndex;
 
     if (_mode == 'region') {
-      // 
+      //
       final leftPx = (_regionLeft * _screenWidth).round();
       final topPx = (_regionTop * _screenHeight).round();
       final rightPx = (_regionRight * _screenWidth).round();
@@ -270,17 +271,14 @@ class _RecordingScreenState extends State<RecordingScreen> {
     }
 
     try {
-      await context.read<AppState>().recordingApi.start(
+      await context.read<AppState>().startRecording(
             duration: duration,
             interval: interval,
             mode: mode,
             region: region,
             screenIndex: screenIndex,
           );
-      // Update floating ball state
-      if (mounted) {
-        context.read<AppState>().updateFloatingBallState(true);
-      }
+      _wasRecording = true;
       _load();
     } catch (e) {
       if (mounted) {
@@ -337,17 +335,14 @@ class _RecordingScreenState extends State<RecordingScreen> {
 
   Future<void> _stop() async {
     try {
-      await context.read<AppState>().recordingApi.stop();
-      // Update floating ball state
+      await context.read<AppState>().stopRecording();
+      _stopPolling();
       if (mounted) {
-        final appState = context.read<AppState>();
-        appState.updateFloatingBallState(false);
-        appState.requestVideoRefresh();
-        Future.delayed(const Duration(seconds: 2), () {
-          appState.requestVideoRefresh();
+        setState(() {
+          _mode = 'fullscreen';
         });
       }
-      _stopPolling();
+      _wasRecording = false;
       _load();
     } catch (e) {
       if (mounted) {
@@ -367,14 +362,28 @@ class _RecordingScreenState extends State<RecordingScreen> {
           ButtonSegment(value: 'window', label: Text('App Window')),
         ],
         selected: {_mode},
-        onSelectionChanged: (v) => setState(() => _mode = v.first),
+        onSelectionChanged: (v) {
+          _onModeChanged(v.first);
+        },
       ),
-      const SizedBox(height: 16),
+      const SizedBox(height: 10),
     ];
   }
 
-  List<Widget> _buildFullscreenSingleMode() {
-    if (_screens.isEmpty) {
+  Future<void> _onModeChanged(String nextMode) async {
+    if (_mode == nextMode) return;
+    setState(() => _mode = nextMode);
+    final isRecording = _status?.isRecording ?? false;
+    if (isRecording) return;
+    if (nextMode == 'region') {
+      await _selectRegionWithFloatingBall();
+    } else if (nextMode == 'window') {
+      await _selectWindowWithFloatingBall();
+    }
+  }
+
+  List<Widget> _buildScreenPicker() {
+    if (_mode != 'fullscreen' || _screens.isEmpty) {
       return [];
     }
     return [
@@ -415,212 +424,39 @@ class _RecordingScreenState extends State<RecordingScreen> {
     return null;
   }
 
-  List<Widget> _buildRegionMode() {
-    if (_mode != 'region') {
-      return [];
-    }
+  List<Widget> _buildActionBar() {
     final isRecording = _status?.isRecording ?? false;
-
-    return [
-      Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.blue.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.blue.shade200),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Region Recording',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            const Text('1. Minimize & select region'),
-            const Text('2. Start recording from floating ball'),
-            const SizedBox(height: 12),
+    if (_mode == 'region') {
+      if (!isRecording) return const [];
+      return [
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             FilledButton.icon(
-              onPressed: isRecording ? null : _selectRegionWithFloatingBall,
-              icon: const Icon(Icons.select_all),
-              label: const Text('Select Region'),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              isRecording
-                  ? 'Recording in progress.'
-                  : 'Use floating ball to start after selection.',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: 24),
-
-      // 
-      Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _durationController,
-              decoration: const InputDecoration(
-                labelText: 'Duration (seconds)',
-                prefixIcon: Icon(Icons.timer, size: 20),
+              onPressed: _stop,
+              icon: const Icon(Icons.stop),
+              label: const Text('Stop'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
               ),
-              keyboardType: TextInputType.number,
             ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: TextField(
-              controller: _intervalController,
-              decoration: const InputDecoration(
-                labelText: 'Interval (seconds)',
-                prefixIcon: Icon(Icons.schedule, size: 20),
-              ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 32),
-
-      Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          FilledButton.icon(
-            onPressed: isRecording ? _stop : null,
-            icon: const Icon(Icons.stop),
-            label: const Text('Stop Recording'),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-            ),
-          ),
-        ],
-      ),
-    ];
-  }
-
-  List<Widget> _buildWindowMode() {
-    if (_mode != 'window') {
-      return [];
+          ]),
+      ];
     }
-    final isRecording = _status?.isRecording ?? false;
-    return [
-      Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.indigo.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.indigo.shade200),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'App Window Recording',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            const Text('1. Minimize & pick an app window'),
-            const Text('2. Confirm recording below selected window'),
-            const SizedBox(height: 12),
+    if (_mode == 'window') {
+      if (!isRecording) return const [];
+      return [
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             FilledButton.icon(
-              onPressed: isRecording ? null : _selectWindowWithFloatingBall,
-              icon: const Icon(Icons.crop_din),
-              label: const Text('Select App Window'),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              isRecording
-                  ? 'Recording in progress.'
-                  : 'You can reselect another app window before confirming.',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: 24),
-      Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _durationController,
-              decoration: const InputDecoration(
-                labelText: 'Duration (seconds)',
-                prefixIcon: Icon(Icons.timer, size: 20),
+              onPressed: _stop,
+              icon: const Icon(Icons.stop),
+              label: const Text('Stop'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
               ),
-              keyboardType: TextInputType.number,
             ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: TextField(
-              controller: _intervalController,
-              decoration: const InputDecoration(
-                labelText: 'Interval (seconds)',
-                prefixIcon: Icon(Icons.schedule, size: 20),
-              ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 32),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          FilledButton.icon(
-            onPressed: isRecording ? _stop : null,
-            icon: const Icon(Icons.stop),
-            label: const Text('Stop Recording'),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-            ),
-          ),
-        ],
-      ),
-    ];
-  }
-
-  List<Widget> _buildDirectRecordingControls() {
-    if (_mode == 'region' || _mode == 'window') {
-      return [];
+          ]),
+      ];
     }
-
-    final isRecording = _status?.isRecording ?? false;
     return [
-      Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _durationController,
-              decoration: const InputDecoration(
-                labelText: 'Duration (seconds)',
-                prefixIcon: Icon(Icons.timer, size: 20),
-              ),
-              keyboardType: TextInputType.number,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: TextField(
-              controller: _intervalController,
-              decoration: const InputDecoration(
-                labelText: 'Interval (seconds)',
-                prefixIcon: Icon(Icons.schedule, size: 20),
-              ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 24),
       Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -628,21 +464,15 @@ class _RecordingScreenState extends State<RecordingScreen> {
             FilledButton.icon(
               onPressed: _start,
               icon: const Icon(Icons.fiber_manual_record),
-              label: const Text('Start Recording'),
-              style: FilledButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-              ),
+              label: const Text('Start'),
             )
           else
             FilledButton.icon(
               onPressed: _stop,
               icon: const Icon(Icons.stop),
-              label: const Text('Stop Recording'),
+              label: const Text('Stop'),
               style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.error,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               ),
             ),
         ],
@@ -652,17 +482,6 @@ class _RecordingScreenState extends State<RecordingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // status
-    final s = _status ??
-        RecordingStatus(
-          isRecording: false,
-          duration: 60,
-          interval: 2,
-          outputDir: '',
-          frameCount: 0,
-          elapsedTime: 0,
-        );
-
     if (_loading && _status == null) {
       return Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -671,7 +490,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Recording'),
+        title: const Text('Record'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -681,79 +500,17 @@ class _RecordingScreenState extends State<RecordingScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(16),
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
+            constraints: const BoxConstraints(maxWidth: 520),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.info_outline, color: Colors.blue),
-                      const SizedBox(width: 12),
-                      Text('Mode → Target (optional) → Start',
-                          style:
-                              TextStyle(fontSize: 12, color: Colors.black87)),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        s.isRecording
-                            ? Icons.fiber_manual_record
-                            : Icons.stop_circle_outlined,
-                        size: 48,
-                        color: s.isRecording ? Colors.red : Colors.grey,
-                      ),
-                      const SizedBox(width: 16),
-                      Text(
-                        s.isRecording ? 'Recording' : 'Not Recording',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      if (s.isRecording) ...[
-                        const SizedBox(width: 16),
-                        Text(
-                          '${s.elapsedTime}s · ${s.frameCount} frames',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        if (s.outputDir.isNotEmpty)
-                          Text('Output: ${s.outputDir}',
-                              style: Theme.of(context).textTheme.bodySmall),
-                      ],
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // 
                 ..._buildModeSelection(),
-
-                // 
-                ..._buildFullscreenSingleMode(),
-                ..._buildRegionMode(),
-                ..._buildWindowMode(),
-                ..._buildDirectRecordingControls(),
+                ..._buildScreenPicker(),
+                ..._buildActionBar(),
               ],
             ),
           ),
@@ -763,7 +520,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
   }
 }
 
-// 
+//
 class _RegionSelectorDialog extends StatefulWidget {
   final ui.Image screenshotImage;
   final double screenWidth;
@@ -796,7 +553,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
   late double _right;
   late double _bottom;
 
-  // 
+  //
   bool _isDragging = false;
   bool _isDraggingLeft = false;
   bool _isDraggingTop = false;
@@ -804,7 +561,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
   bool _isDraggingBottom = false;
   bool _isMovingRegion = false;
 
-  // 
+  //
   double _dragStartX = 0;
   double _dragStartY = 0;
   double _dragStartLeft = 0;
@@ -812,12 +569,12 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
   double _dragStartRight = 0;
   double _dragStartBottom = 0;
 
-  // 
+  //
   double get _displayWidth => 800;
   double get _displayHeight =>
       _displayWidth * (widget.screenHeight / widget.screenWidth);
 
-  // 
+  //
   double get _scale => _displayWidth / widget.screenWidth;
 
   @override
@@ -829,7 +586,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
     _bottom = widget.initialBottom;
   }
 
-  // 
+  //
   void _handleDragStart(DragStartDetails details) {
     final localPosition = details.localPosition;
     final dx = localPosition.dx;
@@ -840,14 +597,14 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
     final rightPx = _right * _displayWidth;
     final bottomPx = _bottom * _displayHeight;
 
-    // 
+    //
     const handleSize = 20.0;
     _isDraggingLeft = (dx - leftPx).abs() < handleSize;
     _isDraggingTop = (dy - topPx).abs() < handleSize;
     _isDraggingRight = (dx - rightPx).abs() < handleSize;
     _isDraggingBottom = (dy - bottomPx).abs() < handleSize;
 
-    // 
+    //
     if (!_isDraggingLeft &&
         !_isDraggingTop &&
         !_isDraggingRight &&
@@ -874,7 +631,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
     }
   }
 
-  // 
+  //
   void _handleDragUpdate(DragUpdateDetails details) {
     if (!_isDragging) return;
 
@@ -905,7 +662,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
     });
   }
 
-  // 
+  //
   void _handleDragEnd(DragEndDetails details) {
     setState(() {
       _isDragging = false;
@@ -948,7 +705,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
                     ?.copyWith(color: Colors.grey.shade600),
               ),
               const SizedBox(height: 16),
-              // 
+              //
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: GestureDetector(
@@ -972,7 +729,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
                 ),
               ),
               const SizedBox(height: 16),
-              // 
+              //
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -1013,7 +770,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
                 ),
               ),
               const SizedBox(height: 16),
-              // 
+              //
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -1050,7 +807,7 @@ class _RegionSelectorDialogState extends State<_RegionSelectorDialog> {
   }
 }
 
-// 
+//
 class _ScreenshotPainter extends CustomPainter {
   final ui.Image image;
   final double left;
@@ -1072,36 +829,36 @@ class _ScreenshotPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 
+    //
     final srcRect =
         Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
     final dstRect = Rect.fromLTWH(0, 0, displayWidth, displayHeight);
     canvas.drawImageRect(image, srcRect, dstRect, Paint());
 
-    // 
+    //
     final leftPx = left * displayWidth;
     final topPx = top * displayHeight;
     final rightPx = right * displayWidth;
     final bottomPx = bottom * displayHeight;
 
-    // 
+    //
     final maskPaint = Paint()..color = Colors.black.withOpacity(0.5);
 
-    // 
+    //
     canvas.drawRect(Rect.fromLTWH(0, 0, displayWidth, topPx), maskPaint);
-    // 
+    //
     canvas.drawRect(
         Rect.fromLTWH(0, bottomPx, displayWidth, displayHeight - bottomPx),
         maskPaint);
-    // 
+    //
     canvas.drawRect(
         Rect.fromLTWH(0, topPx, leftPx, bottomPx - topPx), maskPaint);
-    // 
+    //
     canvas.drawRect(
         Rect.fromLTWH(rightPx, topPx, displayWidth - rightPx, bottomPx - topPx),
         maskPaint);
 
-    // 
+    //
     final borderPaint = Paint()
       ..color = Colors.red
       ..style = PaintingStyle.stroke
@@ -1111,26 +868,26 @@ class _ScreenshotPainter extends CustomPainter {
         Rect.fromLTWH(leftPx, topPx, rightPx - leftPx, bottomPx - topPx),
         borderPaint);
 
-    // 
+    //
     final handlePaint = Paint()..color = Colors.red;
     const handleSize = 8.0;
 
-    // 
+    //
     canvas.drawRect(
         Rect.fromLTWH(leftPx - handleSize / 2, topPx - handleSize / 2,
             handleSize, handleSize),
         handlePaint);
-    // 
+    //
     canvas.drawRect(
         Rect.fromLTWH(rightPx - handleSize / 2, topPx - handleSize / 2,
             handleSize, handleSize),
         handlePaint);
-    // 
+    //
     canvas.drawRect(
         Rect.fromLTWH(leftPx - handleSize / 2, bottomPx - handleSize / 2,
             handleSize, handleSize),
         handlePaint);
-    // 
+    //
     canvas.drawRect(
         Rect.fromLTWH(rightPx - handleSize / 2, bottomPx - handleSize / 2,
             handleSize, handleSize),

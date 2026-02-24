@@ -15,6 +15,9 @@ import sqlite3
 import threading
 import time
 import datetime
+import os
+import sys
+import ctypes
 from typing import Optional, Callable
 from collections import deque
 from pynput import keyboard, mouse
@@ -44,6 +47,12 @@ class InputTracker:
         self.event_queue = None
         self.mouse_listener = None
         self.keyboard_listener = None
+        self.track_mouse_move = os.getenv(
+            "MEMSCREEN_TRACK_MOUSE_MOVE", ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        self.track_mouse_scroll = os.getenv(
+            "MEMSCREEN_TRACK_MOUSE_SCROLL", ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
 
         # Initialize database
         self._init_database()
@@ -100,11 +109,13 @@ class InputTracker:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
+            # Use local wall-clock time explicitly to avoid SQLite CURRENT_TIMESTAMP (UTC) offset surprises.
+            local_time = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
 
             cursor.execute("""
-                INSERT INTO keyboard_mouse_logs (operate_type, action, content, details)
-                VALUES (?, ?, ?, ?)
-            """, (event_type, action, content, details))
+                INSERT INTO keyboard_mouse_logs (operate_time, operate_type, action, content, details)
+                VALUES (?, ?, ?, ?, ?)
+            """, (local_time, event_type, action, content, details))
 
             conn.commit()
             conn.close()
@@ -117,18 +128,14 @@ class InputTracker:
     def _on_keyboard_press(self, key):
         """Handle keyboard press event"""
         try:
-            key_name = key.name if hasattr(key, 'name') else str(key)
+            if hasattr(key, 'char') and key.char:
+                key_name = key.char
+            elif hasattr(key, 'name') and key.name:
+                key_name = key.name
+            else:
+                key_name = str(key)
             print(f"[DEBUG] Keyboard press: {key_name}")  # Debug log
-            modifiers = []
-            if keyboard.Shift in keyboard._modifiers_pressed:
-                modifiers.append("Shift")
-            if keyboard.Control in keyboard._modifiers_pressed:
-                modifiers.append("Ctrl")
-            if keyboard.Alt in keyboard._modifiers_pressed:
-                modifiers.append("Alt")
-
-            details = f"Modifiers: {', '.join(modifiers) if modifiers else 'None'}"
-            self._log_event("keyboard", "press", key_name, details)
+            self._log_event("keyboard", "press", key_name, "")
         except Exception as e:
             print(f"[ERROR] Keyboard press error: {e}")
         return True  # Continue listening
@@ -136,7 +143,12 @@ class InputTracker:
     def _on_keyboard_release(self, key):
         """Handle keyboard release event"""
         try:
-            key_name = key.name if hasattr(key, 'name') else str(key)
+            if hasattr(key, 'char') and key.char:
+                key_name = key.char
+            elif hasattr(key, 'name') and key.name:
+                key_name = key.name
+            else:
+                key_name = str(key)
             self._log_event("keyboard", "release", key_name, "Key released")
         except Exception as e:
             print(f"[ERROR] Keyboard release error: {e}")
@@ -144,16 +156,17 @@ class InputTracker:
 
     def _on_mouse_move(self, x, y):
         """Handle mouse move event"""
-        # Throttle mouse move events to avoid flooding the database
-        # Only log every 10th move or if significant time has passed
+        # Mouse move is noisy and can drift even when users feel "idle".
+        # Keep it opt-in to make process counters stable by default.
+        if not self.track_mouse_move:
+            return True
         try:
             details = f"Position: ({x}, {y})"
-            # Only log periodically to avoid too many events
             current_time = time.time()
             if not hasattr(self, '_last_mouse_log_time'):
                 self._last_mouse_log_time = current_time
                 self._log_event("mouse", "move", "", details)
-            elif current_time - self._last_mouse_log_time > 1.0:  # Log at most once per second
+            elif current_time - self._last_mouse_log_time > 1.0:
                 self._log_event("mouse", "move", "", details)
                 self._last_mouse_log_time = current_time
         except Exception as e:
@@ -173,6 +186,8 @@ class InputTracker:
 
     def _on_mouse_scroll(self, x, y, dx, dy):
         """Handle mouse scroll event"""
+        if not self.track_mouse_scroll:
+            return True
         try:
             direction = "up" if dy > 0 else "down"
             details = f"Position: ({x}, {y}), Delta: ({dx}, {dy}), Direction: {direction}"
@@ -190,67 +205,32 @@ class InputTracker:
         Returns:
             True if permissions are granted, raises PermissionError otherwise
         """
-        import sys
         if sys.platform != 'darwin':
             return True  # Only check on macOS
 
         print("[INFO] Checking macOS Accessibility permissions...")
 
         try:
-            # Try to create a CGEventTap to test permissions
-            from Quartz.CoreGraphics import (
-                CGEventTapCreate,
-                kCGSessionEventTap,
-                kCGHeadInsertEventTap,
-                kCGEventTapOptionDefault,
-            )
-            from Quartz import kCGEventMaskForAllEvents
-
-            tap = CGEventTapCreate(
-                kCGSessionEventTap,
-                kCGHeadInsertEventTap,
-                kCGEventTapOptionDefault,
-                kCGEventMaskForAllEvents(),
-                None,
-                None
-            )
-
-            if tap is None:
-                # No permission - raise error with helpful message
-                error_msg = """
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-MemScreen 
-
-
-
-1. ""
-2. ""
-3. ""
-4. "+"
-5. "" MemScreen.app
-6.  MemScreen.app  ✓
-
- MemScreen 
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-"""
+            # Use AXIsProcessTrusted to avoid CGEventTap crash risk on some macOS/Python combos.
+            app_services = ctypes.CDLL("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")
+            app_services.AXIsProcessTrusted.restype = ctypes.c_bool
+            trusted = bool(app_services.AXIsProcessTrusted())
+            if not trusted:
+                exe_path = sys.executable
+                error_msg = (
+                    "Accessibility permission is required for keyboard/mouse recording.\n\n"
+                    "Go to: System Settings > Privacy & Security > Accessibility.\n"
+                    f"Enable access for the current runtime:\n{exe_path}\n\n"
+                    "If launched from terminal, also ensure your terminal app is allowed."
+                )
                 raise PermissionError(error_msg)
-
-            # Clean up the tap
-            import ctypes
-            CFRelease = ctypes.CDLL('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation').CFRelease
-            CFRelease(tap)
 
             print("[INFO] ✓ Accessibility permissions verified")
             return True
 
-        except ImportError:
-            # Quartz not available - just show warning
-            print("[WARNING] Cannot verify permissions (Quartz not available)")
-            print("[INFO] If tracking crashes, grant Accessibility permissions in System Settings")
+        except OSError as e:
+            print(f"[WARNING] Accessibility check unavailable: {e}")
+            print("[INFO] Proceeding without explicit permission precheck")
             return True
         except PermissionError:
             # Re-raise PermissionError with our message
@@ -264,12 +244,13 @@ MemScreen
 
         print("[INFO] Starting input tracking...")
 
-        # NOTE: Permission checking removed because CGEventTapCreate can cause crashes
-        # Instead, we rely on exception handling when starting listeners
-        import sys
+        # Permission precheck: fail fast with a clear actionable message.
+        self._check_macos_permissions()
+
         if sys.platform == 'darwin':
             print("[INFO] macOS detected. If tracking fails, grant Accessibility permissions:")
             print("       System Settings > Privacy & Security > Accessibility > Add MemScreen")
+            print("       Also grant Input Monitoring to the runtime process for keyboard events.")
 
         self.is_tracking = True
 
@@ -322,14 +303,11 @@ MemScreen
                 import traceback
                 traceback.print_exc()
 
-        # TEMPORARY DISABLE KEYBOARD LISTENER ON MACOS
-        # Due to pynput compatibility issues with macOS 15.5 + Python 3.13
-        # The keyboard listener causes crashes in TSMGetInputSourceProperty
-        import sys
-        if sys.platform == 'darwin':
-            print("[WARNING] Keyboard tracking disabled on macOS due to compatibility issues")
-            print("[INFO] Mouse tracking is enabled")
-            print("[INFO] Full input tracking will be enabled in a future update")
+        disable_keyboard = os.getenv("MEMSCREEN_DISABLE_MACOS_KEYBOARD_TRACKING", "").strip().lower() in {
+            "1", "true", "yes", "on"
+        }
+        if sys.platform == 'darwin' and disable_keyboard:
+            print("[WARNING] Keyboard tracking disabled by MEMSCREEN_DISABLE_MACOS_KEYBOARD_TRACKING")
         else:
             keyboard_thread = threading.Thread(target=start_keyboard_listener, daemon=True)
             keyboard_thread.start()
@@ -355,7 +333,20 @@ MemScreen
 
         print("[INFO] Input tracking stopped")
 
-    def get_recent_events(self, limit: int = 100) -> list:
+    def get_latest_event_id(self) -> int:
+        """Return current max event id in storage."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COALESCE(MAX(id), 0) FROM keyboard_mouse_logs")
+            row = cursor.fetchone()
+            conn.close()
+            return int(row[0] or 0)
+        except Exception as e:
+            print(f"[ERROR] Failed to get latest event id: {e}")
+            return 0
+
+    def get_recent_events(self, limit: int = 100, since_id: Optional[int] = None) -> list:
         """
         Get recent events from database
 
@@ -369,12 +360,21 @@ MemScreen
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
-            cursor.execute("""
-                SELECT id, operate_time, operate_type, action, content, details
-                FROM keyboard_mouse_logs
-                ORDER BY operate_time DESC
-                LIMIT ?
-            """, (limit,))
+            if since_id is not None and since_id >= 0:
+                cursor.execute("""
+                    SELECT id, operate_time, operate_type, action, content, details
+                    FROM keyboard_mouse_logs
+                    WHERE id > ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                """, (since_id, limit))
+            else:
+                cursor.execute("""
+                    SELECT id, operate_time, operate_type, action, content, details
+                    FROM keyboard_mouse_logs
+                    ORDER BY id DESC
+                    LIMIT ?
+                """, (limit,))
 
             rows = cursor.fetchall()
             conn.close()

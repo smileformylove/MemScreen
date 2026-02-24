@@ -1,0 +1,23 @@
+INFO:     Started server process [11108]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8765 (Press CTRL+C to quit)
+[API] Starting on http://127.0.0.1:8765
+[API] Backend only - NO Kivy UI will be started
+INFO:     127.0.0.1:59362 - "GET /health HTTP/1.1" 200 OK
+Could not verify embedding model exists: Failed to connect to Ollama. Please check that Ollama is downloaded, running and accessible. https://ollama.com/download. This is likely a compatibility issue between ollama Python client and server. The embedder will still work if model 'mxbai-embed-large' is available.
+[Agent] Initialized MemScreen Chat Agent v1.0.0
+[SkillRegistry] Registered skill: search_memory
+[SkillRegistry] Registered skill: summarize
+[ChatPresenter] Base Agent initialized
+[Agent] Initialized MemScreen Intelligent Agent v2.0.0
+[SkillRegistry] Registered skill: search_memory
+[SkillRegistry] Registered skill: summarize
+[ChatPresenter] ✅ Intelligent Agent initialized (auto-classification enabled)
+[ChatPresenter] Loaded 4 models
+[ChatPresenter] Initialized successfully
+INFO:     127.0.0.1:59364 - "GET /chat/models HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [11108]

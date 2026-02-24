@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -31,6 +32,8 @@ class AppState extends ChangeNotifier {
       const channel = MethodChannel('com.memscreen/floating_ball');
       channel.setMethodCallHandler(_handleFloatingBallCall);
     }
+
+    _loadRecordingSettings();
   }
 
   ApiConfig _config = ApiConfig.fromEnvironment();
@@ -48,6 +51,15 @@ class AppState extends ChangeNotifier {
   int get videoRefreshVersion => _videoRefreshVersion;
   int _recordingStatusVersion = 0;
   int get recordingStatusVersion => _recordingStatusVersion;
+  int _recordingDurationSec = 9999;
+  int get recordingDurationSec => _recordingDurationSec;
+  double _recordingIntervalSec = 2.0;
+  double get recordingIntervalSec => _recordingIntervalSec;
+  bool _autoTrackInputWithRecording = true;
+  bool get autoTrackInputWithRecording => _autoTrackInputWithRecording;
+  bool _trackingStartedByRecording = false;
+  String get _settingsFilePath =>
+      '${Platform.environment['HOME'] ?? ''}/.memscreen/flutter_settings.json';
 
   late ChatApi _chatApi;
   late ProcessApi _processApi;
@@ -112,6 +124,13 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Update floating ball keyboard/mouse tracking state (macOS only)
+  void updateFloatingBallTracking(bool isTracking) {
+    if (Platform.isMacOS || Platform.isWindows) {
+      FloatingBallService.setTrackingState(isTracking);
+    }
+  }
+
   void requestVideoRefresh({bool notify = true}) {
     _videoRefreshVersion += 1;
     if (notify) {
@@ -126,6 +145,134 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> _loadRecordingSettings() async {
+    try {
+      final file = File(_settingsFilePath);
+      if (!await file.exists()) return;
+      final raw = await file.readAsString();
+      final map = jsonDecode(raw);
+      if (map is! Map<String, dynamic>) return;
+      final duration = map['recording_duration_sec'];
+      final interval = map['recording_interval_sec'];
+      final autoTrack = map['auto_track_input_with_recording'];
+      if (duration is int && duration > 0) {
+        _recordingDurationSec = duration;
+      }
+      if (interval is num && interval > 0) {
+        _recordingIntervalSec = interval.toDouble();
+      }
+      if (autoTrack is bool) {
+        _autoTrackInputWithRecording = autoTrack;
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[AppState] Failed to load recording settings: $e');
+    }
+  }
+
+  Future<void> setRecordingDefaults({
+    required int durationSec,
+    required double intervalSec,
+  }) async {
+    if (durationSec <= 0 || intervalSec <= 0) return;
+    _recordingDurationSec = durationSec;
+    _recordingIntervalSec = intervalSec;
+    notifyListeners();
+    await _persistRecordingSettings();
+  }
+
+  Future<void> setAutoTrackInputWithRecording(bool enabled) async {
+    _autoTrackInputWithRecording = enabled;
+    notifyListeners();
+    await _persistRecordingSettings();
+  }
+
+  Future<void> _persistRecordingSettings() async {
+    try {
+      final file = File(_settingsFilePath);
+      await file.parent.create(recursive: true);
+      await file.writeAsString(
+        jsonEncode({
+          'recording_duration_sec': _recordingDurationSec,
+          'recording_interval_sec': _recordingIntervalSec,
+          'auto_track_input_with_recording': _autoTrackInputWithRecording,
+        }),
+      );
+    } catch (e) {
+      debugPrint('[AppState] Failed to persist recording settings: $e');
+    }
+  }
+
+  Future<void> _maybeStartTrackingForRecording() async {
+    if (!_autoTrackInputWithRecording) return;
+    try {
+      final status = await _processApi.getTrackingStatus();
+      if (!status.isTracking) {
+        await _processApi.startTracking();
+        _trackingStartedByRecording = true;
+        updateFloatingBallTracking(true);
+        requestRecordingStatusRefresh();
+      }
+    } catch (e) {
+      debugPrint('[AppState] Failed to auto-start input tracking: $e');
+    }
+  }
+
+  Future<void> _maybeStopTrackingAfterRecording() async {
+    if (!_trackingStartedByRecording) return;
+    try {
+      await _processApi.stopTracking();
+      updateFloatingBallTracking(false);
+      requestRecordingStatusRefresh();
+      _trackingStartedByRecording = false;
+      Future.delayed(const Duration(milliseconds: 400), () async {
+        try {
+          final result = await _processApi.saveSessionFromTracking();
+          if (result.eventsSaved > 0) {
+            requestVideoRefresh();
+          }
+        } catch (e) {
+          debugPrint('[AppState] Error auto-saving tracking session: $e');
+        }
+      });
+    } catch (e) {
+      debugPrint('[AppState] Failed to auto-stop input tracking: $e');
+    }
+  }
+
+  Future<void> startRecording({
+    required int duration,
+    required double interval,
+    String? mode,
+    List<double>? region,
+    int? screenIndex,
+    String? windowTitle,
+  }) async {
+    await _maybeStartTrackingForRecording();
+    await _recordingApi.start(
+      duration: duration,
+      interval: interval,
+      mode: mode,
+      region: region,
+      screenIndex: screenIndex,
+      windowTitle: windowTitle,
+    );
+    updateFloatingBallState(true);
+    requestRecordingStatusRefresh();
+  }
+
+  Future<void> stopRecording() async {
+    await _recordingApi.stop();
+    updateFloatingBallState(false);
+    requestRecordingStatusRefresh();
+    requestVideoRefresh();
+    Future.delayed(const Duration(seconds: 2), () {
+      requestRecordingStatusRefresh();
+      requestVideoRefresh();
+    });
+    await _maybeStopTrackingAfterRecording();
+  }
+
   /// Handle method calls from native floating ball
   Future<dynamic> _handleFloatingBallCall(MethodCall call) async {
     debugPrint('[AppState] Received floating ball call: ${call.method}');
@@ -135,7 +282,7 @@ class AppState extends ChangeNotifier {
           final args =
               call.arguments is Map ? (call.arguments as Map) : const {};
           final rawMode = args['mode'];
-          final mode =
+          var mode =
               rawMode is String && rawMode.isNotEmpty ? rawMode : 'fullscreen';
 
           List<double>? region;
@@ -160,35 +307,33 @@ class AppState extends ChangeNotifier {
                   ? rawWindowTitle
                   : null;
 
-          await _recordingApi.start(
-            duration: 60,
-            interval: 2.0,
+          // Safety fallback: avoid invalid region start when selector payload is missing.
+          if (mode == 'region' && (region == null || region.length != 4)) {
+            mode = (screenIndex != null) ? 'fullscreen-single' : 'fullscreen';
+            region = null;
+          }
+
+          await startRecording(
+            duration: _recordingDurationSec,
+            interval: _recordingIntervalSec,
             mode: mode,
             region: region,
             screenIndex: screenIndex,
             windowTitle: windowTitle,
           );
-          updateFloatingBallState(true);
-          requestRecordingStatusRefresh();
           debugPrint(
             '[AppState] Recording started from floating ball: mode=$mode, region=$region, screen=$screenIndex, windowTitle=$windowTitle',
           );
         } catch (e) {
           debugPrint('[AppState] Error starting recording: $e');
+          updateFloatingBallState(false);
+          requestRecordingStatusRefresh();
         }
         break;
 
       case 'stopRecording':
         try {
-          await _recordingApi.stop();
-          updateFloatingBallState(false);
-          requestRecordingStatusRefresh();
-          requestVideoRefresh();
-          // Video save is async in backend; trigger a delayed refresh as well.
-          Future.delayed(const Duration(seconds: 2), () {
-            requestRecordingStatusRefresh();
-            requestVideoRefresh();
-          });
+          await stopRecording();
           debugPrint('[AppState] Recording stopped from floating ball');
         } catch (e) {
           debugPrint('[AppState] Error stopping recording: $e');
@@ -200,16 +345,48 @@ class AppState extends ChangeNotifier {
         debugPrint('[AppState] Toggle pause called (not fully implemented)');
         break;
 
+      case 'toggleTracking':
+        try {
+          final status = await _processApi.getTrackingStatus();
+          if (status.isTracking) {
+            await _processApi.stopTracking();
+            _trackingStartedByRecording = false;
+            updateFloatingBallTracking(false);
+            requestVideoRefresh();
+            requestRecordingStatusRefresh();
+            Future.delayed(const Duration(milliseconds: 400), () async {
+              try {
+                final result = await _processApi.saveSessionFromTracking();
+                if (result.eventsSaved > 0) {
+                  requestVideoRefresh();
+                }
+              } catch (e) {
+                debugPrint('[AppState] Error saving tracking session: $e');
+              }
+            });
+            debugPrint('[AppState] Input tracking stopped from floating ball');
+          } else {
+            await _processApi.startTracking();
+            _trackingStartedByRecording = false;
+            updateFloatingBallTracking(true);
+            requestRecordingStatusRefresh();
+            debugPrint('[AppState] Input tracking started from floating ball');
+          }
+        } catch (e) {
+          debugPrint('[AppState] Error toggling input tracking: $e');
+        }
+        break;
+
       case 'openQuickChat':
-        _desiredTabIndex = 0;
+        _desiredTabIndex = 3;
         notifyListeners();
-        debugPrint('[AppState] Requesting tab switch to Chat (0)');
+        debugPrint('[AppState] Requesting tab switch to Chat (3)');
         break;
 
       case 'openVideos':
-        _desiredTabIndex = 3;
+        _desiredTabIndex = 2;
         notifyListeners();
-        debugPrint('[AppState] Requesting tab switch to Videos (3)');
+        debugPrint('[AppState] Requesting tab switch to Videos (2)');
         break;
 
       case 'openSettings':

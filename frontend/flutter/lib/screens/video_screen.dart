@@ -13,13 +13,6 @@ class VideoScreen extends StatefulWidget {
   State<VideoScreen> createState() => _VideoScreenState();
 }
 
-class _SmartView {
-  const _SmartView({required this.name, required this.tags});
-
-  final String name;
-  final List<String> tags;
-}
-
 class _VideoScreenState extends State<VideoScreen> {
   List<VideoItem> _videos = [];
   bool _loading = true;
@@ -33,11 +26,6 @@ class _VideoScreenState extends State<VideoScreen> {
   final Set<String> _reanalyzingFiles = <String>{};
   String _organizeMode = 'all'; // all | app | day | tag
   final Set<String> _selectedTags = <String>{};
-  final List<_SmartView> _smartViews = <_SmartView>[
-    _SmartView(name: 'Coding Focus', tags: ['purpose:coding', 'time:morning']),
-    _SmartView(name: 'Meetings', tags: ['purpose:meeting']),
-    _SmartView(name: 'Research', tags: ['purpose:research', 'length:medium']),
-  ];
 
   @override
   void initState() {
@@ -140,60 +128,9 @@ class _VideoScreenState extends State<VideoScreen> {
     });
   }
 
-  void _applySmartView(_SmartView view) {
-    setState(() {
-      _selectedTags
-        ..clear()
-        ..addAll(view.tags);
-    });
-  }
-
   void _clearFilters() {
     if (_selectedTags.isEmpty) return;
     setState(() => _selectedTags.clear());
-  }
-
-  Future<void> _saveCurrentSmartView() async {
-    if (_selectedTags.isEmpty) return;
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Save Smart View'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'View name',
-            hintText: 'e.g. Morning Coding',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final v = controller.text.trim();
-              if (v.isEmpty) return;
-              Navigator.pop(context, v);
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (name == null || name.trim().isEmpty) return;
-    setState(() {
-      _smartViews.insert(
-        0,
-        _SmartView(name: name.trim(), tags: _selectedTags.toList()),
-      );
-      if (_smartViews.length > 12) {
-        _smartViews.removeLast();
-      }
-    });
   }
 
   Future<void> _playVideo(VideoItem v) async {
@@ -299,12 +236,9 @@ class _VideoScreenState extends State<VideoScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                //  - 
                 _buildTimeline(),
                 _buildOrganizationBar(),
                 _buildTagFilterBar(),
-                _buildSmartViewsBar(),
-                // 
                 Expanded(
                   child: _currentVideo != null
                       ? _buildVideoPlayer()
@@ -317,11 +251,9 @@ class _VideoScreenState extends State<VideoScreen> {
 
   Widget _buildOrganizationBar() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
       child: Row(
         children: [
-          const Text('Organize by'),
-          const SizedBox(width: 12),
           Expanded(
             child: SegmentedButton<String>(
               segments: const [
@@ -345,7 +277,6 @@ class _VideoScreenState extends State<VideoScreen> {
   Widget _buildTagFilterBar() {
     final tags = _availableTags;
     if (tags.isEmpty) return const SizedBox.shrink();
-    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
       alignment: Alignment.centerLeft,
@@ -353,14 +284,6 @@ class _VideoScreenState extends State<VideoScreen> {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            Text(
-              'Tags',
-              style: TextStyle(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontSize: 12,
-              ),
-            ),
-            const SizedBox(width: 8),
             ...tags.map((tag) {
               final selected = _selectedTags.contains(tag);
               return Padding(
@@ -373,14 +296,15 @@ class _VideoScreenState extends State<VideoScreen> {
               );
             }),
             const SizedBox(width: 4),
-            TextButton(
+            IconButton(
               onPressed: _selectedTags.isEmpty ? null : _clearFilters,
-              child: const Text('Clear'),
+              icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+              tooltip: 'Clear filters',
             ),
             IconButton(
-              onPressed: _selectedTags.isEmpty ? null : _saveCurrentSmartView,
-              icon: const Icon(Icons.bookmark_add_outlined, size: 20),
-              tooltip: 'Save as Smart View',
+              onPressed: _load,
+              icon: const Icon(Icons.refresh, size: 18),
+              tooltip: 'Refresh',
             ),
           ],
         ),
@@ -388,46 +312,7 @@ class _VideoScreenState extends State<VideoScreen> {
     );
   }
 
-  Widget _buildSmartViewsBar() {
-    if (_smartViews.isEmpty) return const SizedBox.shrink();
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-      alignment: Alignment.centerLeft,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            Text(
-              'Smart Views',
-              style: TextStyle(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontSize: 12,
-              ),
-            ),
-            const SizedBox(width: 8),
-            ..._smartViews.map((view) {
-              final active = view.tags.isNotEmpty &&
-                  view.tags.every((t) => _selectedTags.contains(t)) &&
-                  _selectedTags.length == view.tags.length;
-              return Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: ActionChip(
-                  backgroundColor: active
-                      ? theme.colorScheme.primaryContainer
-                      : theme.colorScheme.surfaceContainerHigh,
-                  label: Text(view.name),
-                  onPressed: () => _applySmartView(view),
-                ),
-              );
-            }),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // 
+  //
   Widget _buildTimeline() {
     final theme = Theme.of(context);
     final videos = _visibleVideos;
@@ -453,97 +338,192 @@ class _VideoScreenState extends State<VideoScreen> {
       );
     }
 
+    final children = <Widget>[];
+    String? previousTimestamp;
+    for (final video in videos) {
+      final marker = _timelineMarkerLabel(previousTimestamp, video.timestamp);
+      if (marker != null) {
+        children.add(_buildTimelineMarker(marker));
+      }
+      final isPlaying = _currentVideo?.filename == video.filename;
+      children.add(_buildVideoTimelineNode(video, isPlaying));
+      previousTimestamp = video.timestamp;
+    }
+
     return Container(
-      height: 50,
+      height: 34,
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
         border: Border(
           bottom: BorderSide(color: theme.dividerColor, width: 1),
         ),
       ),
-      child: ListView.builder(
+      child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        itemCount: videos.length,
-        itemBuilder: (context, index) {
-          final video = videos[index];
-          final isPlaying = _currentVideo?.filename == video.filename;
-          return _buildVideoTimelineNode(video, isPlaying);
-        },
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        children: children,
       ),
     );
   }
 
-  //  - 
+  Widget _buildTimelineMarker(String label) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, right: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 1,
+            height: 20,
+            color: theme.colorScheme.outlineVariant,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 9,
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 2),
+        ],
+      ),
+    );
+  }
+
+  //  -
   Widget _buildVideoTimelineNode(VideoItem video, bool isPlaying) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
-      child: GestureDetector(
-        onTap: () => _playVideo(video),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: isPlaying
-                    ? LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          theme.colorScheme.primary,
-                          theme.colorScheme.primary.withOpacity(0.7),
-                        ],
-                      )
-                    : null,
-                color: isPlaying ? null : theme.colorScheme.surfaceContainerLow,
-                border: Border.all(
+      child: Tooltip(
+        message: _timelineTooltipText(video),
+        waitDuration: const Duration(milliseconds: 250),
+        child: GestureDetector(
+          onTap: () => _playVideo(video),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              //
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: isPlaying
+                      ? LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            theme.colorScheme.primary,
+                            theme.colorScheme.primary.withOpacity(0.7),
+                          ],
+                        )
+                      : null,
+                  color:
+                      isPlaying ? null : theme.colorScheme.surfaceContainerLow,
+                  border: Border.all(
+                    color: isPlaying
+                        ? theme.colorScheme.primary
+                        : theme.dividerColor,
+                    width: isPlaying ? 2 : 1,
+                  ),
+                  boxShadow: isPlaying
+                      ? [
+                          BoxShadow(
+                            color: theme.colorScheme.primary.withOpacity(0.4),
+                            blurRadius: 8,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Icon(
+                  isPlaying ? Icons.play_arrow : Icons.circle,
+                  color: isPlaying
+                      ? theme.colorScheme.onPrimary
+                      : theme.colorScheme.onSurfaceVariant,
+                  size: 12,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _timelineTime(video.timestamp),
+                style: TextStyle(
+                  fontSize: 8,
                   color: isPlaying
                       ? theme.colorScheme.primary
-                      : theme.dividerColor,
-                  width: isPlaying ? 2 : 1,
+                      : theme.colorScheme.onSurfaceVariant,
+                  fontWeight: isPlaying ? FontWeight.w600 : FontWeight.normal,
                 ),
-                boxShadow: isPlaying
-                    ? [
-                        BoxShadow(
-                          color: theme.colorScheme.primary.withOpacity(0.4),
-                          blurRadius: 8,
-                          spreadRadius: 1,
-                        ),
-                      ]
-                    : null,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              child: Icon(
-                isPlaying ? Icons.play_arrow : Icons.circle,
-                color: isPlaying
-                    ? theme.colorScheme.onPrimary
-                    : theme.colorScheme.onSurfaceVariant,
-                size: 12,
-              ),
-            ),
-            const SizedBox(height: 2),
-            //  - 
-            Text(
-              video.timestamp,
-              style: TextStyle(
-                fontSize: 5,
-                color: isPlaying
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurfaceVariant,
-                fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
-              ),
-              maxLines: 1,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  String _timelineTime(String ts) {
+    if (ts.isEmpty) return '--:--';
+    if (ts.length >= 16) return ts.substring(11, 16);
+    if (ts.length >= 8) return ts.substring(ts.length - 8, ts.length - 3);
+    return ts;
+  }
+
+  String? _timelineMarkerLabel(String? previousTs, String currentTs) {
+    if (currentTs.isEmpty) return null;
+    if (previousTs == null || previousTs.isEmpty) {
+      return _formatTimelineHour(currentTs, includeDay: true);
+    }
+    final current = _parseTimestamp(currentTs);
+    final previous = _parseTimestamp(previousTs);
+    if (current == null || previous == null) {
+      return null;
+    }
+    final dayChanged = current.year != previous.year ||
+        current.month != previous.month ||
+        current.day != previous.day;
+    final hourChanged = current.hour != previous.hour;
+    if (dayChanged) {
+      return _formatTimelineHour(currentTs, includeDay: true);
+    }
+    if (hourChanged) {
+      return _formatTimelineHour(currentTs, includeDay: false);
+    }
+    return null;
+  }
+
+  DateTime? _parseTimestamp(String ts) {
+    if (ts.isEmpty) return null;
+    return DateTime.tryParse(ts.replaceFirst(' ', 'T'));
+  }
+
+  String _formatTimelineHour(String ts, {required bool includeDay}) {
+    final dt = _parseTimestamp(ts);
+    if (dt == null) return _timelineTime(ts);
+    final hh = dt.hour.toString().padLeft(2, '0');
+    if (!includeDay) {
+      return '$hh:00';
+    }
+    final mm = dt.month.toString().padLeft(2, '0');
+    final dd = dt.day.toString().padLeft(2, '0');
+    return '$mm-$dd $hh:00';
+  }
+
+  String _timelineTooltipText(VideoItem video) {
+    final tags = _prioritizedTags(video.tags).map(_formatTag).toList();
+    final preview = tags.take(4).toList();
+    final tagText = preview.isEmpty ? '-' : preview.join(', ');
+    return [
+      'Time: ${video.timestamp}',
+      'Duration: ${video.duration.toStringAsFixed(1)}s',
+      'App: ${_extractAppName(video)}',
+      'Tags: $tagText',
+    ].join('\n');
   }
 
   Widget _buildOrganizedVideoList() {
@@ -572,7 +552,7 @@ class _VideoScreenState extends State<VideoScreen> {
                 size: 64, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: 16),
             Text(
-              _selectedTags.isEmpty ? 'No recordings yet' : 'No videos match current tag filters',
+              'No videos',
               style: TextStyle(
                   color: theme.colorScheme.onSurfaceVariant, fontSize: 16),
             ),
@@ -765,9 +745,10 @@ class _VideoScreenState extends State<VideoScreen> {
           children: [
             _metaText(v.timestamp),
             _metaText('${v.duration}s'),
-            _metaChip(_recordingModeLabel(v.recordingMode)),
             _metaChip(_extractAppName(v)),
-            ..._prioritizedTags(v.tags).map((x) => _metaChip(_formatTag(x))),
+            ..._prioritizedTags(v.tags)
+                .take(2)
+                .map((x) => _metaChip(_formatTag(x))),
           ],
         ),
         trailing: Row(
@@ -860,17 +841,6 @@ class _VideoScreenState extends State<VideoScreen> {
     return 'All Screens';
   }
 
-  String _recordingModeLabel(String mode) {
-    switch (mode) {
-      case 'fullscreen-single':
-        return 'Single Screen';
-      case 'region':
-        return 'Region/Window';
-      default:
-        return 'Full Screen';
-    }
-  }
-
   List<String> _topTags(List<String> tags) {
     if (tags.isEmpty) return const [];
     const allowedPrefixes = [
@@ -935,17 +905,17 @@ class _VideoScreenState extends State<VideoScreen> {
     return tag;
   }
 
-  // 
+  //
   Future<void> _deleteVideo(VideoItem video) async {
     final theme = Theme.of(context);
 
-    // 
+    //
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: theme.colorScheme.surfaceContainerHigh,
-        title:
-            Text('Delete Video', style: TextStyle(color: theme.colorScheme.onSurface)),
+        title: Text('Delete Video',
+            style: TextStyle(color: theme.colorScheme.onSurface)),
         content: Text(
           'Delete this video?\n${video.filename.split('/').last}',
           style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
@@ -958,7 +928,8 @@ class _VideoScreenState extends State<VideoScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text('Delete', style: TextStyle(color: theme.colorScheme.error)),
+            child: Text('Delete',
+                style: TextStyle(color: theme.colorScheme.error)),
           ),
         ],
       ),
@@ -966,7 +937,7 @@ class _VideoScreenState extends State<VideoScreen> {
 
     if (confirmed == true && mounted) {
       try {
-        // 
+        //
         final path = video.filename.startsWith('/')
             ? video.filename
             : '/Users/jixiangluo/.memscreen/videos/${video.filename}';
@@ -975,12 +946,12 @@ class _VideoScreenState extends State<VideoScreen> {
           await file.delete();
         }
 
-        // 
+        //
         if (_currentVideo?.filename == video.filename) {
           _closeVideo();
         }
 
-        // 
+        //
         await _load();
 
         if (mounted) {
@@ -1004,7 +975,7 @@ class _VideoScreenState extends State<VideoScreen> {
     }
   }
 
-  // 
+  //
   Widget _buildVideoPlayer() {
     final theme = Theme.of(context);
 
@@ -1018,7 +989,7 @@ class _VideoScreenState extends State<VideoScreen> {
     return Stack(
       alignment: Alignment.center,
       children: [
-        // 
+        //
         Center(
           child: AspectRatio(
             aspectRatio: _controller!.value.aspectRatio,
@@ -1026,7 +997,7 @@ class _VideoScreenState extends State<VideoScreen> {
           ),
         ),
 
-        // 
+        //
         Positioned(
           bottom: 0,
           left: 0,
@@ -1047,7 +1018,7 @@ class _VideoScreenState extends State<VideoScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 
+                //
                 Row(
                   children: [
                     Text(
@@ -1091,7 +1062,7 @@ class _VideoScreenState extends State<VideoScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // 
+                //
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -1121,7 +1092,7 @@ class _VideoScreenState extends State<VideoScreen> {
                 ),
                 const SizedBox(height: 8),
 
-                // 
+                //
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(

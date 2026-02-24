@@ -16,6 +16,7 @@ class FloatingBallWindow: NSPanel {
     // State
     var isRecording: Bool = false
     var isPaused: Bool = false
+    var isTracking: Bool = false
     private var isToolbarExpanded: Bool = false
     private var selectedRegionForNextRecording: [Double]?
     private var selectedRegionScreenIndexForNextRecording: Int?
@@ -24,7 +25,8 @@ class FloatingBallWindow: NSPanel {
     private var selectedWindowSummaryForNextRecording: String?
     private var consumeSelectedWindowOnRecordStart = false
     private var selectedScreenIndexForNextRecording: Int?
-    private var keyboardMonitor: Any?
+    private var localKeyboardMonitor: Any?
+    private var globalKeyboardMonitor: Any?
 
     // Drag state
     private var initialMouseLocation: NSPoint?
@@ -87,9 +89,13 @@ class FloatingBallWindow: NSPanel {
     }
 
     deinit {
-        if let monitor = keyboardMonitor {
+        if let monitor = localKeyboardMonitor {
             NSEvent.removeMonitor(monitor)
-            keyboardMonitor = nil
+            localKeyboardMonitor = nil
+        }
+        if let monitor = globalKeyboardMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalKeyboardMonitor = nil
         }
     }
 
@@ -163,7 +169,7 @@ class FloatingBallWindow: NSPanel {
 
         let ballFrame = self.frame
         let toolbarWidth: CGFloat = 260
-        let toolbarHeight: CGFloat = 360
+        let toolbarHeight: CGFloat = 404
         let padding: CGFloat = 10
 
         // Position toolbar to the left of the ball (or right if no space)
@@ -189,6 +195,9 @@ class FloatingBallWindow: NSPanel {
             onSelectWindow: { [weak self] in
                 self?.selectWindowForNextRecording()
             },
+            onToggleTracking: { [weak self] in
+                self?.toggleTrackingFromToolbar()
+            },
             onScreenSelectionChanged: { [weak self] screenIndex in
                 self?.setSelectedScreenIndex(screenIndex)
             },
@@ -201,6 +210,7 @@ class FloatingBallWindow: NSPanel {
         toolbarPanel?.setSelectedWindow(selectedWindowSummaryForNextRecording)
         toolbarPanel?.updateRecordingState(isRecording)
         toolbarPanel?.updatePausedState(isPaused)
+        toolbarPanel?.updateTrackingState(isTracking)
 
         toolbarPanel?.makeKeyAndOrderFront(nil)
         isToolbarExpanded = true
@@ -261,6 +271,11 @@ class FloatingBallWindow: NSPanel {
         toolbarPanel?.updatePausedState(paused)
     }
 
+    func setTrackingState(_ tracking: Bool) {
+        isTracking = tracking
+        toolbarPanel?.updateTrackingState(tracking)
+    }
+
     private func selectRegionForNextRecording() {
         guard !isRecording else {
             toolbarPanel?.showStatus("Status: Stop recording first", color: NSColor.systemOrange)
@@ -272,9 +287,7 @@ class FloatingBallWindow: NSPanel {
             parentWindow.miniaturize(nil)
         }
 
-        let previousVisibility = self.isVisible
         collapseToolbar()
-        self.orderOut(nil)
 
         let screen = selectionScreen()
         let selectionScreenIndex = NSScreen.screens.firstIndex(where: { $0 == screen })
@@ -282,10 +295,8 @@ class FloatingBallWindow: NSPanel {
             guard let self = self else { return }
 
             self.regionSelector = nil
-            if previousVisibility {
-                self.orderFront(nil)
-                self.makeKeyAndOrderFront(nil)
-            }
+            self.orderFront(nil)
+            self.makeKeyAndOrderFront(nil)
 
             if case .cancelled = result {
                 if shouldReopenToolbar {
@@ -335,19 +346,15 @@ class FloatingBallWindow: NSPanel {
             parentWindow.miniaturize(nil)
         }
 
-        let previousVisibility = self.isVisible
         collapseToolbar()
-        self.orderOut(nil)
 
         let screen = selectionScreen()
         windowSelector = WindowSelectionPanel(screen: screen) { [weak self] result in
             guard let self = self else { return }
             self.windowSelector = nil
 
-            if previousVisibility {
-                self.orderFront(nil)
-                self.makeKeyAndOrderFront(nil)
-            }
+            self.orderFront(nil)
+            self.makeKeyAndOrderFront(nil)
 
             if case .cancelled = result {
                 if shouldReopenToolbar {
@@ -430,48 +437,70 @@ class FloatingBallWindow: NSPanel {
         collapseToolbar()
     }
 
+    private func toggleTrackingFromToolbar() {
+        if isTracking {
+            toolbarPanel?.showStatus("Status: Stopping input tracking...", color: NSColor.systemOrange)
+        } else {
+            toolbarPanel?.showStatus("Status: Starting input tracking...", color: NSColor.systemBlue)
+        }
+        flutterChannel?.invokeMethod("toggleTracking", arguments: nil)
+    }
+
     private func installKeyboardShortcuts() {
-        keyboardMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        localKeyboardMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self = self else { return event }
-            // Command + Shift + R: select/reselect region
-            if event.modifierFlags.contains([.command, .shift]), event.charactersIgnoringModifiers?.lowercased() == "r" {
-                self.selectRegionForNextRecording()
-                return nil
-            }
-            // Command + Shift + S: start/stop recording
-            if event.modifierFlags.contains([.command, .shift]), event.charactersIgnoringModifiers?.lowercased() == "s" {
-                self.toggleRecordingFromToolbar()
-                return nil
-            }
-            // Command + Shift + W: select/reselect app window
-            if event.modifierFlags.contains([.command, .shift]), event.charactersIgnoringModifiers?.lowercased() == "w" {
-                self.selectWindowForNextRecording()
-                return nil
-            }
-            // Command + Shift + C: quick chat
-            if event.modifierFlags.contains([.command, .shift]), event.charactersIgnoringModifiers?.lowercased() == "c" {
-                self.flutterChannel?.invokeMethod("openQuickChat", arguments: nil)
-                self.collapseToolbar()
-                return nil
-            }
-            // Command + Shift + V: videos
-            if event.modifierFlags.contains([.command, .shift]), event.charactersIgnoringModifiers?.lowercased() == "v" {
-                self.flutterChannel?.invokeMethod("openVideos", arguments: nil)
-                self.collapseToolbar()
-                return nil
-            }
-            // Command + Shift + Comma: settings
-            if event.modifierFlags.contains([.command, .shift]), event.charactersIgnoringModifiers == "," {
-                self.flutterChannel?.invokeMethod("openSettings", arguments: nil)
-                self.collapseToolbar()
-                return nil
-            }
-            // Command + Shift + Q: quit
-            if event.modifierFlags.contains([.command, .shift]), event.charactersIgnoringModifiers?.lowercased() == "q" {
-                self.onQuit?()
+            if self.handleShortcutKeyDown(event) {
                 return nil
             }
             return event
+        }
+
+        globalKeyboardMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                _ = self.handleShortcutKeyDown(event)
+            }
+        }
+    }
+
+    private func handleShortcutKeyDown(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.contains([.command, .shift]) else { return false }
+
+        let key = shortcutKey(from: event)
+        if key == "r" {
+            selectRegionForNextRecording()
+            return true
+        }
+        if key == "s" {
+            toggleRecordingFromToolbar()
+            return true
+        }
+        if key == "," {
+            flutterChannel?.invokeMethod("openSettings", arguments: nil)
+            collapseToolbar()
+            return true
+        }
+        if key == "x" {
+            onQuit?()
+            return true
+        }
+        return false
+    }
+
+    private func shortcutKey(from event: NSEvent) -> String {
+        switch event.keyCode {
+        case 15: return "r"   // R
+        case 1: return "s"    // S
+        case 0: return "a"    // A
+        case 13: return "w"   // W
+        case 8: return "c"    // C
+        case 9: return "v"    // V
+        case 43: return ","   // Comma
+        case 7: return "x"    // X
+        case 40: return "k"   // K
+        default:
+            return event.charactersIgnoringModifiers?.lowercased() ?? ""
         }
     }
 
@@ -532,6 +561,7 @@ class ToolbarPanel: NSPanel {
     private var startStopButton: NSButton!
     private var selectRegionButton: NSButton!
     private var selectWindowButton: NSButton!
+    private var trackingButton: NSButton!
     private var quickChatButton: NSButton!
     private var videosButton: NSButton!
     private var settingsButton: NSButton!
@@ -542,10 +572,12 @@ class ToolbarPanel: NSPanel {
     private var onToggleRecording: (() -> Void)?
     private var onSelectRegion: (() -> Void)?
     private var onSelectWindow: (() -> Void)?
+    private var onToggleTracking: (() -> Void)?
     private var onScreenSelectionChanged: ((Int?) -> Void)?
     private var onQuit: (() -> Void)?
     private var currentRecording = false
     private var currentPaused = false
+    private var currentTracking = false
     private var selectedRegionSummary: String?
     private var selectedWindowSummary: String?
 
@@ -555,6 +587,7 @@ class ToolbarPanel: NSPanel {
         onToggleRecording: @escaping () -> Void,
         onSelectRegion: @escaping () -> Void,
         onSelectWindow: @escaping () -> Void,
+        onToggleTracking: @escaping () -> Void,
         onScreenSelectionChanged: @escaping (Int?) -> Void,
         onQuit: @escaping () -> Void
     ) {
@@ -569,6 +602,7 @@ class ToolbarPanel: NSPanel {
         self.onToggleRecording = onToggleRecording
         self.onSelectRegion = onSelectRegion
         self.onSelectWindow = onSelectWindow
+        self.onToggleTracking = onToggleTracking
         self.onScreenSelectionChanged = onScreenSelectionChanged
         self.onQuit = onQuit
 
@@ -610,7 +644,7 @@ class ToolbarPanel: NSPanel {
         }
 
         screenPopup = NSPopUpButton(
-            frame: NSRect(x: 15, y: 265, width: 230, height: 30),
+            frame: NSRect(x: 15, y: 308, width: 230, height: 30),
             pullsDown: false
         )
         screenPopup.font = NSFont.systemFont(ofSize: 12)
@@ -630,7 +664,7 @@ class ToolbarPanel: NSPanel {
             color: NSColor.systemRed,
             action: #selector(toggleRecording)
         )
-        startStopButton.frame = NSRect(x: 15, y: 220, width: 230, height: 36)
+        startStopButton.frame = NSRect(x: 15, y: 264, width: 230, height: 36)
         containerView.addSubview(startStopButton)
 
         selectRegionButton = createActionButton(
@@ -638,33 +672,41 @@ class ToolbarPanel: NSPanel {
             color: NSColor.systemPurple,
             action: #selector(selectRegionAndRecord)
         )
-        selectRegionButton.frame = NSRect(x: 15, y: 180, width: 230, height: 36)
+        selectRegionButton.frame = NSRect(x: 15, y: 224, width: 230, height: 36)
         containerView.addSubview(selectRegionButton)
 
         selectWindowButton = createActionButton(
-            title: "🪟 Select Window (⌘⇧W)",
+            title: "🪟 Record App Window",
             color: NSColor.systemTeal,
             action: #selector(selectWindowAndRecord)
         )
-        selectWindowButton.frame = NSRect(x: 15, y: 140, width: 230, height: 36)
+        selectWindowButton.frame = NSRect(x: 15, y: 184, width: 230, height: 36)
         containerView.addSubview(selectWindowButton)
+
+        trackingButton = createActionButton(
+            title: "⌨️ Input Record",
+            color: NSColor.systemIndigo,
+            action: #selector(toggleTracking)
+        )
+        trackingButton.frame = NSRect(x: 15, y: 144, width: 230, height: 36)
+        containerView.addSubview(trackingButton)
 
         // Quick Chat button
         quickChatButton = createActionButton(
-            title: "💬 Quick Chat (⌘⇧C)",
+            title: "💬 Quick Chat",
             color: NSColor.systemBlue,
             action: #selector(openQuickChat)
         )
-        quickChatButton.frame = NSRect(x: 15, y: 100, width: 230, height: 36)
+        quickChatButton.frame = NSRect(x: 15, y: 104, width: 230, height: 36)
         containerView.addSubview(quickChatButton)
 
         // Videos button
         videosButton = createActionButton(
-            title: "📁 Videos (⌘⇧V)",
+            title: "📁 Videos",
             color: NSColor.systemGreen,
             action: #selector(openVideos)
         )
-        videosButton.frame = NSRect(x: 15, y: 60, width: 230, height: 36)
+        videosButton.frame = NSRect(x: 15, y: 64, width: 230, height: 36)
         containerView.addSubview(videosButton)
 
         // Settings button
@@ -673,16 +715,16 @@ class ToolbarPanel: NSPanel {
             color: NSColor.systemGray,
             action: #selector(openSettings)
         )
-        settingsButton.frame = NSRect(x: 15, y: 15, width: 110, height: 36)
+        settingsButton.frame = NSRect(x: 15, y: 19, width: 110, height: 36)
         containerView.addSubview(settingsButton)
 
         // Quit button
         quitButton = createActionButton(
-            title: "🚪 Quit (⌘⇧Q)",
+            title: "🚪 Quit (⌘⇧X)",
             color: NSColor.systemRed,
             action: #selector(quitApp)
         )
-        quitButton.frame = NSRect(x: 135, y: 15, width: 110, height: 36)
+        quitButton.frame = NSRect(x: 135, y: 19, width: 110, height: 36)
         containerView.addSubview(quitButton)
 
         self.contentView = containerView
@@ -722,6 +764,10 @@ class ToolbarPanel: NSPanel {
         onToggleRecording?()
     }
 
+    @objc private func toggleTracking() {
+        onToggleTracking?()
+    }
+
     @objc private func selectRegionAndRecord() {
         if currentRecording {
             showStatus("Status: Stop recording before selecting region", color: NSColor.systemOrange)
@@ -732,7 +778,7 @@ class ToolbarPanel: NSPanel {
 
     @objc private func selectWindowAndRecord() {
         if currentRecording {
-            showStatus("Status: Stop recording before selecting window", color: NSColor.systemOrange)
+            showStatus("Status: Stop recording before selecting app window", color: NSColor.systemOrange)
             return
         }
         onSelectWindow?()
@@ -754,6 +800,12 @@ class ToolbarPanel: NSPanel {
 
     func updatePausedState(_ isPaused: Bool) {
         currentPaused = isPaused
+        refreshStatus()
+        refreshActionButtons()
+    }
+
+    func updateTrackingState(_ isTracking: Bool) {
+        currentTracking = isTracking
         refreshStatus()
         refreshActionButtons()
     }
@@ -804,8 +856,16 @@ class ToolbarPanel: NSPanel {
             showStatus("Status: Paused", color: NSColor.systemOrange)
             return
         }
+        if currentRecording && currentTracking {
+            showStatus("Status: Recording + input tracking", color: NSColor.systemRed)
+            return
+        }
         if currentRecording {
             showStatus("Status: Recording", color: NSColor.systemRed)
+            return
+        }
+        if currentTracking {
+            showStatus("Status: Input tracking", color: NSColor.systemBlue)
             return
         }
         if let selectedRegionSummary = selectedRegionSummary {
@@ -827,7 +887,7 @@ class ToolbarPanel: NSPanel {
             } else if self.selectedRegionSummary != nil {
                 self.startStopButton.title = "⏺ Start Region Recording (⌘⇧S)"
             } else if self.selectedWindowSummary != nil {
-                self.startStopButton.title = "⏺ Start Window Recording (⌘⇧S)"
+                self.startStopButton.title = "⏺ Start App Recording (⌘⇧S)"
             } else {
                 self.startStopButton.title = "⏺ Start Recording (⌘⇧S)"
             }
@@ -835,8 +895,11 @@ class ToolbarPanel: NSPanel {
                 ? "🎯 Select Region (⌘⇧R)"
                 : "🎯 Re-select Region (⌘⇧R)"
             self.selectWindowButton.title = self.selectedWindowSummary == nil
-                ? "🪟 Select Window (⌘⇧W)"
-                : "🪟 Re-select Window (⌘⇧W)"
+                ? "🪟 Record App Window"
+                : "🪟 Re-select App Window"
+            self.trackingButton.title = self.currentTracking
+                ? "⌨️ Stop Input Record"
+                : "⌨️ Input Record"
             self.selectRegionButton.isEnabled = !self.currentRecording
             self.selectRegionButton.alphaValue = self.currentRecording ? 0.6 : 1.0
             self.selectWindowButton.isEnabled = !self.currentRecording
@@ -877,6 +940,7 @@ private class RegionSelectionPanel: NSPanel {
         hasShadow = false
         ignoresMouseEvents = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        hidesOnDeactivate = false
 
         let localFrame = NSRect(x: 0, y: 0, width: frame.width, height: frame.height)
         selectionView = RegionSelectionView(frame: localFrame, panelFrame: frame) { [weak self] region in
@@ -911,6 +975,7 @@ private struct CandidateWindow {
     let bounds: CGRect  // Global top-left coordinates from CGWindow API.
     let ownerName: String
     let windowName: String
+    let ownerPID: pid_t
 }
 
 private class WindowSelectionPanel: NSPanel {
@@ -935,6 +1000,7 @@ private class WindowSelectionPanel: NSPanel {
         hasShadow = false
         ignoresMouseEvents = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        hidesOnDeactivate = false
 
         let localFrame = NSRect(x: 0, y: 0, width: frame.width, height: frame.height)
         selectionView = WindowSelectionView(frame: localFrame, panelFrame: frame) { [weak self] result in
@@ -971,13 +1037,16 @@ private class WindowSelectionView: NSView {
     private var windows: [CandidateWindow] = []
     private var selectedIndex: Int?
     private var confirmButtonRect: NSRect = .zero
+    private var refreshTimer: Timer?
+    private var lastSelectedBounds: CGRect?
 
     init(frame frameRect: NSRect, panelFrame: NSRect, completion: @escaping (WindowSelectionResult) -> Void) {
         self.panelFrame = panelFrame
         self.completion = completion
         super.init(frame: frameRect)
         wantsLayer = true
-        windows = loadCandidateWindows()
+        refreshWindows(autoSelectTopMost: true)
+        startRefreshLoop()
     }
 
     required init?(coder: NSCoder) {
@@ -986,33 +1055,36 @@ private class WindowSelectionView: NSView {
 
     override var acceptsFirstResponder: Bool { true }
 
+    deinit {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
         NSColor.black.withAlphaComponent(0.30).setFill()
         NSBezierPath(rect: dirtyRect).fill()
 
-        // Draw all candidate windows with subtle outlines.
-        for (idx, win) in windows.enumerated() {
-            let rect = localRect(for: win.bounds)
-            if rect.isEmpty { continue }
-            let color: NSColor = (idx == selectedIndex) ? .systemTeal : .white
-            let alpha: CGFloat = (idx == selectedIndex) ? 0.20 : 0.08
-            color.withAlphaComponent(alpha).setFill()
-            rect.fill()
-
-            let border = NSBezierPath(rect: rect)
-            border.lineWidth = idx == selectedIndex ? 2.2 : 1.0
-            color.withAlphaComponent(idx == selectedIndex ? 0.95 : 0.55).setStroke()
-            border.stroke()
-        }
-
         if let idx = selectedIndex, idx >= 0, idx < windows.count {
+            let win = windows[idx]
+            let rect = localRect(for: win.bounds)
+            if !rect.isEmpty {
+                // Highlight only the current top/selected app window to avoid overlap clutter.
+                let color: NSColor = .systemTeal
+                color.withAlphaComponent(0.20).setFill()
+                rect.fill()
+
+                let border = NSBezierPath(rect: rect)
+                border.lineWidth = 2.2
+                color.withAlphaComponent(0.95).setStroke()
+                border.stroke()
+            }
             drawSelectedWindowTitle(windows[idx])
-            drawConfirmButton(under: localRect(for: windows[idx].bounds))
+            drawConfirmButton(under: rect)
         } else {
             confirmButtonRect = .zero
-            drawHint("Click an app window to select it for recording")
+            drawHint("Switch to target app or click its window to select")
         }
     }
 
@@ -1025,7 +1097,11 @@ private class WindowSelectionView: NSView {
             return
         }
 
+        refreshWindows(autoSelectTopMost: false)
         selectedIndex = topMostWindowIndex(at: location)
+        if selectedIndex == nil {
+            selectedIndex = topMostWindowIndex()
+        }
         needsDisplay = true
     }
 
@@ -1045,10 +1121,63 @@ private class WindowSelectionView: NSView {
         if event.charactersIgnoringModifiers?.lowercased() == "r" {
             selectedIndex = nil
             confirmButtonRect = .zero
+            refreshWindows(autoSelectTopMost: true)
             needsDisplay = true
             return
         }
         super.keyDown(with: event)
+    }
+
+    private func startRefreshLoop() {
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            self?.refreshWindows(autoSelectTopMost: true)
+        }
+    }
+
+    private func refreshWindows(autoSelectTopMost: Bool) {
+        let previousSummary = selectedSummary()
+        let previousBounds = selectedWindowBounds()
+        windows = loadCandidateWindows()
+        if windows.isEmpty {
+            selectedIndex = nil
+            lastSelectedBounds = nil
+            if !confirmButtonRect.isEmpty {
+                confirmButtonRect = .zero
+            }
+            needsDisplay = true
+            return
+        }
+
+        if autoSelectTopMost {
+            selectedIndex = topMostWindowIndex()
+        } else if let idx = selectedIndex, idx >= 0, idx < windows.count {
+            // Keep existing selected index only if still valid after refresh.
+            selectedIndex = idx
+        } else {
+            selectedIndex = topMostWindowIndex()
+        }
+
+        let currentSummary = selectedSummary()
+        let currentBounds = selectedWindowBounds()
+        if previousSummary != currentSummary || previousBounds != currentBounds {
+            lastSelectedBounds = currentBounds
+            needsDisplay = true
+        }
+    }
+
+    private func selectedSummary() -> String? {
+        guard let idx = selectedIndex, idx >= 0, idx < windows.count else { return nil }
+        let win = windows[idx]
+        if win.windowName.isEmpty {
+            return win.ownerName
+        }
+        return "\(win.ownerName)::\(win.windowName)"
+    }
+
+    private func selectedWindowBounds() -> CGRect? {
+        guard let idx = selectedIndex, idx >= 0, idx < windows.count else { return nil }
+        return windows[idx].bounds
     }
 
     private func loadCandidateWindows() -> [CandidateWindow] {
@@ -1058,8 +1187,13 @@ private class WindowSelectionView: NSView {
         }
 
         var out: [CandidateWindow] = []
+        let selfPID = ProcessInfo.processInfo.processIdentifier
         for info in list {
             guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0 else {
+                continue
+            }
+            if let ownerPID = info[kCGWindowOwnerPID as String] as? NSNumber,
+               ownerPID.int32Value == selfPID {
                 continue
             }
             guard let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
@@ -1082,7 +1216,8 @@ private class WindowSelectionView: NSView {
                 continue
             }
 
-            out.append(CandidateWindow(bounds: bounds, ownerName: ownerName, windowName: windowName))
+            let pidValue = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value ?? 0
+            out.append(CandidateWindow(bounds: bounds, ownerName: ownerName, windowName: windowName, ownerPID: pidValue))
         }
         return out
     }
@@ -1101,6 +1236,15 @@ private class WindowSelectionView: NSView {
     private func topMostWindowIndex(at localPoint: NSPoint) -> Int? {
         for (idx, win) in windows.enumerated() {
             if localRect(for: win.bounds).contains(localPoint) {
+                return idx
+            }
+        }
+        return nil
+    }
+
+    private func topMostWindowIndex() -> Int? {
+        for (idx, win) in windows.enumerated() {
+            if !localRect(for: win.bounds).isEmpty {
                 return idx
             }
         }

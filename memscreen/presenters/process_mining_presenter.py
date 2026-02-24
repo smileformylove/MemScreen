@@ -49,6 +49,7 @@ class ProcessMiningPresenter(BasePresenter):
         self.is_tracking = False
         self.event_count = 0
         self.last_event_count = 0
+        self._tracking_start_event_id = 0
 
         # Live event update
         self.update_interval = 500  # ms
@@ -114,6 +115,7 @@ class ProcessMiningPresenter(BasePresenter):
             if not self.input_tracker:
                 self.initialize()
 
+            self._tracking_start_event_id = self.input_tracker.get_latest_event_id()
             self.input_tracker.start_tracking()
             self.is_tracking = True
             self.event_count = 0
@@ -127,8 +129,10 @@ class ProcessMiningPresenter(BasePresenter):
 
         except PermissionError as e:
             # macOS permission error
-            error_msg = "Permission denied: This app needs Accessibility permissions to track input events."
-            error_msg += "\n\nGo to: System Settings > Privacy & Security > Accessibility > Add MemScreen"
+            error_msg = "Permission denied: Accessibility permission is required to record keyboard and mouse events."
+            error_msg += "\n\nGo to: System Settings > Privacy & Security."
+            error_msg += "\n1) Accessibility: allow the runtime process."
+            error_msg += "\n2) Input Monitoring: allow the runtime process (required for keyboard events)."
             self.show_error(error_msg)
             print(f"[ProcessMiningPresenter] Permission error: {e}")
             self.is_tracking = False
@@ -153,6 +157,7 @@ class ProcessMiningPresenter(BasePresenter):
                 self.input_tracker.stop_tracking()
 
             self.is_tracking = False
+            self._tracking_start_event_id = 0
 
             # Notify view
             if self.view:
@@ -178,13 +183,27 @@ class ProcessMiningPresenter(BasePresenter):
             return []
 
         try:
-            events = self.input_tracker.get_recent_events(limit=limit)
-            self.event_count = len(events)
+            since_id = self._tracking_start_event_id if self.is_tracking else None
+            events = self.input_tracker.get_recent_events(
+                limit=limit,
+                since_id=since_id,
+            )
+            self.event_count = sum(1 for e in events if self._is_meaningful_event(e))
             return events
 
         except Exception as e:
             self.handle_error(e, "Failed to get recent events")
             return []
+
+    @staticmethod
+    def _is_meaningful_event(event: Dict[str, Any]) -> bool:
+        operate_type = str(event.get("operate_type", "")).lower()
+        action = str(event.get("action", "")).lower()
+        if operate_type == "keyboard":
+            return action == "press"
+        if operate_type == "mouse":
+            return action == "press"
+        return False
 
     def analyze_workflow(self, start_time: Optional[datetime] = None,
                         end_time: Optional[datetime] = None) -> Optional[Dict[str, Any]]:

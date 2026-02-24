@@ -18,7 +18,7 @@ class HomeScaffold extends StatefulWidget {
 
 /// Public state class for external access
 class HomeScaffoldState extends State<HomeScaffold> {
-  int _index = 0;
+  int _index = 3;
 
   @override
   void initState() {
@@ -48,10 +48,10 @@ class HomeScaffoldState extends State<HomeScaffold> {
   }
 
   static const _tabs = [
-    (icon: Icons.chat, label: 'Chat'),
     (icon: Icons.account_tree, label: 'Process'),
     (icon: Icons.fiber_manual_record, label: 'Record'),
     (icon: Icons.video_library, label: 'Videos'),
+    (icon: Icons.chat, label: 'Chat'),
     (icon: Icons.settings, label: 'Settings'),
   ];
 
@@ -68,10 +68,10 @@ class HomeScaffoldState extends State<HomeScaffold> {
             child: IndexedStack(
               index: _index,
               children: const [
-                ChatScreen(),
                 ProcessScreen(),
                 RecordingScreen(),
                 VideoScreen(),
+                ChatScreen(),
                 SettingsScreen(),
               ],
             ),
@@ -82,14 +82,15 @@ class HomeScaffoldState extends State<HomeScaffold> {
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: _tabs
-            .map((t) => NavigationDestination(icon: Icon(t.icon), label: t.label))
+            .map((t) =>
+                NavigationDestination(icon: Icon(t.icon), label: t.label))
             .toList(),
       ),
     );
   }
 }
 
-///  API 
+///  API
 class _ConnectionBanner extends StatelessWidget {
   const _ConnectionBanner({required this.state});
 

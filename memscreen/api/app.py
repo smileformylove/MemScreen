@@ -367,24 +367,72 @@ async def process_save_session_from_tracking():
     if not events_raw:
         raise HTTPException(status_code=400, detail="No events to save")
     # Convert to session format (type, text, time) and chronological order (raw is DESC)
+    def _to_local_dt(ts_value):
+        # Normalize timestamp from tracker DB to local datetime.
+        if isinstance(ts_value, datetime.datetime):
+            if ts_value.tzinfo is not None:
+                return ts_value.astimezone().replace(tzinfo=None)
+            return ts_value
+        if not isinstance(ts_value, str):
+            return datetime.datetime.now()
+
+        raw = ts_value.strip()
+        if not raw:
+            return datetime.datetime.now()
+
+        # ISO-like: supports offset and Z.
+        try:
+            iso_raw = raw.replace("Z", "+00:00")
+            dt = datetime.datetime.fromisoformat(iso_raw)
+            if dt.tzinfo is not None:
+                return dt.astimezone().replace(tzinfo=None)
+            return dt
+        except Exception:
+            pass
+
+        # Legacy SQLite CURRENT_TIMESTAMP format is UTC without timezone.
+        try:
+            dt = datetime.datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+            return dt.replace(tzinfo=datetime.timezone.utc).astimezone().replace(tzinfo=None)
+        except Exception:
+            return datetime.datetime.now()
+
     session_events = []
-    for event in reversed(events_raw):
-        ts = event.get("timestamp") or ""
-        if isinstance(ts, str):
-            try:
-                ts = datetime.datetime.fromisoformat(ts.replace(" ", "T"))
-            except Exception:
-                ts = datetime.datetime.now()
-        time_str = ts.strftime("%H:%M:%S") if hasattr(ts, "strftime") else str(ts)
-        event_type = "keypress" if event.get("operate_type") == "keyboard" else "click"
-        text = f"{event.get('operate_type', '')}: {event.get('action', '')}"
+    for event in events_raw:
+        operate_type = (event.get("operate_type") or "").strip().lower()
+        action = (event.get("action") or "").strip().lower()
+        ts = _to_local_dt(event.get("timestamp"))
+        time_str = ts.strftime("%Y-%m-%d %H:%M:%S")
+
+        # Keep session metrics meaningful:
+        # - keyboard press => keypress
+        # - mouse press => click
+        # - mouse move => skip (too noisy)
+        if operate_type == "keyboard":
+            if action != "press":
+                continue
+            event_type = "keypress"
+        elif operate_type == "mouse":
+            if action in {"move", "scroll"}:
+                continue
+            if action == "press":
+                event_type = "click"
+            else:
+                continue
+        else:
+            continue
+
+        text = f"{operate_type}: {action}"
         if event.get("content"):
             text += f" ({event['content']})"
-        session_events.append({"time": time_str, "text": text, "type": event_type})
+        session_events.append({"time": time_str, "text": text, "type": event_type, "_dt": ts})
     if len(session_events) <= 1:
         raise HTTPException(status_code=400, detail="Not enough events to save (need at least 2)")
+    session_events.sort(key=lambda e: e["_dt"])
     start_time = session_events[0]["time"]
     end_time = session_events[-1]["time"]
+    for e in session_events:
+        e.pop("_dt", None)
     db_path = deps.get_process_db_path()
     await asyncio.get_event_loop().run_in_executor(
         _executor,
@@ -415,7 +463,10 @@ async def recording_start(body: RecordingStartBody):
         if body.window_title:
             kwargs["window_title"] = body.window_title
         try:
-            presenter.set_recording_mode(body.mode, **kwargs)
+            mode_ok = presenter.set_recording_mode(body.mode, **kwargs)
+            if not mode_ok:
+                detail = getattr(presenter, "last_start_error", None) or f"Invalid recording mode arguments: {body.mode}"
+                raise HTTPException(status_code=400, detail=detail)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
     ok = await asyncio.get_event_loop().run_in_executor(
@@ -423,7 +474,8 @@ async def recording_start(body: RecordingStartBody):
         lambda: presenter.start_recording(duration=body.duration, interval=body.interval),
     )
     if not ok:
-        raise HTTPException(status_code=500, detail="Failed to start recording")
+        detail = getattr(presenter, "last_start_error", None) or "Failed to start recording"
+        raise HTTPException(status_code=500, detail=detail)
     return {"ok": True}
 
 

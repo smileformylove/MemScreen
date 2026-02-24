@@ -12,9 +12,7 @@ import queue
 import re
 import sqlite3
 import hashlib
-import subprocess
 import threading
-import requests
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Callable, Tuple
 import asyncio
@@ -22,6 +20,7 @@ import asyncio
 from .base_presenter import BasePresenter
 from .agent_executor import AgentExecutor
 from memscreen.cv2_loader import get_cv2
+from memscreen.services.chat_model_capability import ChatModelCapabilityService
 
 # Import Agent system (kept for compatibility)
 try:
@@ -71,18 +70,26 @@ class ChatPresenter(BasePresenter):
     - Update model dropdown
     """
 
-    def __init__(self, view=None, memory_system=None, ollama_base_url="http://127.0.0.1:11434"):
+    def __init__(
+        self,
+        view=None,
+        memory_system=None,
+        ollama_base_url="http://127.0.0.1:11434",
+        model_capability: Optional[ChatModelCapabilityService] = None,
+    ):
         """
         Initialize chat presenter.
 
         Args:
             view: ChatTab view instance
             memory_system: Memory system for context search
-            ollama_base_url: Base URL for Ollama API
+            ollama_base_url: Backward-compatible base URL override for model capability
         """
         super().__init__(view, memory_system)
         self.memory_system = memory_system  # Store memory_system reference
-        self.ollama_base_url = ollama_base_url
+        self.model_capability = model_capability or ChatModelCapabilityService(ollama_base_url)
+        # Keep legacy field for compatibility with existing call sites/serializations.
+        self.ollama_base_url = self.model_capability.ollama_base_url
 
         # Chat state
         self.conversation_history: List[ChatMessage] = []
@@ -103,7 +110,7 @@ class ChatPresenter(BasePresenter):
         # NEW: Rule-based Agent Executor (more reliable)
         self.agent_executor = AgentExecutor(
             memory_system=memory_system,
-            ollama_base_url=ollama_base_url,
+            ollama_base_url=self.model_capability.ollama_base_url,
             current_model="qwen3:1.7b"
         )
 
@@ -140,34 +147,23 @@ class ChatPresenter(BasePresenter):
             try:
                 # Create a simple LLM client wrapper
                 class LLMClient:
-                    def __init__(self, base_url):
-                        self.base_url = base_url
+                    def __init__(self, capability: ChatModelCapabilityService):
+                        self.capability = capability
 
                     def generate_response(self, messages, **kwargs):
                         # Synchronous wrapper for async compatibility
-                        import requests
                         # Extract the last message content for simpler interface
                         if messages and len(messages) > 0:
                             content = messages[-1].get("content", "")
                         else:
                             content = str(messages)
-
-                        # Use Ollama generate endpoint
-                        response = requests.post(
-                            f"{self.base_url}/api/generate",
-                            json={
-                                "model": "qwen3:1.7b",
-                                "prompt": content,
-                                "stream": False
-                            },
-                            timeout=120
+                        return self.capability.generate_once(
+                            model="qwen3:1.7b",
+                            prompt=content,
+                            timeout=120,
                         )
-                        if response.status_code == 200:
-                            data = response.json()
-                            return data.get("response", "")
-                        return ""
 
-                llm_client = LLMClient(ollama_base_url)
+                llm_client = LLMClient(self.model_capability)
 
                 # Create legacy BaseAgent
                 agent_config = AgentConfig(
@@ -685,15 +681,11 @@ class ChatPresenter(BasePresenter):
 
         try:
             print(f"[Chat] Model {model_name} missing, trying `ollama pull`...")
-            pull = subprocess.run(
-                ["ollama", "pull", model_name],
-                capture_output=True,
-                text=True,
+            ok_pull = self.model_capability.pull_model(
+                model_name=model_name,
                 timeout=self.max_auto_pull_seconds,
             )
-            if pull.returncode != 0:
-                stderr = (pull.stderr or "").strip()
-                print(f"[Chat] ollama pull failed for {model_name}: {stderr[:300]}")
+            if not ok_pull:
                 return False
             self._load_available_models()
             ok = model_name in self.available_models
@@ -773,24 +765,13 @@ class ChatPresenter(BasePresenter):
     ) -> str:
         """Single Ollama generate call with normalized response handling."""
         try:
-            payload: Dict[str, Any] = {
-                "model": model,
-                "prompt": prompt,
-                "stream": False,
-            }
-            if images:
-                payload["images"] = images
-            if options:
-                payload["options"] = options
-            resp = requests.post(
-                f"{self.ollama_base_url}/api/generate",
-                json=payload,
+            return self.model_capability.generate_once(
+                model=model,
+                prompt=prompt,
+                images=images,
+                options=options,
                 timeout=timeout,
             )
-            if resp.status_code != 200:
-                return ""
-            data = resp.json()
-            return str(data.get("response", "")).strip()
         except Exception:
             return ""
 
@@ -1259,24 +1240,20 @@ class ChatPresenter(BasePresenter):
                 "Do not output anything except valid JSON."
             )
             def _call(model: str, timeout_s: float) -> Dict[str, Any]:
-                resp = requests.post(
-                    f"{self.ollama_base_url}/api/generate",
-                    json={
-                        "model": model,
-                        "prompt": prompt,
-                        "images": [img_str],
-                        "stream": False,
-                        "options": {
-                            "num_predict": 240,
-                            "temperature": 0.1,
-                            "top_p": 0.8,
-                        },
+                data = self.model_capability.generate_json_once(
+                    model=model,
+                    prompt=prompt,
+                    images=[img_str],
+                    options={
+                        "num_predict": 240,
+                        "temperature": 0.1,
+                        "top_p": 0.8,
                     },
                     timeout=timeout_s,
                 )
-                if resp.status_code != 200:
+                if not data:
                     return {"objects": [], "visible_text": [], "summary": ""}
-                content = (resp.json().get("response") or "").strip()
+                content = (data.get("response") or "").strip()
                 m = re.search(r"\{[\s\S]*\}", content)
                 if not m:
                     return {"objects": [], "visible_text": [], "summary": content[:120]}
@@ -3785,22 +3762,25 @@ class ChatPresenter(BasePresenter):
     def _load_available_models(self):
         """Load available models from Ollama"""
         try:
-            response = requests.get(f"{self.ollama_base_url}/api/tags", timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                models = data.get("models", [])
-                self.available_models = [model["name"] for model in models]
+            self.available_models = self.model_capability.list_models(timeout=10)
+            if not self.available_models:
+                self.available_models = [
+                    "qwen3:1.7b",
+                    "qwen3:1.7b",
+                    "llama3.2:3b",
+                    "gemma2:9b",
+                ]
 
-                # Set current model if available
-                if self.available_models:
-                    if self.current_model not in self.available_models or self._is_embedding_model(self.current_model):
-                        self.current_model = self._pick_default_chat_model(self.available_models)
+            # Set current model if available
+            if self.available_models:
+                if self.current_model not in self.available_models or self._is_embedding_model(self.current_model):
+                    self.current_model = self._pick_default_chat_model(self.available_models)
 
-                print(f"[ChatPresenter] Loaded {len(self.available_models)} models")
+            print(f"[ChatPresenter] Loaded {len(self.available_models)} models")
 
-                # Notify view
-                if self.view:
-                    self.view.on_models_loaded(self.available_models, self.current_model)
+            # Notify view
+            if self.view:
+                self.view.on_models_loaded(self.available_models, self.current_model)
 
         except Exception as e:
             self.handle_error(e, "Failed to load models")
@@ -4067,35 +4047,15 @@ class ChatPresenter(BasePresenter):
             print(f"  - Est. latency: {model_config.avg_latency_ms}ms")
             print(f"  - Temperature: {optimized_params['temperature']}")
 
-            response = requests.post(
-                f"{self.ollama_base_url}/api/generate",
-                json=request_data,
-                stream=True,
-                timeout=120
-            )
-
-            if response.status_code == 200:
-                for line in response.iter_lines():
-                    if not self.is_streaming:
-                        break
-
-                    if line:
-                        try:
-                            data = json.loads(line)
-                            chunk = data.get("response", "")
-
-                            if chunk:
-                                self.stream_queue.put(chunk)
-
-                            if data.get("done", False):
-                                self.stream_queue.put(None)  # Signal end of stream
-                                break
-
-                        except json.JSONDecodeError:
-                            continue
-            else:
-                error_msg = f"API error: {response.status_code}"
-                self.stream_queue.put({"error": error_msg})
+            for data in self.model_capability.stream_generate(request_data, timeout=120):
+                if not self.is_streaming:
+                    break
+                chunk = data.get("response", "")
+                if chunk:
+                    self.stream_queue.put(chunk)
+                if data.get("done", False):
+                    self.stream_queue.put(None)  # Signal end of stream
+                    break
 
         except Exception as e:
             self.stream_queue.put({"error": str(e)})

@@ -123,8 +123,28 @@ def analyze_patterns(events: List[Dict]) -> Dict[str, Any]:
 
     if len(events) >= 2:
         try:
-            start_t = datetime.datetime.strptime(events[0]["time"], "%H:%M:%S")
-            end_t = datetime.datetime.strptime(events[-1]["time"], "%H:%M:%S")
+            def _parse_event_time(v: str) -> Optional[datetime.datetime]:
+                if not isinstance(v, str):
+                    return None
+                raw = v.strip()
+                if not raw:
+                    return None
+                # Full datetime first.
+                try:
+                    return datetime.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                except Exception:
+                    pass
+                for fmt in ("%Y-%m-%d %H:%M:%S", "%H:%M:%S"):
+                    try:
+                        return datetime.datetime.strptime(raw, fmt)
+                    except Exception:
+                        continue
+                return None
+
+            start_t = _parse_event_time(events[0].get("time", ""))
+            end_t = _parse_event_time(events[-1].get("time", ""))
+            if not start_t or not end_t:
+                raise ValueError("invalid event time")
             duration_minutes = (end_t - start_t).total_seconds() / 60
             if duration_minutes < 0:
                 duration_minutes = 24 * 60 + duration_minutes

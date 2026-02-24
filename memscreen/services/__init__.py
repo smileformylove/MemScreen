@@ -3,6 +3,8 @@ Services module for MemScreen.
 """
 
 from .region_config import RegionConfig
+from .chat_model_capability import ChatModelCapabilityService, NoopChatModelCapabilityService
+from .model_capability import RecordingModelCapabilityService, NoopRecordingModelCapabilityService
 from .session_analysis import (
     categorize_activities,
     analyze_patterns,
@@ -17,6 +19,10 @@ from .session_analysis import (
 
 __all__ = [
     'RegionConfig',
+    'ChatModelCapabilityService',
+    'NoopChatModelCapabilityService',
+    'RecordingModelCapabilityService',
+    'NoopRecordingModelCapabilityService',
     'categorize_activities',
     'analyze_patterns',
     'save_session',

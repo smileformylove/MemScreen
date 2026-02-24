@@ -240,7 +240,7 @@ class AppDelegate: FlutterAppDelegate {
         // Show floating ball above everything
         floatingBall?.orderFront(nil)
         floatingBall?.makeKeyAndOrderFront(nil)
-        floatingBall?.level = .floating
+        floatingBall?.level = .popUpMenu
 
         // Ensure app activation policy is regular
         NSApp.setActivationPolicy(.regular)
@@ -269,7 +269,7 @@ class AppDelegate: FlutterAppDelegate {
                 os_log("Floating ball hidden unexpectedly, restoring", log: self.logger, type: .error)
                 ball.orderFront(nil)
                 ball.makeKeyAndOrderFront(nil)
-                ball.level = .floating
+                ball.level = .popUpMenu
             }
         }
     }
@@ -394,14 +394,22 @@ class AppDelegate: FlutterAppDelegate {
             } else {
                 result(FlutterError(code: "INVALID_ARGS", message: "Expected isPaused argument", details: nil))
             }
+        case "setTrackingState":
+            if let args = call.arguments as? [String: Any],
+               let isTracking = args["isTracking"] as? Bool {
+                floatingBall?.setTrackingState(isTracking)
+                result(nil)
+            } else {
+                result(FlutterError(code: "INVALID_ARGS", message: "Expected isTracking argument", details: nil))
+            }
         case "openQuickChat":
-            showMainWindowAndSwitch(to: 1)
+            showMainWindowAndSwitch(to: 3)
             result(nil)
         case "openVideos":
             showMainWindowAndSwitch(to: 2)
             result(nil)
         case "openSettings":
-            showMainWindowAndSwitch(to: 3)
+            showMainWindowAndSwitch(to: 4)
             result(nil)
         case "quitApp":
             forceQuit()

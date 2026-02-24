@@ -45,6 +45,17 @@ class FloatingBallService {
     }
   }
 
+  /// Set keyboard/mouse tracking state
+  static Future<void> setTrackingState(bool isTracking) async {
+    try {
+      await _channel.invokeMethod('setTrackingState', {
+        'isTracking': isTracking,
+      });
+    } catch (e) {
+      debugPrint('[FloatingBall] Error setting tracking state: $e');
+    }
+  }
+
   /// Quit the application
   static Future<void> quitApp() async {
     try {
