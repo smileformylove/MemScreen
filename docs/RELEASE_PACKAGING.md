@@ -1,88 +1,62 @@
-# Release Packaging (Frontend and Model Capability Decoupled)
+# Release Packaging (Single Package, No Models Bundled)
 
-This document defines MemScreen's split packaging strategy:
+MemScreen now ships as **one macOS installer package**.
 
-- `Frontend Installer`: end-user app package for direct install on macOS
-- `Backend Runtime (No Models)`: local API runtime package
-- `Model Bootstrap`: on-demand model download script (optional)
-
-The goal is to avoid shipping large model files in the default installer.
+Design target:
+- user downloads one package
+- user launches one app
+- non-model features work without downloading models
+- model capability remains optional/on-demand
 
 ---
 
-## Artifact Strategy
-
-### 1) Frontend Installer (direct install)
+## Artifact
 
 Output:
-- `MemScreen-frontend-vX.Y.Z-macos.zip`
-- `MemScreen-frontend-vX.Y.Z-macos.dmg`
+- `MemScreen-vX.Y.Z-macos.dmg`
 
 Contains:
-- Flutter desktop app (`MemScreen.app`)
+- `MemScreen.app` (Flutter desktop UI)
+- embedded backend bootstrap scripts and backend source
+- embedded lite runtime requirements (`setup/runtime/requirements.lite.txt`)
 
 Does not contain:
-- Python backend runtime
-- Ollama model files
-
-Use case:
-- User can install UI directly
-- UI can connect to any reachable backend API URL
+- pre-downloaded Ollama model weights
 
 ---
 
-### 2) Backend Runtime (No Models)
+## Runtime Behavior
 
-Output:
-- `MemScreen-backend-runtime-vX.Y.Z.tar.gz`
+On app launch:
+1. app wrapper checks `http://127.0.0.1:8765/health`
+2. if backend is unavailable, it starts embedded backend bootstrap in background
+3. bootstrap creates `~/.memscreen/runtime/.venv` and installs lite runtime dependencies
+4. backend API starts locally, Flutter can reconnect immediately from the UI
 
-Contains:
-- MemScreen Python wheel
-- `start_api_only.py`
-- `install_backend.sh`
-- `download_models.sh`
+First launch can take longer because local backend runtime is prepared.
 
-Does not contain:
-- Any pre-downloaded model weights
-
-Use case:
-- Self-hosted local API
-- Core recording and non-model workflows
+Logs:
+- `~/.memscreen/logs/backend_bootstrap.log`
+- `~/.memscreen/logs/api_from_app.log`
+- `~/.memscreen/logs/app_wrapper.log`
 
 ---
 
-### 3) Model Bootstrap (optional)
-
-Script:
-- `scripts/release/download_models.sh`
-
-Presets:
-- `minimal`
-- `recommended`
-- `full`
-- `custom <model...>`
-
-Use case:
-- Install model capability only when needed
-- Keep default distribution lightweight
-
----
-
-## Local Build Commands
-
-### Build all artifacts
-
-```bash
-./scripts/release/build_all_release_artifacts.sh
-```
-
-### Build frontend installer only (macOS)
+## Local Build Command
 
 ```bash
 ./scripts/release/build_frontend_macos.sh
 ```
 
-### Build signed + notarized frontend installer (macOS)
+Or via aggregate command:
+
+```bash
+./scripts/release/build_all_release_artifacts.sh
+```
+
+---
+
+## Optional Signing/Notarization
 
 ```bash
 export CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
@@ -93,56 +67,24 @@ export APPLE_TEAM_ID="TEAMID"
 ./scripts/release/build_frontend_macos.sh
 ```
 
-### Build backend runtime only
+---
 
-```bash
-./scripts/release/build_backend_runtime.sh
-```
+## Optional Model Bootstrap
 
-### Download models on demand
+Model files are intentionally excluded from installer.
 
-```bash
-./scripts/release/download_models.sh recommended
-```
+After app installation, models can be pulled with bundled script:
+- `MemScreen.app/Contents/Resources/backend/download_models.sh`
 
 ---
 
-## GitHub Actions Automation
+## GitHub Actions
 
 Workflow:
 - `.github/workflows/release-packaging.yml`
 
 Behavior:
-- `workflow_dispatch`: build artifacts and upload as workflow artifacts
-- `push tag v*`: build artifacts, upload, and publish to GitHub Release
+- `workflow_dispatch`: build installer and upload artifact
+- `push tag v*`: build installer and publish GitHub release asset
 
-Jobs:
-- `frontend-macos`: build `.zip` and `.dmg`
-- `backend-runtime`: build `.tar.gz` backend runtime package
-- `publish-release`: attach both packages to the tagged release
-
-### Optional signing/notarization secrets (for distributable macOS installers)
-
-- `MACOS_CERT_P12_BASE64`: base64-encoded Developer ID certificate (`.p12`)
-- `MACOS_CERT_PASSWORD`: password for `.p12`
-- `MACOS_CERT_KEYCHAIN_PASSWORD`: temporary keychain password used in CI
-- `MACOS_CODESIGN_IDENTITY`: signing identity string
-- `APPLE_ID`: Apple account email for notarization
-- `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for notarization
-- `APPLE_TEAM_ID`: Apple Developer Team ID
-
-When these are configured, the macOS frontend package is:
-1. code signed
-2. notarized
-3. stapled
-
----
-
-## Recommended User Delivery
-
-For general users:
-1. Download and install `Frontend Installer` first
-2. Start backend runtime if local mode is needed
-3. Download models only when AI features are required
-
-This keeps first-time installation simple while preserving full local AI extensibility.
+Current release output is a single macOS installer package.

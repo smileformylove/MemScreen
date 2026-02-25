@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build frontend-only macOS installer artifacts (.zip + .dmg).
-# This package intentionally excludes backend runtime and models.
+# Build single-package macOS installer (.dmg).
+# Package includes Flutter app + embedded backend bootstrap (no models bundled).
 #
 # Optional signing/notarization env:
 #   CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
@@ -18,6 +18,7 @@ FRONTEND_DIR="$PROJECT_ROOT/frontend/flutter"
 DIST_ROOT="$PROJECT_ROOT/dist/release/frontend/macos"
 STAGE_DIR="$DIST_ROOT/stage"
 NOTARY_TMP_ZIP="$DIST_ROOT/.notary_tmp.zip"
+LITE_RUNTIME_REQUIREMENTS="$PROJECT_ROOT/setup/runtime/requirements.lite.txt"
 
 find_flutter() {
   if [[ -n "${FLUTTER_BIN:-}" && -x "${FLUTTER_BIN}" ]]; then
@@ -127,6 +128,11 @@ if [[ -z "$FLUTTER_CMD" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$LITE_RUNTIME_REQUIREMENTS" ]]; then
+  echo "[frontend-package] lite runtime requirements not found: $LITE_RUNTIME_REQUIREMENTS"
+  exit 1
+fi
+
 VERSION="$(awk -F'"' '/^__version__ = /{print $2}' "$PROJECT_ROOT/memscreen/version.py")"
 if [[ -z "$VERSION" ]]; then
   echo "[frontend-package] Failed to parse version from memscreen/version.py"
@@ -136,13 +142,142 @@ fi
 APP_SRC="$FRONTEND_DIR/build/macos/Build/Products/Release/memscreen_flutter.app"
 APP_NAME="MemScreen.app"
 APP_STAGE_PATH="$STAGE_DIR/$APP_NAME"
+APP_MACOS_DIR="$APP_STAGE_PATH/Contents/MacOS"
+APP_RESOURCES_DIR="$APP_STAGE_PATH/Contents/Resources"
+BACKEND_DIR="$APP_RESOURCES_DIR/backend"
 
-ZIP_OUT="$DIST_ROOT/MemScreen-frontend-v${VERSION}-macos.zip"
-DMG_OUT="$DIST_ROOT/MemScreen-frontend-v${VERSION}-macos.dmg"
+DMG_OUT="$DIST_ROOT/MemScreen-v${VERSION}-macos.dmg"
 
-rm -rf "$STAGE_DIR"
-mkdir -p "$STAGE_DIR"
+prepare_embedded_backend() {
+  echo "[frontend-package] preparing embedded backend bootstrap"
+  mkdir -p "$BACKEND_DIR/src"
+
+  cp "$PROJECT_ROOT/setup/start_api_only.py" "$BACKEND_DIR/"
+  cp "$PROJECT_ROOT/scripts/release/download_models.sh" "$BACKEND_DIR/"
+  cp "$LITE_RUNTIME_REQUIREMENTS" "$BACKEND_DIR/requirements.lite.txt"
+  rm -rf "$BACKEND_DIR/src/memscreen"
+  cp -R "$PROJECT_ROOT/memscreen" "$BACKEND_DIR/src/"
+
+  cat > "$BACKEND_DIR/bootstrap_backend.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME_DIR="${HOME}/.memscreen/runtime"
+VENV_DIR="${RUNTIME_DIR}/.venv"
+STAMP_FILE="${RUNTIME_DIR}/.backend_installed"
+LOCK_DIR="${RUNTIME_DIR}/.bootstrap_lock"
+LOG_DIR="${HOME}/.memscreen/logs"
+API_LOG="${LOG_DIR}/api_from_app.log"
+BOOTSTRAP_LOG="${LOG_DIR}/backend_bootstrap.log"
+API_HEALTH_URL="${MEMSCREEN_API_URL:-http://127.0.0.1:8765/health}"
+REQ_FILE="${APP_BACKEND_DIR}/requirements.lite.txt"
+SOURCE_MARKER="${APP_BACKEND_DIR}/src/memscreen/version.py"
+
+mkdir -p "$RUNTIME_DIR" "$LOG_DIR"
+touch "$BOOTSTRAP_LOG"
+exec >>"$BOOTSTRAP_LOG" 2>&1
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [backend-bootstrap] begin"
+
+if curl -fsS "$API_HEALTH_URL" >/dev/null 2>&1; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] [backend-bootstrap] api already healthy"
+  exit 0
+fi
+
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] [backend-bootstrap] another bootstrap is running"
+  exit 0
+fi
+trap 'rmdir "$LOCK_DIR" >/dev/null 2>&1 || true' EXIT
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "[backend-bootstrap] python3 not found"
+  exit 1
+fi
+
+if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
+  echo "[backend-bootstrap] creating runtime venv"
+  python3 -m venv "$VENV_DIR"
+fi
+
+if [[ ! -f "$SOURCE_MARKER" ]]; then
+  echo "[backend-bootstrap] embedded source not found: $SOURCE_MARKER"
+  exit 1
+fi
+
+if [[ ! -f "$STAMP_FILE" || "$REQ_FILE" -nt "$STAMP_FILE" || "$SOURCE_MARKER" -nt "$STAMP_FILE" ]]; then
+  echo "[backend-bootstrap] installing lite runtime dependencies"
+  "${VENV_DIR}/bin/python" -m pip install -r "$REQ_FILE"
+  date +"%Y-%m-%d %H:%M:%S" > "$STAMP_FILE"
+  echo "[backend-bootstrap] install complete"
+fi
+
+if curl -fsS "$API_HEALTH_URL" >/dev/null 2>&1; then
+  echo "[backend-bootstrap] api became healthy during setup"
+  exit 0
+fi
+
+if pgrep -f "${APP_BACKEND_DIR}/start_api_only.py" >/dev/null 2>&1; then
+  echo "[backend-bootstrap] api process already running"
+  exit 0
+fi
+
+echo "[backend-bootstrap] launching API"
+nohup env PYTHONPATH="${APP_BACKEND_DIR}/src${PYTHONPATH:+:$PYTHONPATH}" \
+  "${VENV_DIR}/bin/python" "${APP_BACKEND_DIR}/start_api_only.py" >>"$API_LOG" 2>&1 &
+echo "[backend-bootstrap] done"
+SH
+  chmod +x "$BACKEND_DIR/bootstrap_backend.sh"
+  chmod +x "$BACKEND_DIR/download_models.sh"
+}
+
+install_startup_wrapper() {
+  echo "[frontend-package] installing app startup wrapper"
+  local real_bin="$APP_MACOS_DIR/memscreen_flutter_real"
+  local wrapper_bin="$APP_MACOS_DIR/memscreen_flutter"
+
+  if [[ ! -x "$wrapper_bin" ]]; then
+    echo "[frontend-package] flutter app executable missing: $wrapper_bin"
+    exit 1
+  fi
+
+  mv "$wrapper_bin" "$real_bin"
+  cat > "$wrapper_bin" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_BOOTSTRAP="${APP_BIN_DIR}/../Resources/backend/bootstrap_backend.sh"
+HEALTH_URL="${MEMSCREEN_API_URL:-http://127.0.0.1:8765/health}"
+LOG_DIR="${HOME}/.memscreen/logs"
+WRAPPER_LOG="${LOG_DIR}/app_wrapper.log"
+
+if [[ -x "$BACKEND_BOOTSTRAP" ]]; then
+  mkdir -p "$LOG_DIR"
+  touch "$WRAPPER_LOG"
+  if ! curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+    nohup "$BACKEND_BOOTSTRAP" >>"$WRAPPER_LOG" 2>&1 &
+    for _ in {1..5}; do
+      if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+  fi
+fi
+
+exec "${APP_BIN_DIR}/memscreen_flutter_real" "$@"
+SH
+  chmod +x "$wrapper_bin"
+}
+
 mkdir -p "$DIST_ROOT"
+rm -rf "$STAGE_DIR"
+rm -f "$DIST_ROOT"/MemScreen-v*-macos.dmg
+rm -f "$DIST_ROOT"/MemScreen-frontend-v*-macos.dmg
+rm -f "$DIST_ROOT"/MemScreen-frontend-v*-macos.zip
+mkdir -p "$STAGE_DIR"
 
 echo "[frontend-package] flutter pub get"
 (cd "$FRONTEND_DIR" && "$FLUTTER_CMD" pub get)
@@ -156,23 +291,33 @@ if [[ ! -d "$APP_SRC" ]]; then
 fi
 
 cp -R "$APP_SRC" "$APP_STAGE_PATH"
+prepare_embedded_backend
+install_startup_wrapper
 codesign_app_if_needed
 
 cat > "$STAGE_DIR/README_FIRST.txt" <<'TXT'
-MemScreen Frontend Installer
+MemScreen Installer (No Models Bundled)
 
-This package contains only the Flutter desktop app.
-To use full local features, point it to a running MemScreen backend API.
-Default API URL: http://127.0.0.1:8765
+This package includes:
+- Flutter desktop app
+- Embedded backend bootstrap (auto-start in background on launch)
+- No bundled model files
 
-If model features are needed, install models separately:
-  scripts/release/download_models.sh
+At first launch, runtime dependencies are installed automatically into:
+  ~/.memscreen/runtime/.venv
+This can take a little longer once.
+
+Troubleshooting logs:
+  ~/.memscreen/logs/backend_bootstrap.log
+  ~/.memscreen/logs/api_from_app.log
+  ~/.memscreen/logs/app_wrapper.log
+
+Model capability is optional. To install models:
+  open Terminal and run:
+  ~/.memscreen/runtime/.venv/bin/python -m pip install ollama
+  then use the bundled script in app resources:
+  MemScreen.app/Contents/Resources/backend/download_models.sh
 TXT
-
-rm -f "$ZIP_OUT" "$DMG_OUT"
-
-echo "[frontend-package] creating zip: $ZIP_OUT"
-ditto -c -k --sequesterRsrc --keepParent "$APP_STAGE_PATH" "$ZIP_OUT"
 
 echo "[frontend-package] creating dmg: $DMG_OUT"
 hdiutil create -volname "MemScreen" -srcfolder "$STAGE_DIR" -ov -format UDZO "$DMG_OUT" >/dev/null
@@ -180,5 +325,4 @@ hdiutil create -volname "MemScreen" -srcfolder "$STAGE_DIR" -ov -format UDZO "$D
 notarize_if_needed
 
 echo "[frontend-package] Done"
-echo "  zip: $ZIP_OUT"
 echo "  dmg: $DMG_OUT"

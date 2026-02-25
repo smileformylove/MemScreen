@@ -176,13 +176,15 @@ See `setup/docker/README.md` for details.
 ### Release packaging (maintainers)
 
 ```bash
-# build frontend installer + backend runtime package
+# build single macOS installer package (no models bundled)
 ./scripts/release/build_all_release_artifacts.sh
 ```
 
-Split packaging design:
-- Frontend installer is distributed without bundled models
-- Models are downloaded on demand via `./scripts/release/download_models.sh`
+Packaging design:
+- one installer package for end users
+- backend bootstrap is embedded inside the app and runs in background
+- first launch auto-installs lite runtime dependencies to `~/.memscreen/runtime/.venv`
+- models are downloaded on demand (optional)
 - macOS signing/notarization automation is documented in `docs/RELEASE_PACKAGING.md`
 
 ---

@@ -7,30 +7,8 @@ on:
       - "v*"
 
 jobs:
-  backend-runtime:
-    name: Backend Runtime (No Models)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Build backend runtime package
-        run: ./scripts/release/build_backend_runtime.sh
-
-      - name: Upload backend artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: memscreen-backend-runtime
-          path: dist/release/backend/*.tar.gz
-          if-no-files-found: error
-
   frontend-macos:
-    name: Frontend Installer (macOS)
+    name: MemScreen Installer (macOS, no models bundled)
     runs-on: macos-14
     env:
       MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
@@ -78,7 +56,10 @@ jobs:
             echo "ENABLE_NOTARIZATION=0" >> "$GITHUB_ENV"
           fi
 
-      - name: Build frontend installer
+      - name: Clean previous release artifacts
+        run: rm -rf dist/release/frontend/macos
+
+      - name: Build single macOS installer
         env:
           CODESIGN_IDENTITY: ${{ env.MACOS_CODESIGN_IDENTITY }}
           ENABLE_NOTARIZATION: ${{ env.ENABLE_NOTARIZATION }}
@@ -87,40 +68,30 @@ jobs:
           APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
         run: ./scripts/release/build_frontend_macos.sh
 
-      - name: Upload frontend artifacts
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: memscreen-frontend-macos
-          path: |
-            dist/release/frontend/macos/*.zip
-            dist/release/frontend/macos/*.dmg
+          name: memscreen-macos-installer
+          path: dist/release/frontend/macos/MemScreen-v*-macos.dmg
           if-no-files-found: error
 
   publish-release:
     name: Publish GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
     needs:
-      - backend-runtime
       - frontend-macos
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download backend artifact
+      - name: Download installer artifact
         uses: actions/download-artifact@v4
         with:
-          name: memscreen-backend-runtime
-          path: release-assets/backend
-
-      - name: Download frontend artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: memscreen-frontend-macos
-          path: release-assets/frontend
+          name: memscreen-macos-installer
+          path: release-assets/macos
 
       - name: Create GitHub release with assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release-assets/backend/*
-            release-assets/frontend/*
+            release-assets/macos/*

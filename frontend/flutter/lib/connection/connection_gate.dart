@@ -37,7 +37,8 @@ class ConnectionGate extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              connectionState.message ?? 'Please make sure the API service is running (conda activate MemScreen, then python -m memscreen.api).',
+              connectionState.message ??
+                  'MemScreen backend is preparing local runtime. Please wait a moment and click Retry.',
               style: theme.textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),

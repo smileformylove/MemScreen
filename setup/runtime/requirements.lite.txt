@@ -1,0 +1,22 @@
+# Lightweight runtime dependencies for packaged MemScreen app (no bundled local models).
+# Goal: recording + process tracking + video timeline + optional chat connectivity.
+
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.9.0
+requests>=2.32.0
+PyYAML>=6.0.2
+psutil>=6.0.0
+
+numpy>=2.1.0
+Pillow>=10.4.0
+opencv-python>=4.10.0
+pynput>=1.7.7
+
+# macOS multi-screen + window APIs
+pyobjc-core>=10.3.2
+pyobjc-framework-Cocoa>=10.3.2
+pyobjc-framework-Quartz>=10.3.2
+
+# Optional but recommended: audio/video merge path for recordings
+moviepy>=1.0.3

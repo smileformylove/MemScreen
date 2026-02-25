@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -13,7 +14,8 @@ class ApiException implements Exception {
   final String? body;
 
   @override
-  String toString() => 'ApiException: $message${statusCode != null ? ' (HTTP $statusCode)' : ''}';
+  String toString() =>
+      'ApiException: $message${statusCode != null ? ' (HTTP $statusCode)' : ''}';
 }
 
 /// Generic API client: HTTP, error handling, optional SSE.
@@ -27,12 +29,18 @@ class ApiClient {
 
   /// GET with JSON response. Throws [ApiException] on error.
   Future<Map<String, dynamic>> get(String path) async {
-    final uri = Uri.parse(_url(path));
-    final response = await http.get(uri).timeout(
-      const Duration(seconds: 30),
-      onTimeout: () => throw ApiException('Request timeout'),
-    );
-    return _handleResponse(response);
+    try {
+      final uri = Uri.parse(_url(path));
+      final response = await http.get(uri).timeout(
+            const Duration(seconds: 30),
+            onTimeout: () => throw ApiException('Request timeout'),
+          );
+      return _handleResponse(response);
+    } on SocketException {
+      throw ApiException(_backendUnavailableMessage());
+    } on http.ClientException {
+      throw ApiException(_backendUnavailableMessage());
+    }
   }
 
   /// POST with JSON body and optional JSON response.
@@ -40,18 +48,24 @@ class ApiClient {
     String path, {
     Map<String, dynamic>? body,
   }) async {
-    final uri = Uri.parse(_url(path));
-    final response = await http
-        .post(
-          uri,
-          headers: {'Content-Type': 'application/json'},
-          body: body != null ? jsonEncode(body) : null,
-        )
-        .timeout(
-          const Duration(seconds: 60),
-          onTimeout: () => throw ApiException('Request timeout'),
-        );
-    return _handleResponse(response);
+    try {
+      final uri = Uri.parse(_url(path));
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: body != null ? jsonEncode(body) : null,
+          )
+          .timeout(
+            const Duration(seconds: 60),
+            onTimeout: () => throw ApiException('Request timeout'),
+          );
+      return _handleResponse(response);
+    } on SocketException {
+      throw ApiException(_backendUnavailableMessage());
+    } on http.ClientException {
+      throw ApiException(_backendUnavailableMessage());
+    }
   }
 
   /// PUT with JSON body.
@@ -59,28 +73,40 @@ class ApiClient {
     String path, {
     required Map<String, dynamic> body,
   }) async {
-    final uri = Uri.parse(_url(path));
-    final response = await http
-        .put(
-          uri,
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(body),
-        )
-        .timeout(
-          const Duration(seconds: 30),
-          onTimeout: () => throw ApiException('Request timeout'),
-        );
-    return _handleResponse(response);
+    try {
+      final uri = Uri.parse(_url(path));
+      final response = await http
+          .put(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () => throw ApiException('Request timeout'),
+          );
+      return _handleResponse(response);
+    } on SocketException {
+      throw ApiException(_backendUnavailableMessage());
+    } on http.ClientException {
+      throw ApiException(_backendUnavailableMessage());
+    }
   }
 
   /// DELETE.
   Future<Map<String, dynamic>> delete(String path) async {
-    final uri = Uri.parse(_url(path));
-    final response = await http.delete(uri).timeout(
-      const Duration(seconds: 30),
-      onTimeout: () => throw ApiException('Request timeout'),
-    );
-    return _handleResponse(response);
+    try {
+      final uri = Uri.parse(_url(path));
+      final response = await http.delete(uri).timeout(
+            const Duration(seconds: 30),
+            onTimeout: () => throw ApiException('Request timeout'),
+          );
+      return _handleResponse(response);
+    } on SocketException {
+      throw ApiException(_backendUnavailableMessage());
+    } on http.ClientException {
+      throw ApiException(_backendUnavailableMessage());
+    }
   }
 
   Map<String, dynamic> _handleResponse(http.Response response) {
@@ -111,7 +137,14 @@ class ApiClient {
     request.headers['Content-Type'] = 'application/json';
     if (body != null) request.body = jsonEncode(body);
 
-    final streamed = await http.Client().send(request);
+    http.StreamedResponse streamed;
+    try {
+      streamed = await http.Client().send(request);
+    } on SocketException {
+      throw ApiException(_backendUnavailableMessage());
+    } on http.ClientException {
+      throw ApiException(_backendUnavailableMessage());
+    }
     if (streamed.statusCode != 200) {
       final b = await streamed.stream.bytesToString();
       throw ApiException(
@@ -121,9 +154,8 @@ class ApiClient {
       );
     }
 
-    final lines = streamed.stream
-        .transform(utf8.decoder)
-        .transform(const LineSplitter());
+    final lines =
+        streamed.stream.transform(utf8.decoder).transform(const LineSplitter());
 
     String? buffer;
     await for (final line in lines) {
@@ -136,5 +168,9 @@ class ApiClient {
         } catch (_) {}
       }
     }
+  }
+
+  String _backendUnavailableMessage() {
+    return 'Backend is starting. MemScreen is preparing local runtime, please retry in a few seconds.';
   }
 }

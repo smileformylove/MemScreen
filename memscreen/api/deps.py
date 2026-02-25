@@ -9,14 +9,21 @@ import os
 from typing import Optional, Any, TYPE_CHECKING
 
 from memscreen.config import get_config
-from memscreen.memory import Memory
-from memscreen.memory.models import MemoryConfig, EmbedderConfig, LlmConfig, VectorStoreConfig
 
 if TYPE_CHECKING:
+    from memscreen.memory import Memory
     from memscreen.presenters.chat_presenter import ChatPresenter
     from memscreen.presenters.recording_presenter import RecordingPresenter
     from memscreen.presenters.video_presenter import VideoPresenter
     from memscreen.presenters.process_mining_presenter import ProcessMiningPresenter
+
+
+def _is_truthy(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _models_disabled() -> bool:
+    return _is_truthy(os.getenv("MEMSCREEN_DISABLE_MODELS", ""))
 
 
 def _get_process_mining_db_path() -> str:
@@ -25,9 +32,14 @@ def _get_process_mining_db_path() -> str:
     return str(cfg.db_dir / "process_mining.db")
 
 
-def create_memory() -> Optional[Memory]:
+def create_memory() -> Optional["Memory"]:
     """Create Memory instance from centralized config (same as Kivy)."""
+    if _models_disabled():
+        return None
     try:
+        from memscreen.memory import Memory
+        from memscreen.memory.models import MemoryConfig, EmbedderConfig, LlmConfig, VectorStoreConfig
+
         app_config = get_config()
         config = MemoryConfig(
             embedder=EmbedderConfig(
@@ -57,6 +69,9 @@ def create_memory() -> Optional[Memory]:
             },
         )
         return Memory(config=config)
+    except ImportError as e:
+        print(f"[API] Memory disabled in lite runtime: {e}")
+        return None
     except Exception as e:
         print(f"[API] Memory init failed: {e}")
         import traceback
@@ -64,7 +79,7 @@ def create_memory() -> Optional[Memory]:
         return None
 
 
-def create_chat_presenter(memory: Optional[Memory]) -> Optional["ChatPresenter"]:
+def create_chat_presenter(memory: Optional["Memory"]) -> Optional["ChatPresenter"]:
     """Create ChatPresenter (view=None for API)."""
     try:
         from memscreen.presenters.chat_presenter import ChatPresenter
@@ -73,7 +88,7 @@ def create_chat_presenter(memory: Optional[Memory]) -> Optional["ChatPresenter"]
             NoopChatModelCapabilityService,
         )
         cfg = get_config()
-        disable_models = os.getenv("MEMSCREEN_DISABLE_MODELS", "").strip().lower() in {"1", "true", "yes", "on"}
+        disable_models = _models_disabled()
         capability = (
             NoopChatModelCapabilityService()
             if disable_models
@@ -94,7 +109,7 @@ def create_chat_presenter(memory: Optional[Memory]) -> Optional["ChatPresenter"]
         return None
 
 
-def create_recording_presenter(memory: Optional[Memory]) -> Optional["RecordingPresenter"]:
+def create_recording_presenter(memory: Optional["Memory"]) -> Optional["RecordingPresenter"]:
     """Create RecordingPresenter (view=None)."""
     try:
         from memscreen.presenters.recording_presenter import RecordingPresenter
@@ -103,7 +118,7 @@ def create_recording_presenter(memory: Optional[Memory]) -> Optional["RecordingP
             NoopRecordingModelCapabilityService,
         )
         cfg = get_config()
-        disable_models = os.getenv("MEMSCREEN_DISABLE_MODELS", "").strip().lower() in {"1", "true", "yes", "on"}
+        disable_models = _models_disabled()
         capability = (
             NoopRecordingModelCapabilityService()
             if disable_models
@@ -143,36 +158,48 @@ def create_video_presenter() -> Optional["VideoPresenter"]:
 
 
 # Lazy singletons (created on first request if needed)
-_memory: Optional[Memory] = None
+_memory: Optional["Memory"] = None
+_memory_initialized: bool = False
 _chat_presenter: Optional["ChatPresenter"] = None
+_chat_presenter_initialized: bool = False
 _recording_presenter: Optional["RecordingPresenter"] = None
+_recording_presenter_initialized: bool = False
 _video_presenter: Optional["VideoPresenter"] = None
+_video_presenter_initialized: bool = False
 
 
-def get_memory() -> Optional[Memory]:
-    global _memory
-    if _memory is None:
+def get_memory() -> Optional["Memory"]:
+    global _memory, _memory_initialized
+    if _models_disabled():
+        return None
+    if not _memory_initialized:
+        _memory_initialized = True
         _memory = create_memory()
     return _memory
 
 
 def get_chat_presenter() -> Optional["ChatPresenter"]:
-    global _chat_presenter
-    if _chat_presenter is None:
-        _chat_presenter = create_chat_presenter(get_memory())
+    global _chat_presenter, _chat_presenter_initialized
+    if not _chat_presenter_initialized:
+        _chat_presenter_initialized = True
+        memory = None if _models_disabled() else get_memory()
+        _chat_presenter = create_chat_presenter(memory)
     return _chat_presenter
 
 
 def get_recording_presenter() -> Optional["RecordingPresenter"]:
-    global _recording_presenter
-    if _recording_presenter is None:
-        _recording_presenter = create_recording_presenter(get_memory())
+    global _recording_presenter, _recording_presenter_initialized
+    if not _recording_presenter_initialized:
+        _recording_presenter_initialized = True
+        memory = None if _models_disabled() else get_memory()
+        _recording_presenter = create_recording_presenter(memory)
     return _recording_presenter
 
 
 def get_video_presenter() -> Optional["VideoPresenter"]:
-    global _video_presenter
-    if _video_presenter is None:
+    global _video_presenter, _video_presenter_initialized
+    if not _video_presenter_initialized:
+        _video_presenter_initialized = True
         _video_presenter = create_video_presenter()
     return _video_presenter
 
@@ -193,11 +220,13 @@ def create_process_mining_presenter() -> Optional["ProcessMiningPresenter"]:
 
 
 _process_mining_presenter: Optional["ProcessMiningPresenter"] = None
+_process_mining_presenter_initialized: bool = False
 
 
 def get_process_mining_presenter() -> Optional["ProcessMiningPresenter"]:
-    global _process_mining_presenter
-    if _process_mining_presenter is None:
+    global _process_mining_presenter, _process_mining_presenter_initialized
+    if not _process_mining_presenter_initialized:
+        _process_mining_presenter_initialized = True
         _process_mining_presenter = create_process_mining_presenter()
     return _process_mining_presenter
 

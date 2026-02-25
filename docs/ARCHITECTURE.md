@@ -22,8 +22,9 @@
 
 ## Packaging strategy
 
-- frontend installer packaged separately
-- backend runtime packaged separately (no bundled models)
-- models downloaded on demand
+- one macOS installer package for end users
+- backend bootstrap embedded in app bundle (background init)
+- lite runtime dependencies auto-installed to `~/.memscreen/runtime/.venv`
+- models downloaded on demand (optional)
 
 See `docs/RELEASE_PACKAGING.md`.
