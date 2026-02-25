@@ -66,7 +66,6 @@ If you want a macOS recorder that also acts like a manageable personal archive, 
 | Product | Capture Focus | Recorder + Album | Local-First Privacy | AI Tag/Retrieval | Primary Positioning |
 | --- | --- | --- | --- | --- | --- |
 | **MemScreen** | Screen/Region/Window recording | **Yes (built-in)** | **Yes (100% local by default)** | **Yes (optional local AI)** | Recording + personal video memory |
-| Rewind | Continuous personal capture | Partial | Strong local-first (mode-dependent) | Yes | Personal memory and recall assistant |
 | Recall | Saved content summarization (web/media/docs) | No | Mixed (app + cloud surfaces) | Yes | Knowledge capture and summarization |
 | OBS Studio | Live capture and streaming | Partial | Partial | No | Live streaming and advanced capture |
 | Loom | Cloud collaboration recording | Partial | No (cloud-centric) | Partial | Team sharing and async communication |
