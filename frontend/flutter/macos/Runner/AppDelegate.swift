@@ -406,7 +406,7 @@ class AppDelegate: FlutterAppDelegate {
             showMainWindowAndSwitch(to: 3)
             result(nil)
         case "openVideos":
-            showMainWindowAndSwitch(to: 2)
+            showMainWindowAndSwitch(to: 1)
             result(nil)
         case "openSettings":
             showMainWindowAndSwitch(to: 4)
@@ -465,6 +465,27 @@ class AppDelegate: FlutterAppDelegate {
             floatingBall?.setSelectedScreenIndex(requestedScreenIndex)
             minimizeMainWindow()
             floatingBall?.beginWindowSelectionFromMainUI()
+            result(nil)
+        case "prepareScreenRecording":
+            var requestedScreenIndex: Int?
+            if let args = call.arguments as? [String: Any] {
+                if let idx = args["screenIndex"] as? Int {
+                    requestedScreenIndex = idx
+                } else if let idxNum = args["screenIndex"] as? NSNumber {
+                    requestedScreenIndex = idxNum.intValue
+                }
+            }
+            if floatingBall == nil {
+                if let controller = resolveFlutterController() {
+                    createFloatingBall(with: controller)
+                } else {
+                    pollForFlutterController()
+                }
+            }
+            floatingBall?.orderFront(nil)
+            floatingBall?.makeKeyAndOrderFront(nil)
+            floatingBall?.setSelectedScreenIndex(requestedScreenIndex)
+            minimizeMainWindow()
             result(nil)
         default:
             result(FlutterMethodNotImplemented)

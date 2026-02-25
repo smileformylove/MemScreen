@@ -48,9 +48,9 @@ class HomeScaffoldState extends State<HomeScaffold> {
   }
 
   static const _tabs = [
-    (icon: Icons.account_tree, label: 'Process'),
     (icon: Icons.fiber_manual_record, label: 'Record'),
     (icon: Icons.video_library, label: 'Videos'),
+    (icon: Icons.account_tree, label: 'Process'),
     (icon: Icons.chat, label: 'Chat'),
     (icon: Icons.settings, label: 'Settings'),
   ];
@@ -68,9 +68,9 @@ class HomeScaffoldState extends State<HomeScaffold> {
             child: IndexedStack(
               index: _index,
               children: const [
-                ProcessScreen(),
                 RecordingScreen(),
                 VideoScreen(),
+                ProcessScreen(),
                 ChatScreen(),
                 SettingsScreen(),
               ],

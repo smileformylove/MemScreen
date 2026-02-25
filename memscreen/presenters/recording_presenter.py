@@ -13,6 +13,7 @@ import sqlite3
 import json
 import hashlib
 import re
+import subprocess
 import numpy as np
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
@@ -96,7 +97,8 @@ class RecordingPresenter(BasePresenter):
 
         # Audio recording
         self.audio_recorder = AudioRecorder(output_dir=audio_dir)
-        self.audio_source = AudioSource.NONE  # none, microphone, system_audio
+        self.audio_source = AudioSource.NONE  # none, mixed, microphone, system_audio
+        self._active_audio_source = AudioSource.NONE
 
         # Statistics
         self.frame_count = 0
@@ -281,7 +283,7 @@ class RecordingPresenter(BasePresenter):
         Set the audio source for recording.
 
         Args:
-            source: AudioSource enum (MICROPHONE, SYSTEM_AUDIO, NONE)
+            source: AudioSource enum (MIXED, MICROPHONE, SYSTEM_AUDIO, NONE)
         """
         self.audio_source = source
         self.audio_recorder.set_audio_source(source)
@@ -294,7 +296,7 @@ class RecordingPresenter(BasePresenter):
         Returns:
             List of available AudioSource values
         """
-        return [AudioSource.NONE, AudioSource.MICROPHONE, AudioSource.SYSTEM_AUDIO]
+        return [AudioSource.NONE, AudioSource.MIXED, AudioSource.MICROPHONE, AudioSource.SYSTEM_AUDIO]
 
     def start_recording(self, duration: int = 60, interval: float = 2.0) -> bool:
         """
@@ -360,7 +362,25 @@ class RecordingPresenter(BasePresenter):
 
             # Start audio recording if audio source is set
             if self.audio_source != AudioSource.NONE:
-                self.audio_recorder.start_recording(self.audio_source)
+                audio_started = self.audio_recorder.start_recording(self.audio_source)
+                if audio_started:
+                    effective_source = self.audio_recorder.get_effective_source()
+                    self._active_audio_source = effective_source if effective_source != AudioSource.NONE else self.audio_source
+                    if self.audio_source == AudioSource.MIXED and self._active_audio_source != AudioSource.MIXED:
+                        self.show_info("System audio is unavailable. Recording microphone input only.")
+                        print("[RecordingPresenter] Mixed audio requested, but system audio unavailable.")
+                else:
+                    self._active_audio_source = AudioSource.NONE
+                    audio_error = self.audio_recorder.get_last_error() or (
+                        f"Audio capture failed to start for source={self.audio_source.value}."
+                    )
+                    self.show_error(audio_error)
+                    print(
+                        f"[RecordingPresenter] {audio_error} "
+                        "Recording will continue without audio."
+                    )
+            else:
+                self._active_audio_source = AudioSource.NONE
 
             # Start recording in background thread
             self.recording_thread = threading.Thread(
@@ -396,8 +416,11 @@ class RecordingPresenter(BasePresenter):
 
             # Stop audio recording
             audio_file = None
-            if self.audio_source != AudioSource.NONE:
+            if self._active_audio_source != AudioSource.NONE:
                 audio_file = self.audio_recorder.stop_recording()
+                effective_source = self.audio_recorder.get_effective_source()
+                if effective_source != AudioSource.NONE:
+                    self._active_audio_source = effective_source
 
             # Wait for recording thread to finish
             if self.recording_thread and self.recording_thread.is_alive():
@@ -807,7 +830,11 @@ class RecordingPresenter(BasePresenter):
                         screenshot = ImageGrab.grab()
                 else:
                     # Full screen mode (all screens)
-                    screenshot = ImageGrab.grab()
+                    try:
+                        from memscreen.utils import get_combined_screen_bbox
+                        screenshot = ImageGrab.grab(bbox=get_combined_screen_bbox())
+                    except Exception:
+                        screenshot = ImageGrab.grab()
             except Exception as grab_error:
                 error_msg = str(grab_error).lower()
                 # Check if it's a permission error
@@ -1141,7 +1168,11 @@ Content Tags: {", ".join(content_tags)}
                                 screenshot = ImageGrab.grab()
                         else:
                             # Full screen mode (all screens)
-                            screenshot = ImageGrab.grab()
+                            try:
+                                from memscreen.utils import get_combined_screen_bbox
+                                screenshot = ImageGrab.grab(bbox=get_combined_screen_bbox())
+                            except Exception:
+                                screenshot = ImageGrab.grab()
 
                         if frame is None:
                             # Convert to numpy array
@@ -1321,8 +1352,11 @@ Content Tags: {", ".join(content_tags)}
             print(f"[RecordingPresenter] ✅ Video file saved: {filename}")
 
             # Merge audio if provided
+            merged_audio = False
             if audio_file and os.path.exists(audio_file):
-                filename = self._merge_audio_video(filename, audio_file)
+                merged_filename = self._merge_audio_video(filename, audio_file)
+                merged_audio = merged_filename != filename
+                filename = merged_filename
 
             # Get file size
             file_size = os.path.getsize(filename)
@@ -1330,7 +1364,10 @@ Content Tags: {", ".join(content_tags)}
             print(f"[RecordingPresenter] 📊 File size: {file_size / 1024 / 1024:.2f} MB")
 
             # Save to database
-            self._save_to_database(filename, len(frames), fps, len(frames) / fps, file_size, audio_file)
+            db_audio_file = audio_file if (audio_file and os.path.exists(audio_file)) else None
+            if not merged_audio and db_audio_file:
+                print("[RecordingPresenter] Audio was recorded but not merged into video.")
+            self._save_to_database(filename, len(frames), fps, len(frames) / fps, file_size, db_audio_file)
 
             # Add to memory system
             if self.memory_system:
@@ -1368,23 +1405,17 @@ Content Tags: {", ".join(content_tags)}
         Returns:
             Path to merged video file
         """
+        # Generate output filename once and reuse across merge backends.
+        base_dir = os.path.dirname(video_file)
+        base_name = os.path.splitext(os.path.basename(video_file))[0]
+        output_file = os.path.join(base_dir, f"{base_name}_with_audio.mp4")
+
         try:
             from moviepy.editor import VideoFileClip, AudioFileClip
 
-            # Load video and audio
             video = VideoFileClip(video_file)
             audio = AudioFileClip(audio_file)
-
-            # Set audio to video
             video_with_audio = video.set_audio(audio)
-
-            # Generate output filename
-            import os
-            base_dir = os.path.dirname(video_file)
-            base_name = os.path.splitext(os.path.basename(video_file))[0]
-            output_file = os.path.join(base_dir, f"{base_name}_with_audio.mp4")
-
-            # Write video with audio
             video_with_audio.write_videofile(
                 output_file,
                 codec='libx264',
@@ -1392,24 +1423,36 @@ Content Tags: {", ".join(content_tags)}
                 verbose=False,
                 logger=None
             )
-
-            # Close clips
             video.close()
             audio.close()
             video_with_audio.close()
-
-            # Remove original video file
             os.remove(video_file)
-
-            print(f"[RecordingPresenter] Merged audio and video: {output_file}")
+            print(f"[RecordingPresenter] Merged audio and video with moviepy: {output_file}")
             return output_file
-
         except ImportError:
-            print("[RecordingPresenter] moviepy not installed, skipping audio merge")
-            print("[RecordingPresenter] Install with: pip install moviepy")
+            print("[RecordingPresenter] moviepy is unavailable, trying ffmpeg merge...")
+        except Exception as e:
+            print(f"[RecordingPresenter] moviepy merge failed: {e}. Trying ffmpeg merge...")
+
+        ffmpeg_cmd = [
+            "ffmpeg", "-y",
+            "-i", video_file,
+            "-i", audio_file,
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-shortest",
+            output_file,
+        ]
+        try:
+            subprocess.run(ffmpeg_cmd, check=True, capture_output=True, text=True)
+            os.remove(video_file)
+            print(f"[RecordingPresenter] Merged audio and video with ffmpeg: {output_file}")
+            return output_file
+        except FileNotFoundError:
+            print("[RecordingPresenter] ffmpeg not found, skipping audio merge")
             return video_file
         except Exception as e:
-            print(f"[RecordingPresenter] Failed to merge audio/video: {e}")
+            print(f"[RecordingPresenter] ffmpeg merge failed: {e}")
             return video_file
 
     def _save_to_database(self, filename, frame_count, fps, duration, file_size, audio_file=None):
@@ -1433,7 +1476,8 @@ Content Tags: {", ".join(content_tags)}
             window_title = getattr(self, 'window_title', None)
             content_tags = None
             content_summary = None
-            audio_source_str = self.audio_source.value if self.audio_source != AudioSource.NONE else None
+            audio_source = self._active_audio_source if self._active_audio_source != AudioSource.NONE else self.audio_source
+            audio_source_str = audio_source.value if audio_source != AudioSource.NONE else None
 
             cursor.execute('''
                 INSERT INTO recordings (

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
-import '../api/config_api.dart';
 import '../app_state.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -13,21 +12,23 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  late final Future<ConfigInfo> _configFuture;
   late final Future<PackageInfo> _packageInfoFuture;
   final TextEditingController _durationController = TextEditingController();
   final TextEditingController _intervalController = TextEditingController();
   bool _autoTrackWithRecording = true;
+  bool _recordSystemAudio = true;
+  bool _recordMicrophoneAudio = true;
 
   @override
   void initState() {
     super.initState();
-    _configFuture = context.read<AppState>().configApi.get();
     _packageInfoFuture = PackageInfo.fromPlatform();
     final appState = context.read<AppState>();
     _durationController.text = appState.recordingDurationSec.toString();
     _intervalController.text = appState.recordingIntervalSec.toString();
     _autoTrackWithRecording = appState.autoTrackInputWithRecording;
+    _recordSystemAudio = appState.recordSystemAudio;
+    _recordMicrophoneAudio = appState.recordMicrophoneAudio;
   }
 
   @override
@@ -53,60 +54,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
           durationSec: duration,
           intervalSec: interval,
         );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Recording defaults updated')),
-    );
   }
 
   Future<void> _setAutoTrackWithRecording(bool value) async {
     setState(() => _autoTrackWithRecording = value);
     await context.read<AppState>().setAutoTrackInputWithRecording(value);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          value
-              ? 'Auto input tracking with recording enabled'
-              : 'Auto input tracking with recording disabled',
-        ),
-      ),
-    );
+  }
+
+  Future<void> _setRecordSystemAudio(bool value) async {
+    setState(() => _recordSystemAudio = value);
+    await context.read<AppState>().setRecordSystemAudio(value);
+  }
+
+  Future<void> _setRecordMicrophoneAudio(bool value) async {
+    setState(() => _recordMicrophoneAudio = value);
+    await context.read<AppState>().setRecordMicrophoneAudio(value);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: FutureBuilder<ConfigInfo>(
-        future: _configFuture,
-        builder: (context, configSnap) {
-          return FutureBuilder<PackageInfo>(
-            future: _packageInfoFuture,
-            builder: (context, pkgSnap) {
-              final config = configSnap.data;
-              final pkg = pkgSnap.data;
-              final appVersion = pkg?.version ?? '...';
-
-              return ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _recordingDefaultsCard(),
-                  const SizedBox(height: 8),
-                  if (config != null) ...[
-                    _kv(context, 'DB', config.dbDir),
-                    const SizedBox(height: 8),
-                    _kv(context, 'Videos', config.videosDir),
-                  ],
-                  const SizedBox(height: 16),
-                  const Divider(height: 1),
-                  const SizedBox(height: 16),
-                  _kv(context, 'App', 'MemScreen'),
-                  const SizedBox(height: 8),
-                  _kv(context, 'Version', appVersion),
-                ],
-              );
-            },
+      body: FutureBuilder<PackageInfo>(
+        future: _packageInfoFuture,
+        builder: (context, pkgSnap) {
+          final appVersion = pkgSnap.data?.version ?? '...';
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _recordingDefaultsCard(),
+              const SizedBox(height: 12),
+              _kv(context, 'Version', appVersion),
+            ],
           );
         },
       ),
@@ -158,7 +137,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SwitchListTile.adaptive(
             dense: true,
             contentPadding: EdgeInsets.zero,
-            title: const Text('Auto start input tracking when recording'),
+            title: const Text('System audio'),
+            value: _recordSystemAudio,
+            onChanged: _setRecordSystemAudio,
+          ),
+          SwitchListTile.adaptive(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Microphone'),
+            value: _recordMicrophoneAudio,
+            onChanged: _setRecordMicrophoneAudio,
+          ),
+          SwitchListTile.adaptive(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Key-Mouse tracking'),
             value: _autoTrackWithRecording,
             onChanged: _setAutoTrackWithRecording,
           ),
@@ -170,6 +163,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   controller: _durationController,
                   decoration: const InputDecoration(labelText: 'Duration (s)'),
                   keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _saveRecordingDefaults(),
                 ),
               ),
               const SizedBox(width: 12),
@@ -179,17 +174,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   decoration: const InputDecoration(labelText: 'Interval (s)'),
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _saveRecordingDefaults(),
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.tonal(
-              onPressed: _saveRecordingDefaults,
-              child: const Text('Save'),
-            ),
           ),
         ],
       ),

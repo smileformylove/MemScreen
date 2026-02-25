@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -18,6 +19,9 @@ class _VideoScreenState extends State<VideoScreen> {
   bool _loading = true;
   late AppState _appState;
   int _lastVideoRefreshVersion = 0;
+  Timer? _autoRefreshTimer;
+  final ScrollController _timelineScrollController = ScrollController();
+  String? _latestTimelineVideoFilename;
   VideoPlayerController? _controller;
   VideoItem? _currentVideo;
 
@@ -34,13 +38,24 @@ class _VideoScreenState extends State<VideoScreen> {
     _lastVideoRefreshVersion = _appState.videoRefreshVersion;
     _appState.addListener(_onAppStateChange);
     _load();
+    _startAutoRefresh();
   }
 
   @override
   void dispose() {
     _appState.removeListener(_onAppStateChange);
+    _autoRefreshTimer?.cancel();
+    _timelineScrollController.dispose();
     _controller?.dispose();
     super.dispose();
+  }
+
+  void _startAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted || _loading) return;
+      _load();
+    });
   }
 
   void _onAppStateChange() {
@@ -52,7 +67,7 @@ class _VideoScreenState extends State<VideoScreen> {
       return;
     }
 
-    if (_appState.desiredTabIndex == 3) {
+    if (_appState.desiredTabIndex == 1) {
       _load();
     }
   }
@@ -83,15 +98,42 @@ class _VideoScreenState extends State<VideoScreen> {
     setState(() => _loading = true);
     try {
       final list = await context.read<AppState>().videoApi.getList();
+      final timelineSorted = _sortedByTimestampAscending(list);
+      final latestFilename =
+          timelineSorted.isNotEmpty ? timelineSorted.last.filename : null;
       if (mounted) {
         setState(() {
           _videos = list;
+          _latestTimelineVideoFilename = latestFilename;
           _loading = false;
         });
+        _scrollTimelineToLatest();
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  List<VideoItem> _sortedByTimestampAscending(List<VideoItem> videos) {
+    final out = List<VideoItem>.from(videos);
+    out.sort((a, b) {
+      final ad = _parseTimestamp(a.timestamp);
+      final bd = _parseTimestamp(b.timestamp);
+      if (ad == null && bd == null) return a.timestamp.compareTo(b.timestamp);
+      if (ad == null) return -1;
+      if (bd == null) return 1;
+      return ad.compareTo(bd);
+    });
+    return out;
+  }
+
+  void _scrollTimelineToLatest() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_timelineScrollController.hasClients) return;
+      _timelineScrollController.jumpTo(
+        _timelineScrollController.position.maxScrollExtent,
+      );
+    });
   }
 
   List<String> get _availableTags {
@@ -315,7 +357,7 @@ class _VideoScreenState extends State<VideoScreen> {
   //
   Widget _buildTimeline() {
     final theme = Theme.of(context);
-    final videos = _visibleVideos;
+    final videos = _sortedByTimestampAscending(_videos);
 
     if (videos.isEmpty) {
       return Container(
@@ -359,6 +401,7 @@ class _VideoScreenState extends State<VideoScreen> {
         ),
       ),
       child: ListView(
+        controller: _timelineScrollController,
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
         children: children,

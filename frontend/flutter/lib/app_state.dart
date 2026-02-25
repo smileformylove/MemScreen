@@ -55,6 +55,19 @@ class AppState extends ChangeNotifier {
   int get recordingDurationSec => _recordingDurationSec;
   double _recordingIntervalSec = 2.0;
   double get recordingIntervalSec => _recordingIntervalSec;
+  bool _recordSystemAudio = true;
+  bool get recordSystemAudio => _recordSystemAudio;
+  bool _recordMicrophoneAudio = true;
+  bool get recordMicrophoneAudio => _recordMicrophoneAudio;
+  bool get recordingAudioEnabled =>
+      _recordSystemAudio || _recordMicrophoneAudio;
+  String get recordingAudioSource {
+    if (_recordSystemAudio && _recordMicrophoneAudio) return 'mixed';
+    if (_recordSystemAudio) return 'system_audio';
+    if (_recordMicrophoneAudio) return 'microphone';
+    return 'none';
+  }
+
   bool _autoTrackInputWithRecording = true;
   bool get autoTrackInputWithRecording => _autoTrackInputWithRecording;
   bool _trackingStartedByRecording = false;
@@ -154,12 +167,40 @@ class AppState extends ChangeNotifier {
       if (map is! Map<String, dynamic>) return;
       final duration = map['recording_duration_sec'];
       final interval = map['recording_interval_sec'];
+      final audioSource = map['recording_audio_source'];
+      final systemAudioEnabled = map['record_system_audio_enabled'];
+      final microphoneAudioEnabled = map['record_microphone_audio_enabled'];
       final autoTrack = map['auto_track_input_with_recording'];
       if (duration is int && duration > 0) {
         _recordingDurationSec = duration;
       }
       if (interval is num && interval > 0) {
         _recordingIntervalSec = interval.toDouble();
+      }
+      if (systemAudioEnabled is bool) {
+        _recordSystemAudio = systemAudioEnabled;
+      }
+      if (microphoneAudioEnabled is bool) {
+        _recordMicrophoneAudio = microphoneAudioEnabled;
+      }
+      if (audioSource is String &&
+          (audioSource == 'mixed' ||
+              audioSource == 'system_audio' ||
+              audioSource == 'microphone' ||
+              audioSource == 'none')) {
+        if (audioSource == 'mixed') {
+          _recordSystemAudio = true;
+          _recordMicrophoneAudio = true;
+        } else if (audioSource == 'system_audio') {
+          _recordSystemAudio = true;
+          _recordMicrophoneAudio = false;
+        } else if (audioSource == 'microphone') {
+          _recordSystemAudio = false;
+          _recordMicrophoneAudio = true;
+        } else {
+          _recordSystemAudio = false;
+          _recordMicrophoneAudio = false;
+        }
       }
       if (autoTrack is bool) {
         _autoTrackInputWithRecording = autoTrack;
@@ -187,6 +228,49 @@ class AppState extends ChangeNotifier {
     await _persistRecordingSettings();
   }
 
+  Future<void> setRecordingAudioSource(String source) async {
+    if (source != 'mixed' &&
+        source != 'system_audio' &&
+        source != 'microphone' &&
+        source != 'none') {
+      return;
+    }
+    if (source == 'mixed') {
+      _recordSystemAudio = true;
+      _recordMicrophoneAudio = true;
+    } else if (source == 'system_audio') {
+      _recordSystemAudio = true;
+      _recordMicrophoneAudio = false;
+    } else if (source == 'microphone') {
+      _recordSystemAudio = false;
+      _recordMicrophoneAudio = true;
+    } else {
+      _recordSystemAudio = false;
+      _recordMicrophoneAudio = false;
+    }
+    notifyListeners();
+    await _persistRecordingSettings();
+  }
+
+  Future<void> setRecordingAudioEnabled(bool enabled) async {
+    _recordSystemAudio = enabled;
+    _recordMicrophoneAudio = enabled;
+    notifyListeners();
+    await _persistRecordingSettings();
+  }
+
+  Future<void> setRecordSystemAudio(bool enabled) async {
+    _recordSystemAudio = enabled;
+    notifyListeners();
+    await _persistRecordingSettings();
+  }
+
+  Future<void> setRecordMicrophoneAudio(bool enabled) async {
+    _recordMicrophoneAudio = enabled;
+    notifyListeners();
+    await _persistRecordingSettings();
+  }
+
   Future<void> _persistRecordingSettings() async {
     try {
       final file = File(_settingsFilePath);
@@ -195,6 +279,9 @@ class AppState extends ChangeNotifier {
         jsonEncode({
           'recording_duration_sec': _recordingDurationSec,
           'recording_interval_sec': _recordingIntervalSec,
+          'recording_audio_source': recordingAudioSource,
+          'record_system_audio_enabled': _recordSystemAudio,
+          'record_microphone_audio_enabled': _recordMicrophoneAudio,
           'auto_track_input_with_recording': _autoTrackInputWithRecording,
         }),
       );
@@ -256,6 +343,7 @@ class AppState extends ChangeNotifier {
       region: region,
       screenIndex: screenIndex,
       windowTitle: windowTitle,
+      audioSource: recordingAudioSource,
     );
     updateFloatingBallState(true);
     requestRecordingStatusRefresh();
@@ -266,11 +354,19 @@ class AppState extends ChangeNotifier {
     updateFloatingBallState(false);
     requestRecordingStatusRefresh();
     requestVideoRefresh();
-    Future.delayed(const Duration(seconds: 2), () {
-      requestRecordingStatusRefresh();
-      requestVideoRefresh();
-    });
+    _schedulePostStopRefreshes();
     await _maybeStopTrackingAfterRecording();
+  }
+
+  void _schedulePostStopRefreshes() {
+    // Video save/merge can take several seconds; refresh in a short window so
+    // Videos timeline updates as soon as the new file is persisted.
+    for (var sec = 1; sec <= 12; sec++) {
+      Future.delayed(Duration(seconds: sec), () {
+        requestRecordingStatusRefresh();
+        requestVideoRefresh();
+      });
+    }
   }
 
   /// Handle method calls from native floating ball
@@ -384,9 +480,9 @@ class AppState extends ChangeNotifier {
         break;
 
       case 'openVideos':
-        _desiredTabIndex = 2;
+        _desiredTabIndex = 1;
         notifyListeners();
-        debugPrint('[AppState] Requesting tab switch to Videos (2)');
+        debugPrint('[AppState] Requesting tab switch to Videos (1)');
         break;
 
       case 'openSettings':

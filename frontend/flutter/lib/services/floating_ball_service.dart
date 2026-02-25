@@ -92,4 +92,18 @@ class FloatingBallService {
       debugPrint('[FloatingBall] Error preparing window selection: $e');
     }
   }
+
+  /// Minimize main window before starting fullscreen recording.
+  /// screenIndex: null means all screens.
+  static Future<void> prepareScreenRecording({int? screenIndex}) async {
+    try {
+      final args = <String, dynamic>{};
+      if (screenIndex != null) {
+        args['screenIndex'] = screenIndex;
+      }
+      await _channel.invokeMethod('prepareScreenRecording', args);
+    } catch (e) {
+      debugPrint('[FloatingBall] Error preparing screen recording: $e');
+    }
+  }
 }

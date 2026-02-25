@@ -173,6 +173,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
     final eventCount = _trackingStatus?.eventCount ?? 0;
     return Scaffold(
       appBar: AppBar(
+        centerTitle: true,
         title: const Text('Process'),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),

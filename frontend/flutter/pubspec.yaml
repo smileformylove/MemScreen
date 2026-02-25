@@ -1,6 +1,6 @@
 name: memscreen_flutter
 description: MemScreen Flutter frontend — optional UI alongside Kivy. Connects to MemScreen HTTP API.
-version: 0.6.2+1
+version: 0.6.3
 publish_to: none
 
 environment:

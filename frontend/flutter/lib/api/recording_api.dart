@@ -11,6 +11,7 @@ class RecordingApi {
     List<double>? region,
     int? screenIndex,
     String? windowTitle,
+    String? audioSource,
   }) async {
     final body = <String, dynamic>{
       'duration': duration,
@@ -21,6 +22,9 @@ class RecordingApi {
     if (screenIndex != null) body['screen_index'] = screenIndex;
     if (windowTitle != null && windowTitle.isNotEmpty) {
       body['window_title'] = windowTitle;
+    }
+    if (audioSource != null && audioSource.isNotEmpty) {
+      body['audio_source'] = audioSource;
     }
     await client.post('/recording/start', body: body);
   }
@@ -48,7 +52,20 @@ class RecordingApi {
     );
   }
 
-  /// 
+  Future<AudioDiagnosis> diagnoseAudio({String source = 'mixed'}) async {
+    final m = await client.get('/recording/audio/diagnose?source=$source');
+    return AudioDiagnosis(
+      requestedSource: m['requested_source'] as String? ?? source,
+      pyaudioAvailable: m['pyaudio_available'] as bool? ?? false,
+      microphoneAvailable: m['microphone_available'] as bool? ?? false,
+      systemDeviceAvailable: m['system_device_available'] as bool? ?? false,
+      systemSignalAvailable: m['system_signal_available'] as bool? ?? false,
+      message: m['message'] as String? ?? '',
+      recommendedAction: m['recommended_action'] as String? ?? '',
+    );
+  }
+
+  ///
   Future<List<RecordingScreenInfo>> getScreens() async {
     final m = await client.get('/recording/screens');
     final list = m['screens'];
@@ -102,4 +119,24 @@ class RecordingStatus {
   final String mode;
   final List<double>? region;
   final int? screenIndex;
+}
+
+class AudioDiagnosis {
+  AudioDiagnosis({
+    required this.requestedSource,
+    required this.pyaudioAvailable,
+    required this.microphoneAvailable,
+    required this.systemDeviceAvailable,
+    required this.systemSignalAvailable,
+    required this.message,
+    required this.recommendedAction,
+  });
+
+  final String requestedSource;
+  final bool pyaudioAvailable;
+  final bool microphoneAvailable;
+  final bool systemDeviceAvailable;
+  final bool systemSignalAvailable;
+  final String message;
+  final String recommendedAction;
 }

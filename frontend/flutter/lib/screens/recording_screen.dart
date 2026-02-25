@@ -109,6 +109,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
           _status = s;
           if (justStopped) {
             _mode = 'fullscreen';
+            _screenIndex = null;
           }
           _screens = screens;
           _loading = false;
@@ -116,7 +117,6 @@ class _RecordingScreenState extends State<RecordingScreen> {
             final selected = _findScreenByIndex(_screenIndex) ??
                 screens.firstWhere((x) => x.isPrimary,
                     orElse: () => screens.first);
-            _screenIndex = _screenIndex ?? selected.index;
             _screenWidth = selected.width.toDouble();
             _screenHeight = selected.height.toDouble();
             if (_regionRight <= _regionLeft || _regionBottom <= _regionTop) {
@@ -271,6 +271,45 @@ class _RecordingScreenState extends State<RecordingScreen> {
     }
 
     try {
+      final audioSource = appState.recordingAudioSource;
+      if (audioSource != 'none') {
+        final diagnosis =
+            await appState.recordingApi.diagnoseAudio(source: audioSource);
+        if (audioSource == 'microphone' && !diagnosis.microphoneAvailable) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Microphone is unavailable'),
+              ),
+            );
+          }
+          return;
+        }
+        if (audioSource == 'system_audio' && !diagnosis.systemDeviceAvailable) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('System audio device is unavailable'),
+              ),
+            );
+          }
+          return;
+        }
+        if (audioSource == 'mixed' &&
+            !diagnosis.systemDeviceAvailable &&
+            diagnosis.microphoneAvailable) {
+          final proceed = await _showSystemAudioRoutingDialog(diagnosis);
+          if (proceed != true) {
+            return;
+          }
+        }
+      }
+      if (_mode == 'fullscreen') {
+        await FloatingBallService.show();
+        await FloatingBallService.prepareScreenRecording(
+          screenIndex: _screenIndex,
+        );
+      }
       await context.read<AppState>().startRecording(
             duration: duration,
             interval: interval,
@@ -287,6 +326,30 @@ class _RecordingScreenState extends State<RecordingScreen> {
         );
       }
     }
+  }
+
+  Future<bool?> _showSystemAudioRoutingDialog(AudioDiagnosis diagnosis) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('System Audio Not Detected'),
+          content: Text(
+            '${diagnosis.message}\n\n${diagnosis.recommendedAction.isNotEmpty ? diagnosis.recommendedAction : 'Recording can continue with microphone only.'}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Continue'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _selectRegionWithFloatingBall() async {
@@ -320,7 +383,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Main window minimized. Click an app window, then confirm recording.',
+            'Main window minimized. Click a window, then confirm recording.',
           ),
           duration: Duration(seconds: 3),
         ),
@@ -328,7 +391,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to select app window: $e')),
+        SnackBar(content: Text('Failed to select window: $e')),
       );
     }
   }
@@ -340,6 +403,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
       if (mounted) {
         setState(() {
           _mode = 'fullscreen';
+          _screenIndex = null;
         });
       }
       _wasRecording = false;
@@ -354,17 +418,60 @@ class _RecordingScreenState extends State<RecordingScreen> {
   }
 
   List<Widget> _buildModeSelection() {
+    final isRecording = _status?.isRecording ?? false;
     return [
-      SegmentedButton<String>(
-        segments: const [
-          ButtonSegment(value: 'fullscreen', label: Text('Full Screen')),
-          ButtonSegment(value: 'region', label: Text('Region')),
-          ButtonSegment(value: 'window', label: Text('App Window')),
+      Row(
+        children: [
+          Expanded(
+            child: DropdownButtonFormField<int>(
+              value: _screenIndex ?? -1,
+              decoration: const InputDecoration(
+                labelText: 'Full Screen',
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              items: [
+                const DropdownMenuItem<int>(
+                  value: -1,
+                  child: Text('All Screens'),
+                ),
+                ..._screens.map((e) => DropdownMenuItem<int>(
+                      value: e.index,
+                      child: Text(
+                          '${e.name} (${e.width}x${e.height})${e.isPrimary ? " [Primary]" : ""}'),
+                    )),
+              ],
+              onChanged: isRecording
+                  ? null
+                  : (v) {
+                      _onFullscreenSelected(v);
+                    },
+            ),
+          ),
+          const SizedBox(width: 10),
+          FilledButton.tonal(
+            onPressed: isRecording ? null : _start,
+            child: const Text('Screen'),
+          ),
         ],
-        selected: {_mode},
-        onSelectionChanged: (v) {
-          _onModeChanged(v.first);
-        },
+      ),
+      const SizedBox(height: 10),
+      Row(
+        children: [
+          Expanded(
+            child: FilledButton.tonal(
+              onPressed: isRecording ? null : () => _onModeChanged('region'),
+              child: const Text('Region'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: FilledButton.tonal(
+              onPressed: isRecording ? null : () => _onModeChanged('window'),
+              child: const Text('Window'),
+            ),
+          ),
+        ],
       ),
       const SizedBox(height: 10),
     ];
@@ -382,38 +489,25 @@ class _RecordingScreenState extends State<RecordingScreen> {
     }
   }
 
-  List<Widget> _buildScreenPicker() {
-    if (_mode != 'fullscreen' || _screens.isEmpty) {
-      return [];
-    }
-    return [
-      DropdownButtonFormField<int>(
-        value: _screenIndex ?? _screens.first.index,
-        decoration: const InputDecoration(
-          labelText: 'Target Screen',
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        ),
-        items: _screens
-            .map((e) => DropdownMenuItem<int>(
-                  value: e.index,
-                  child: Text(
-                      '${e.name} (${e.width}x${e.height})${e.isPrimary ? " [Primary]" : ""}'),
-                ))
-            .toList(),
-        onChanged: (v) {
-          if (v == null) return;
-          setState(() {
-            _screenIndex = v;
-            final selected = _findScreenByIndex(v);
-            if (selected != null) {
-              _screenWidth = selected.width.toDouble();
-              _screenHeight = selected.height.toDouble();
-            }
-          });
-        },
-      ),
-      const SizedBox(height: 12),
-    ];
+  Future<void> _onFullscreenSelected(int? value) async {
+    if (value == null) return;
+    final screenIndex = value < 0 ? null : value;
+    setState(() {
+      _mode = 'fullscreen';
+      _screenIndex = screenIndex;
+      final selected = _findScreenByIndex(screenIndex);
+      if (selected != null) {
+        _screenWidth = selected.width.toDouble();
+        _screenHeight = selected.height.toDouble();
+      } else if (_screens.isNotEmpty) {
+        final primary = _screens.firstWhere(
+          (x) => x.isPrimary,
+          orElse: () => _screens.first,
+        );
+        _screenWidth = primary.width.toDouble();
+        _screenHeight = primary.height.toDouble();
+      }
+    });
   }
 
   RecordingScreenInfo? _findScreenByIndex(int? index) {
@@ -426,10 +520,12 @@ class _RecordingScreenState extends State<RecordingScreen> {
 
   List<Widget> _buildActionBar() {
     final isRecording = _status?.isRecording ?? false;
-    if (_mode == 'region') {
+    if (_mode == 'fullscreen') {
       if (!isRecording) return const [];
       return [
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
             FilledButton.icon(
               onPressed: _stop,
               icon: const Icon(Icons.stop),
@@ -438,43 +534,53 @@ class _RecordingScreenState extends State<RecordingScreen> {
                 backgroundColor: Theme.of(context).colorScheme.error,
               ),
             ),
-          ]),
+          ],
+        ),
+      ];
+    }
+    if (_mode == 'region') {
+      if (!isRecording) return const [];
+      return [
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          FilledButton.icon(
+            onPressed: _stop,
+            icon: const Icon(Icons.stop),
+            label: const Text('Stop'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          ),
+        ]),
       ];
     }
     if (_mode == 'window') {
       if (!isRecording) return const [];
       return [
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            FilledButton.icon(
-              onPressed: _stop,
-              icon: const Icon(Icons.stop),
-              label: const Text('Stop'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-              ),
+          FilledButton.icon(
+            onPressed: _stop,
+            icon: const Icon(Icons.stop),
+            label: const Text('Stop'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
             ),
-          ]),
+          ),
+        ]),
       ];
     }
+    if (!isRecording) return const [];
     return [
       Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          if (!isRecording)
-            FilledButton.icon(
-              onPressed: _start,
-              icon: const Icon(Icons.fiber_manual_record),
-              label: const Text('Start'),
-            )
-          else
-            FilledButton.icon(
-              onPressed: _stop,
-              icon: const Icon(Icons.stop),
-              label: const Text('Stop'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-              ),
+          FilledButton.icon(
+            onPressed: _stop,
+            icon: const Icon(Icons.stop),
+            label: const Text('Stop'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
             ),
+          ),
         ],
       ),
     ];
@@ -509,7 +615,6 @@ class _RecordingScreenState extends State<RecordingScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 ..._buildModeSelection(),
-                ..._buildScreenPicker(),
                 ..._buildActionBar(),
               ],
             ),
