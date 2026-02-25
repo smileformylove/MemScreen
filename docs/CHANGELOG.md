@@ -1,70 +1,22 @@
 # Changelog
 
-All notable changes to MemScreen will be documented in this file.
+## v0.6.3
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+- unified project version to `0.6.3` across Python package, API, Flutter, and README
+- refreshed README positioning and product comparison section
+- added split release packaging:
+  - frontend installer package
+  - backend runtime package (no bundled models)
+  - on-demand model bootstrap script
+- added GitHub Actions release packaging workflow
+- added optional macOS signing/notarization support for frontend packaging
+- cleaned legacy scripts and historical/obsolete docs
 
-## [0.6.0] - 2026-02-07
+## v0.6.2
 
-### Added
-- **Floating Ball First Mode** (macOS) - Application starts with floating ball only, main window minimized
-- **Branded Floating Ball** - Displays logo with circular masking instead of solid color
-- **User Guide** - Comprehensive `docs/USER_GUIDE.md` with usage instructions
-- **Improved README** - Added floating ball mode instructions and tips
+- Flutter frontend became primary runtime UI
+- recording and floating workflows were further stabilized
 
-### Changed
-- Floating ball control is now the primary interface on macOS
-- Right-click menu provides access to all features
-- Left-click toggles main window visibility
-- Drag to reposition anywhere on screen
+## v0.6.0
 
-### Fixed
-- Duplicate floating ball creation when starting recording
-- Floating ball state management across recording start/stop
-- Window restoration when using floating ball to start recording
-
-### Removed
-- 15+ test and debug files (test_*.py, debug_*.py, etc.)
-- Unused implementation files (floating_ball_app.py, native_region_selector.py, unified_ui.py)
-- Debug documentation (DEBUGGING_GUIDE.md, DIAGNOSIS.md, etc.)
-- Deprecated script commands from pyproject.toml
-
-### Updated
-- Version bumped to 0.6.0
-- All version strings updated across codebase
-- README.md reorganized with clearer feature descriptions
-- Project structure cleaned and organized
-
-## [0.5.0] - 2026-02-04
-
-### Added
-- **Intelligent Agent** - Auto-classification and smart routing (3-5x faster, 70% fewer tokens)
-- **Dynamic Memory System** - 15 categories, 7 query intents, smart search
-- **Custom Region Recording** - Visual crosshair guides, re-selectable regions
-- **Native Floating Ball** (macOS) - Real floating window with cross-space visibility
-- Centralized documentation in `docs/` directory
-
-### Changed
-- Improved memory organization with category-based storage
-- Enhanced recording workflow with region selector
-- Better screen switching mechanism
-
-## [0.4.0] - 2026-01-XX
-
-### Added
-- **Local AI Agent** - Task planning & skill execution
-- **Enhanced AI Chat** - Humanized, warm responses
-- **Zero Cloud** - No API keys, no data transmission
-
-## Older Versions
-
-For versions prior to 0.4.0, please check the git history.
-
----
-
-## Version Numbering
-
-- **Major** (X.0.0) - Breaking changes, major features
-- **Minor** (0.X.0) - New features, enhancements
-- **Patch** (0.0.X) - Bug fixes, minor improvements
+- major runtime and UX optimization phase

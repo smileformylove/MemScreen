@@ -10,7 +10,7 @@ Architecture:
 - MVP Pattern: Presenters handle business logic
 - Memory System: ChromaDB + SQLite for vector and structured storage
 - LLM Integration: Ollama for local AI inference
-- UI: Kivy-based cross-platform interface with floating ball control
+- UI: Flutter desktop frontend over FastAPI backend
 
 Example:
     >>> from memscreen import Memory

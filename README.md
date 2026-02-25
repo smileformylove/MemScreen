@@ -173,6 +173,18 @@ This script:
 
 See `setup/docker/README.md` for details.
 
+### Release packaging (maintainers)
+
+```bash
+# build frontend installer + backend runtime package
+./scripts/release/build_all_release_artifacts.sh
+```
+
+Split packaging design:
+- Frontend installer is distributed without bundled models
+- Models are downloaded on demand via `./scripts/release/download_models.sh`
+- macOS signing/notarization automation is documented in `docs/RELEASE_PACKAGING.md`
+
 ---
 
 ## Typical Workflow
@@ -219,13 +231,17 @@ Key folders:
 
 ## Documentation
 
+- Quick start: `docs/QUICK_START.md`
 - Installation: `docs/INSTALLATION.md`
+- API reference: `docs/API_HTTP.md`
+- Docker: `docs/DOCKER.md`
 - Recording guide: `docs/RECORDING_GUIDE.md`
 - Audio guide: `docs/AUDIO_RECORDING.md`
 - Floating ball: `docs/FLOATING_BALL.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Flutter guide: `docs/FLUTTER.md`
 - Testing guide: `docs/TESTING_GUIDE.md`
+- Release packaging: `docs/RELEASE_PACKAGING.md`
 
 ---
 

@@ -1,153 +1,29 @@
-# 
+# Floating Ball (macOS)
 
-## 
+The floating ball is a native macOS control entry for quick recording operations.
 
-,
+## Purpose
 
-- **macOS**:  NSPanel ,
-- ****: ,
+- start/stop recording quickly
+- switch between recording tools
+- keep control available while main window is minimized
 
-## 
+## Tool coverage
 
-### 1. 
-- "Start Recording"
-- 
-- ()
+Floating controls are aligned with the main recording modes:
+- `Screen`
+- `All Screens`
+- `Region`
+- `Window`
+- key/mouse tracking toggle (if enabled in current build)
 
-### 2.  (macOS )
+## Behavior
 
-#### 
-- 
-- ,
+- Main window can be minimized while keeping floating controls active.
+- Region and window flows require explicit user confirmation before recording starts.
+- Recording can be stopped from floating controls.
 
-#### 
-- ****: 
-- (/)
+## Notes
 
-#### 
-- 
-- :
-  - **⏹ Stop Recording**: 
-  - **⏸ Pause / ▶ Resume**: /
-  - **🏠 Main Window**: 
-  - ****: 
-
-### 3. 
-- 1:  → Stop Recording
-- 2:  →  → Stop Recording
-- 3:  Dock  → Stop Recording
-
-## 
-
-:
-
-|  |  |  |  |
-|------|------|------|------|
-|  |  | ○ |  |
-|  |  | ● |  |
-|  |  | II |  |
-
-## 
-
-### 
-```
-memscreen/ui/
-├── floating_ball.py        # K ()
-├── floating_ball_native.py # macOS  (NSPanel)
-├── floating_ball_simple.py # 
-└── kivy_app.py             # 
-```
-
-### macOS 
-
-#### FloatingBallWindow  ([memscreen/ui/floating_ball_native.py](memscreen/ui/floating_ball_native.py))
-
-****:
-1. ****:  NSPanel,
-2. ****:  NSFloatingWindowLevel 
-3. ****: 
-4. ****: ,
-
-****:
-
-```python
-# 
-self.setLevel_(NSWindowLevelFloating)
-
-# 
-self.setFloatingPanel_(True)  # 
-self.setBecomesKeyOnlyIfNeeded_(True)  # 
-self.setHidesOnDeactivate_(False)  # 
-
-# 
-self.setCollectionBehavior_(
-    (1 << 6) |  # NSWindowCollectionBehaviorCanJoinAllSpaces
-    (1 << 8) |  # NSWindowCollectionBehaviorFullScreenAuxiliary
-    (1 << 10)   # NSWindowCollectionBehaviorIgnoresCycle
-)
-```
-
-****:
-- ****:  5 
-- ****: ,
-- ****: 
-
-### 
-
-,:
-
-1. **FloatingBallWindow** ([memscreen/ui/floating_ball.py](memscreen/ui/floating_ball.py))
-   - KivyWidget
-   - 
-   - 
-   - ()
-
-2. **RecordingScreen**
-   - `_show_floating_ball()`: 120×120px
-   - `_hide_floating_ball()`: 
-
-### 
-- ****: 80px
-- ****: 
-- ****: 60fps (Kivy)
-- ****: 
-- ****: 
-
-## 
-
-### macOS 
-1. ****: ,
-2. ****: 
-3. ****: "Main Window"
-4. ****: 
-
-### 
-1. ****: ,
-2. ****: 
-3. ****: 
-4. ****: "Main Window"
-
-## 
-
-### macOS 
-- ✅ 
-- ✅ 
-- ✅ 
-- ✅ 
-- ✅ 
-
-### 
-Kivy, macOS ****:
-- : 
-- : ,
-
-## 
-
-- [ ] /
-- [ ] 
-- [ ] ()
-- [ ] 
-- [ ] ()
-- [x] ~~API~~ (macOS )
-- [ ] Windows  ( Layered Window)
-- [ ] Linux  ( X11/Wayland)
+- If the floating controller is missing after app switch, bring MemScreen to foreground once.
+- Ensure Accessibility permission is granted for input-tracking-related actions.

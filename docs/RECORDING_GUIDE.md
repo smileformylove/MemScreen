@@ -1,76 +1,40 @@
-# Recording
+# Recording Guide
 
-## 
+## Recording modes
 
-**Screen Recording**
+MemScreen supports 4 recording modes:
+- `Screen` (single selected display)
+- `All Screens`
+- `Region`
+- `Window`
 
-PyInstallerOpenCV (cv2)
+## Recommended workflow
 
-## Recording
+1. Open `Record` screen.
+2. Choose mode (`Screen`, `Region`, `Window`, `All Screens`).
+3. If mode requires selection:
+   - `Region`: drag to select area, then confirm
+   - `Window`: pick target window, then confirm
+4. Click stop from the floating control when done.
+5. Open `Videos` for immediate playback and organization.
 
-### 1
+## Audio behavior
 
-```bash
-# 
-python3 start.py
-```
+Audio toggles are in `Settings`:
+- `System audio`
+- `Microphone`
 
-recording
-- ✓ 
-- ✓ /
-- ✓ 
-- ✓ 
+Both can be enabled simultaneously.
 
-### 2macOS
+## Keyboard and mouse tracking
 
-macOS
+`Key-Mouse tracking` can auto-start with recording (configurable in Settings).
 
-1. **** `Command + Shift + 5`
-2. ****
-3. ****""
-4. ****
+## Troubleshooting
 
-
-
-### 3
-
-
-
-- **OBS Studio** (https://obsproject.com/) - 
-- **QuickTime Player** - macOS
-- **Loom** (https://www.loom.com/) - 
-
-MemScreen
-
-```
-~/.memscreen/db/videos/
-```
-
-## 
-
-
-
-- ✓ **Chat** - AI
-- ✓ **Videos** - 
-- ✓ **Process Mining** - 
-- ✓ **Memory Search** - 
-
-## 
-
-### Recording
-
-PyInstallerOpenCV
-
-1. **OpenCVC**cv2C
-2. ****cv2
-3. ****cv2SDL2
-
-### 
-
-
-
-1. **Docker**
-2. **Recording**recording
-3. ****MoviePy + Pillow
-
-
+- Region selection on wrong screen:
+  - make sure the target screen is selected before opening region selector
+- No system audio:
+  - verify system audio capture route in macOS settings and keep `System audio` enabled
+- No microphone audio:
+  - grant Microphone permission to the app/terminal runtime

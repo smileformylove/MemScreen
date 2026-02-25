@@ -172,13 +172,6 @@ action_stop_stale() {
     sleep 1
   fi
 
-  local legacy_pids
-  legacy_pids="$(pgrep -f 'memscreen/ui/kivy_app.py|memscreen-ui|setup/start.py' || true)"
-  if [[ -n "$legacy_pids" ]]; then
-    print_info "Stopping possible legacy UI processes" "$legacy_pids"
-    kill $legacy_pids >/dev/null 2>&1 || true
-    sleep 1
-  fi
 }
 
 print_step "1/3" "Preparing runtime"

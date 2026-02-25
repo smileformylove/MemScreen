@@ -1,35 +1,22 @@
-# MemScreen Flutter Frontend
+# Flutter Frontend
 
-MemScreen provides a Flutter desktop client that communicates with the backend over HTTP.
+MemScreen uses Flutter desktop as the primary UI.
 
-## Prerequisites
-- Flutter SDK 3.0+
-- Python 3.8+
-- MemScreen backend dependencies installed
-
-## Start with one command (recommended)
+## Recommended start
 
 ```bash
 ./scripts/launch.sh
 ```
 
-This script will:
-- Create/use a local virtual environment
-- Install Python dependencies automatically when needed
-- Start backend API at `http://127.0.0.1:8765`
-- Install Flutter dependencies
-- Build and run the Flutter app
+## Manual start
 
-## Manual startup
-
-### 1) Start backend
+### 1) start backend
 
 ```bash
-conda activate MemScreen
-python -m memscreen.api
+./scripts/launch.sh --mode api
 ```
 
-### 2) Start Flutter app
+### 2) start frontend build/run
 
 ```bash
 cd frontend/flutter
@@ -37,31 +24,17 @@ flutter pub get
 flutter run -d macos
 ```
 
-## API configuration
-- Default API URL: `http://127.0.0.1:8765`
-- You can update API URL in the app settings when needed.
+## API URL
 
-## Frontend structure
+Default backend URL:
+- `http://127.0.0.1:8765`
 
-```text
-frontend/flutter/
-├── lib/
-│   ├── main.dart
-│   ├── app_state.dart
-│   ├── api/
-│   ├── connection/
-│   └── screens/
-├── pubspec.yaml
-└── README.md
+You can reconfigure API URL from the in-app connection UI.
+
+## Packaging
+
+Frontend installer build:
+
+```bash
+./scripts/release/build_frontend_macos.sh
 ```
-
-## Main screens
-- Chat
-- Process
-- Recording
-- Videos
-- Settings
-
-## Related docs
-- API reference: `docs/API_HTTP.md`
-- Main project overview: `README.md`
