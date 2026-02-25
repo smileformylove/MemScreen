@@ -4,7 +4,7 @@ MemScreen - Ask Screen Anything with AI-Powered Visual Memory
 A local, privacy-focused screen recording and analysis system that uses
 computer vision and language models to understand and remember your screen content.
 
-Version: v0.6.0
+Version: v0.6.3
 
 Architecture:
 - MVP Pattern: Presenters handle business logic
@@ -18,7 +18,7 @@ Example:
     >>> memory.search("What did I just capture?")
 """
 
-__version__ = "0.6.0"
+from .version import __version__
 __author__ = "Jixiang Luo"
 __email__ = "jixiangluo85@gmail.com"
 

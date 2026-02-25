@@ -22,7 +22,7 @@ New recommended imports:
 """
 
 # Version info
-__version__ = "0.6.0"
+from .version import __version__
 __author__ = "Jixiang Luo"
 
 # Import all classes from new modules for backward compatibility

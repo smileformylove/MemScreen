@@ -13,13 +13,14 @@ from typing import Optional, Any, List
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from memscreen.version import __version__
 
 # deps imported lazily in routes so /health and /config work without heavy deps (chromadb, etc.)
 
 app = FastAPI(
     title="MemScreen API",
     description="HTTP API for MemScreen core (Chat, Process, Recording, Video).",
-    version="0.1.0",
+    version=__version__,
 )
 
 _executor = ThreadPoolExecutor(max_workers=2)
@@ -53,6 +54,7 @@ class RecordingStartBody(BaseModel):
     region: Optional[List[float]] = None  # [left, top, right, bottom]
     screen_index: Optional[int] = None
     window_title: Optional[str] = None
+    audio_source: Optional[str] = None  # mixed, system_audio, microphone, none
 
 
 class VideoReanalyzeBody(BaseModel):
@@ -469,6 +471,17 @@ async def recording_start(body: RecordingStartBody):
                 raise HTTPException(status_code=400, detail=detail)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
+    if body.audio_source:
+        try:
+            from memscreen.audio import AudioSource
+            normalized = body.audio_source.strip().lower()
+            if normalized not in {"mixed", "system_audio", "microphone", "none"}:
+                raise HTTPException(status_code=400, detail=f"Invalid audio_source: {body.audio_source}")
+            presenter.set_audio_source(AudioSource(normalized))
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to set audio source: {e}")
     ok = await asyncio.get_event_loop().run_in_executor(
         _executor,
         lambda: presenter.start_recording(duration=body.duration, interval=body.interval),
@@ -502,6 +515,25 @@ async def recording_status():
     out["mode"] = mode_info.get("mode", "fullscreen")
     out["region"] = list(mode_info["bbox"]) if mode_info.get("bbox") else None
     out["screen_index"] = mode_info.get("screen_index")
+    return out
+
+
+@app.get("/recording/audio/diagnose")
+async def recording_audio_diagnose(source: str = Query("mixed")):
+    """Diagnose audio capture readiness for selected source."""
+    from . import deps
+    from memscreen.audio import AudioSource
+
+    presenter = deps.get_recording_presenter()
+    if not presenter:
+        raise HTTPException(status_code=503, detail="Recording not available")
+    normalized = source.strip().lower()
+    if normalized not in {"mixed", "system_audio", "microphone", "none"}:
+        raise HTTPException(status_code=400, detail=f"Invalid source: {source}")
+    out = await asyncio.get_event_loop().run_in_executor(
+        _executor,
+        lambda: presenter.audio_recorder.diagnose_source(AudioSource(normalized)),
+    )
     return out
 
 

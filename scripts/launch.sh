@@ -163,7 +163,8 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 
 VENV_PYTHON=""
 if [[ "$BOOTSTRAP" == "1" ]]; then
-  VENV_PYTHON="$(ensure_venv_and_deps)"
+  # ensure_venv_and_deps emits progress logs; keep only the final path line.
+  VENV_PYTHON="$(ensure_venv_and_deps | tail -n 1)"
 else
   if [[ -x "$PROJECT_ROOT/.venv/bin/python" ]]; then
     VENV_PYTHON="$PROJECT_ROOT/.venv/bin/python"
