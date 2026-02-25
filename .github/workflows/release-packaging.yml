@@ -1,0 +1,117 @@
+name: Release Packaging
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  backend-runtime:
+    name: Backend Runtime (No Models)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build backend runtime package
+        run: ./scripts/release/build_backend_runtime.sh
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: memscreen-backend-runtime
+          path: dist/release/backend/*.tar.gz
+          if-no-files-found: error
+
+  frontend-macos:
+    name: Frontend Installer (macOS)
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Import Apple signing certificate
+        if: ${{ secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_PASSWORD != '' }}
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_CERT_KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/memscreen-signing.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/memscreen-cert.p12"
+
+          python3 -c "import base64, os, pathlib; pathlib.Path(os.environ['RUNNER_TEMP'], 'memscreen-cert.p12').write_bytes(base64.b64decode(os.environ['MACOS_CERT_P12_BASE64']))"
+
+          security create-keychain -p "${KEYCHAIN_PASSWORD:-temp_keychain_pass}" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD:-temp_keychain_pass}" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$MACOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD:-temp_keychain_pass}" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+
+      - name: Configure notarization mode
+        run: |
+          if [[ -n "${{ secrets.APPLE_ID }}" && -n "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" && -n "${{ secrets.APPLE_TEAM_ID }}" && -n "${{ secrets.MACOS_CODESIGN_IDENTITY }}" ]]; then
+            echo "ENABLE_NOTARIZATION=1" >> "$GITHUB_ENV"
+          else
+            echo "ENABLE_NOTARIZATION=0" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build frontend installer
+        env:
+          CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          ENABLE_NOTARIZATION: ${{ env.ENABLE_NOTARIZATION }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: ./scripts/release/build_frontend_macos.sh
+
+      - name: Upload frontend artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: memscreen-frontend-macos
+          path: |
+            dist/release/frontend/macos/*.zip
+            dist/release/frontend/macos/*.dmg
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - backend-runtime
+      - frontend-macos
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: memscreen-backend-runtime
+          path: release-assets/backend
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: memscreen-frontend-macos
+          path: release-assets/frontend
+
+      - name: Create GitHub release with assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/backend/*
+            release-assets/frontend/*
