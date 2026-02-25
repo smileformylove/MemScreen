@@ -32,6 +32,14 @@ jobs:
   frontend-macos:
     name: Frontend Installer (macOS)
     runs-on: macos-14
+    env:
+      MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      MACOS_CERT_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_CERT_KEYCHAIN_PASSWORD }}
+      MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,28 +50,29 @@ jobs:
           channel: stable
 
       - name: Import Apple signing certificate
-        if: ${{ secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_PASSWORD != '' }}
-        env:
-          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
-          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_CERT_KEYCHAIN_PASSWORD }}
         run: |
+          if [[ -z "$MACOS_CERT_P12_BASE64" || -z "$MACOS_CERT_PASSWORD" ]]; then
+            echo "No signing certificate configured; skipping import."
+            exit 0
+          fi
+
           KEYCHAIN_PATH="$RUNNER_TEMP/memscreen-signing.keychain-db"
           CERT_PATH="$RUNNER_TEMP/memscreen-cert.p12"
+          KEYCHAIN_PASSWORD="${MACOS_CERT_KEYCHAIN_PASSWORD:-temp_keychain_pass}"
 
           python3 -c "import base64, os, pathlib; pathlib.Path(os.environ['RUNNER_TEMP'], 'memscreen-cert.p12').write_bytes(base64.b64decode(os.environ['MACOS_CERT_P12_BASE64']))"
 
-          security create-keychain -p "${KEYCHAIN_PASSWORD:-temp_keychain_pass}" "$KEYCHAIN_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "${KEYCHAIN_PASSWORD:-temp_keychain_pass}" "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security import "$CERT_PATH" -P "$MACOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD:-temp_keychain_pass}" "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
           security default-keychain -d user -s "$KEYCHAIN_PATH"
 
       - name: Configure notarization mode
         run: |
-          if [[ -n "${{ secrets.APPLE_ID }}" && -n "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" && -n "${{ secrets.APPLE_TEAM_ID }}" && -n "${{ secrets.MACOS_CODESIGN_IDENTITY }}" ]]; then
+          if [[ -n "$APPLE_ID" && -n "$APPLE_APP_SPECIFIC_PASSWORD" && -n "$APPLE_TEAM_ID" && -n "$MACOS_CODESIGN_IDENTITY" ]]; then
             echo "ENABLE_NOTARIZATION=1" >> "$GITHUB_ENV"
           else
             echo "ENABLE_NOTARIZATION=0" >> "$GITHUB_ENV"
@@ -71,11 +80,11 @@ jobs:
 
       - name: Build frontend installer
         env:
-          CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          CODESIGN_IDENTITY: ${{ env.MACOS_CODESIGN_IDENTITY }}
           ENABLE_NOTARIZATION: ${{ env.ENABLE_NOTARIZATION }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ env.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ env.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
         run: ./scripts/release/build_frontend_macos.sh
 
       - name: Upload frontend artifacts
