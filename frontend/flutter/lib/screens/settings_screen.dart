@@ -15,9 +15,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final Future<PackageInfo> _packageInfoFuture;
   final TextEditingController _durationController = TextEditingController();
   final TextEditingController _intervalController = TextEditingController();
-  bool _autoTrackWithRecording = true;
-  bool _recordSystemAudio = true;
-  bool _recordMicrophoneAudio = true;
+  final FocusNode _durationFocusNode = FocusNode();
+  final FocusNode _intervalFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -26,15 +25,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final appState = context.read<AppState>();
     _durationController.text = appState.recordingDurationSec.toString();
     _intervalController.text = appState.recordingIntervalSec.toString();
-    _autoTrackWithRecording = appState.autoTrackInputWithRecording;
-    _recordSystemAudio = appState.recordSystemAudio;
-    _recordMicrophoneAudio = appState.recordMicrophoneAudio;
   }
 
   @override
   void dispose() {
     _durationController.dispose();
     _intervalController.dispose();
+    _durationFocusNode.dispose();
+    _intervalFocusNode.dispose();
     super.dispose();
   }
 
@@ -57,22 +55,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _setAutoTrackWithRecording(bool value) async {
-    setState(() => _autoTrackWithRecording = value);
     await context.read<AppState>().setAutoTrackInputWithRecording(value);
   }
 
   Future<void> _setRecordSystemAudio(bool value) async {
-    setState(() => _recordSystemAudio = value);
     await context.read<AppState>().setRecordSystemAudio(value);
   }
 
   Future<void> _setRecordMicrophoneAudio(bool value) async {
-    setState(() => _recordMicrophoneAudio = value);
     await context.read<AppState>().setRecordMicrophoneAudio(value);
   }
 
   @override
   Widget build(BuildContext context) {
+    final appState = context.watch<AppState>();
+    final durationText = appState.recordingDurationSec.toString();
+    final intervalText = appState.recordingIntervalSec.toString();
+    if (!_durationFocusNode.hasFocus && _durationController.text != durationText) {
+      _durationController.text = durationText;
+    }
+    if (!_intervalFocusNode.hasFocus && _intervalController.text != intervalText) {
+      _intervalController.text = intervalText;
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: FutureBuilder<PackageInfo>(
@@ -82,7 +87,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _recordingDefaultsCard(),
+              _recordingDefaultsCard(appState),
               const SizedBox(height: 12),
               _kv(context, 'Version', appVersion),
             ],
@@ -125,7 +130,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _recordingDefaultsCard() {
+  Widget _recordingDefaultsCard(AppState appState) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -138,21 +143,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             dense: true,
             contentPadding: EdgeInsets.zero,
             title: const Text('System audio'),
-            value: _recordSystemAudio,
+            value: appState.recordSystemAudio,
             onChanged: _setRecordSystemAudio,
           ),
           SwitchListTile.adaptive(
             dense: true,
             contentPadding: EdgeInsets.zero,
             title: const Text('Microphone'),
-            value: _recordMicrophoneAudio,
+            value: appState.recordMicrophoneAudio,
             onChanged: _setRecordMicrophoneAudio,
           ),
           SwitchListTile.adaptive(
             dense: true,
             contentPadding: EdgeInsets.zero,
             title: const Text('Key-Mouse tracking'),
-            value: _autoTrackWithRecording,
+            value: appState.autoTrackInputWithRecording,
             onChanged: _setAutoTrackWithRecording,
           ),
           const SizedBox(height: 8),
@@ -161,6 +166,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Expanded(
                 child: TextField(
                   controller: _durationController,
+                  focusNode: _durationFocusNode,
                   decoration: const InputDecoration(labelText: 'Duration (s)'),
                   keyboardType: TextInputType.number,
                   textInputAction: TextInputAction.done,
@@ -171,6 +177,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Expanded(
                 child: TextField(
                   controller: _intervalController,
+                  focusNode: _intervalFocusNode,
                   decoration: const InputDecoration(labelText: 'Interval (s)'),
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),

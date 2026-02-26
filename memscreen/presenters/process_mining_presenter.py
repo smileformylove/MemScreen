@@ -195,6 +195,24 @@ class ProcessMiningPresenter(BasePresenter):
             self.handle_error(e, "Failed to get recent events")
             return []
 
+    def mark_tracking_baseline(self) -> bool:
+        """
+        Mark current latest event as a new baseline while tracking is active.
+
+        This is used to bind a logical session window (e.g. one video recording)
+        without restarting the global tracker.
+        """
+        if not self.is_tracking or not self.input_tracker:
+            return False
+        try:
+            self._tracking_start_event_id = self.input_tracker.get_latest_event_id()
+            self.event_count = 0
+            self.last_event_count = 0
+            return True
+        except Exception as e:
+            self.handle_error(e, "Failed to mark tracking baseline")
+            return False
+
     @staticmethod
     def _is_meaningful_event(event: Dict[str, Any]) -> bool:
         operate_type = str(event.get("operate_type", "")).lower()

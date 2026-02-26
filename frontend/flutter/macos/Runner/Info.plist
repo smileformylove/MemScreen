@@ -28,6 +28,10 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>MemScreen uses microphone audio when recording videos.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>MemScreen captures screen content for your recordings.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

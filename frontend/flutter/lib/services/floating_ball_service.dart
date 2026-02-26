@@ -67,11 +67,17 @@ class FloatingBallService {
 
   /// Minimize main window and enter native region-selection flow (macOS).
   /// screenIndex: null means follow current/default screen.
-  static Future<void> prepareRegionSelection({int? screenIndex}) async {
+  static Future<void> prepareRegionSelection({
+    int? screenIndex,
+    int? screenDisplayId,
+  }) async {
     try {
       final args = <String, dynamic>{};
       if (screenIndex != null) {
         args['screenIndex'] = screenIndex;
+      }
+      if (screenDisplayId != null) {
+        args['screenDisplayId'] = screenDisplayId;
       }
       await _channel.invokeMethod('prepareRegionSelection', args);
     } catch (e) {
@@ -81,11 +87,17 @@ class FloatingBallService {
 
   /// Minimize main window and enter native app-window selection flow (macOS).
   /// screenIndex: null means follow current/default screen.
-  static Future<void> prepareWindowSelection({int? screenIndex}) async {
+  static Future<void> prepareWindowSelection({
+    int? screenIndex,
+    int? screenDisplayId,
+  }) async {
     try {
       final args = <String, dynamic>{};
       if (screenIndex != null) {
         args['screenIndex'] = screenIndex;
+      }
+      if (screenDisplayId != null) {
+        args['screenDisplayId'] = screenDisplayId;
       }
       await _channel.invokeMethod('prepareWindowSelection', args);
     } catch (e) {
@@ -95,11 +107,17 @@ class FloatingBallService {
 
   /// Minimize main window before starting fullscreen recording.
   /// screenIndex: null means all screens.
-  static Future<void> prepareScreenRecording({int? screenIndex}) async {
+  static Future<void> prepareScreenRecording({
+    int? screenIndex,
+    int? screenDisplayId,
+  }) async {
     try {
       final args = <String, dynamic>{};
       if (screenIndex != null) {
         args['screenIndex'] = screenIndex;
+      }
+      if (screenDisplayId != null) {
+        args['screenDisplayId'] = screenDisplayId;
       }
       await _channel.invokeMethod('prepareScreenRecording', args);
     } catch (e) {

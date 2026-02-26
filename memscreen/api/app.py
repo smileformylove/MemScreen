@@ -50,9 +50,10 @@ class ProcessSaveSessionBody(BaseModel):
 class RecordingStartBody(BaseModel):
     duration: int = 60
     interval: float = 2.0
-    mode: Optional[str] = None  # fullscreen, fullscreen-single, region
+    mode: Optional[str] = None  # fullscreen, fullscreen-single, region (legacy: window)
     region: Optional[List[float]] = None  # [left, top, right, bottom]
     screen_index: Optional[int] = None
+    screen_display_id: Optional[int] = None
     window_title: Optional[str] = None
     audio_source: Optional[str] = None  # mixed, system_audio, microphone, none
 
@@ -354,6 +355,24 @@ async def process_tracking_status():
     return presenter.get_tracking_status()
 
 
+@app.post("/process/tracking/mark-start")
+async def process_tracking_mark_start():
+    """Mark a new tracking baseline while current tracking remains active."""
+    from . import deps
+    presenter = deps.get_process_mining_presenter()
+    if not presenter:
+        raise HTTPException(status_code=503, detail="Process mining not available")
+    ok = await asyncio.get_event_loop().run_in_executor(
+        _executor, lambda: presenter.mark_tracking_baseline()
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=400,
+            detail="Tracking is not active, cannot mark baseline",
+        )
+    return {"ok": True}
+
+
 @app.post("/process/sessions/from-tracking")
 async def process_save_session_from_tracking():
     """Save current session from recent keyboard/mouse events (same behavior as Kivy save-current-session)."""
@@ -455,19 +474,27 @@ async def recording_start(body: RecordingStartBody):
     if not presenter:
         raise HTTPException(status_code=503, detail="Recording not available")
     if body.mode:
+        requested_mode = body.mode.strip().lower()
+        # Backward compatibility for old clients.
+        normalized_mode = "region" if requested_mode == "window" else requested_mode
         kwargs = {}
-        if body.mode == "region" and body.region and len(body.region) == 4:
+        if normalized_mode == "region" and body.region and len(body.region) == 4:
             kwargs["bbox"] = tuple(body.region)
             if body.screen_index is not None:
                 kwargs["screen_index"] = body.screen_index
-        elif body.mode == "fullscreen-single" and body.screen_index is not None:
-            kwargs["screen_index"] = body.screen_index
+            if body.screen_display_id is not None:
+                kwargs["screen_display_id"] = body.screen_display_id
+        elif normalized_mode == "fullscreen-single":
+            if body.screen_index is not None:
+                kwargs["screen_index"] = body.screen_index
+            if body.screen_display_id is not None:
+                kwargs["screen_display_id"] = body.screen_display_id
         if body.window_title:
             kwargs["window_title"] = body.window_title
         try:
-            mode_ok = presenter.set_recording_mode(body.mode, **kwargs)
+            mode_ok = presenter.set_recording_mode(normalized_mode, **kwargs)
             if not mode_ok:
-                detail = getattr(presenter, "last_start_error", None) or f"Invalid recording mode arguments: {body.mode}"
+                detail = getattr(presenter, "last_start_error", None) or f"Invalid recording mode arguments: {normalized_mode}"
                 raise HTTPException(status_code=400, detail=detail)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -515,6 +542,7 @@ async def recording_status():
     out["mode"] = mode_info.get("mode", "fullscreen")
     out["region"] = list(mode_info["bbox"]) if mode_info.get("bbox") else None
     out["screen_index"] = mode_info.get("screen_index")
+    out["screen_display_id"] = mode_info.get("screen_display_id")
     return out
 
 

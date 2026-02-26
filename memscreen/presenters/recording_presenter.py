@@ -14,6 +14,8 @@ import json
 import hashlib
 import re
 import subprocess
+import sys
+import shutil
 import numpy as np
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
@@ -108,6 +110,7 @@ class RecordingPresenter(BasePresenter):
         self.recording_mode = 'fullscreen'  # fullscreen, region
         self.region_bbox = None  # (left, top, right, bottom) or None
         self.screen_index = None  # Index of screen to record (None = all screens/primary)
+        self.screen_display_id: Optional[int] = None  # Stable OS display identifier when available
         self.window_title = None  # Optional window/app label for region-window mode
         self._window_follow_enabled = False
         self._window_follow_owner: Optional[str] = None
@@ -298,6 +301,44 @@ class RecordingPresenter(BasePresenter):
         """
         return [AudioSource.NONE, AudioSource.MIXED, AudioSource.MICROPHONE, AudioSource.SYSTEM_AUDIO]
 
+    def _check_screen_capture_ready(self) -> Tuple[bool, Optional[str]]:
+        """
+        Validate screen capture permission/readiness before recording starts.
+        Returns:
+            (is_ready, error_message)
+        """
+        if sys.platform == "darwin":
+            # On macOS, this API reliably reports screen recording permission.
+            try:
+                from Quartz import CGPreflightScreenCaptureAccess  # type: ignore
+
+                if not bool(CGPreflightScreenCaptureAccess()):
+                    return (
+                        False,
+                        "Screen recording permission is required. "
+                        "Grant access in System Settings > Privacy & Security > Screen Recording.",
+                    )
+            except Exception as e:
+                # Non-fatal: fall back to runtime grab probe below.
+                print(f"[RecordingPresenter] Screen permission preflight API unavailable: {e}")
+
+        try:
+            from PIL import ImageGrab
+            test_img = ImageGrab.grab(bbox=(0, 0, 4, 4))
+            if test_img is None:
+                return False, "Failed to capture screen frame during pre-flight check."
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "permission" in error_msg or "denied" in error_msg or "screen" in error_msg:
+                return (
+                    False,
+                    "Screen recording permission is required. "
+                    "Grant access in System Settings > Privacy & Security > Screen Recording.",
+                )
+            return False, f"Failed to verify screen capture readiness: {e}"
+
+        return True, None
+
     def start_recording(self, duration: int = 60, interval: float = 2.0) -> bool:
         """
         Start screen recording.
@@ -328,29 +369,18 @@ class RecordingPresenter(BasePresenter):
         # Reset permission denied flag - user is explicitly trying to record
         self._preview_permission_denied = False
 
-        # Pre-flight permission check - test permission BEFORE starting recording thread
-        # This prevents repeated permission dialogs during recording loop
         print("[RecordingPresenter] Performing pre-flight permission check...")
-        try:
-            from PIL import ImageGrab
-            # Try to capture a tiny region to test permission
-            test_img = ImageGrab.grab(bbox=(0, 0, 1, 1))
-            print("[RecordingPresenter] ✓ Pre-flight permission check passed")
-            # If we get here without exception, permission is granted
-            del test_img  # Discard test image
-        except Exception as test_error:
-            error_msg = str(test_error).lower()
-            if "permission" in error_msg or "denied" in error_msg or "screen" in error_msg:
-                print(f"[RecordingPresenter] ✗ Pre-flight permission check failed: {test_error}")
-                self._preview_permission_denied = True
-                self.last_start_error = (
-                    "Screen recording permission is required. Please grant permission in "
-                    "System Settings > Privacy & Security > Screen Recording, then restart the app."
-                )
-                self.show_error(self.last_start_error)
-                return False
-            # If it's some other error, log but continue
-            print(f"[RecordingPresenter] Warning: Pre-flight check had non-permission error: {test_error}")
+        capture_ready, capture_error = self._check_screen_capture_ready()
+        if not capture_ready:
+            print(f"[RecordingPresenter] ✗ Pre-flight permission check failed: {capture_error}")
+            self._preview_permission_denied = True
+            self.last_start_error = capture_error or (
+                "Screen recording permission is required. Please grant permission in "
+                "System Settings > Privacy & Security > Screen Recording, then restart the app."
+            )
+            self.show_error(self.last_start_error)
+            return False
+        print("[RecordingPresenter] ✓ Pre-flight permission check passed")
 
         try:
             self.duration = duration
@@ -478,53 +508,104 @@ class RecordingPresenter(BasePresenter):
         Set recording mode (fullscreen, fullscreen-single, or region).
 
         Args:
-            mode: 'fullscreen', 'fullscreen-single', or 'region'
+            mode: 'fullscreen', 'fullscreen-single', 'region', or legacy 'window'
             **kwargs:
                 - bbox: region bbox tuple (for 'region' mode)
                 - screen_index: screen index (for 'fullscreen-single' or screen-local 'region' mode)
+                - screen_display_id: stable screen id (preferred when available)
 
         Returns:
             True if mode set successfully
         """
         try:
             self.last_start_error = None
-            self.recording_mode = mode
+            mode_normalized = (mode or "").strip().lower()
+            # Backward compatibility for old clients that send "window".
+            if mode_normalized == "window":
+                mode_normalized = "region"
+            self.recording_mode = mode_normalized
             window_title = kwargs.get('window_title')
             self.window_title = window_title.strip() if isinstance(window_title, str) and window_title.strip() else None
+            requested_display_id = kwargs.get('screen_display_id')
 
-            if mode == 'fullscreen':
+            if mode_normalized == 'fullscreen':
                 # Capture all screens combined
                 self.region_bbox = None
                 self.screen_index = None
+                self.screen_display_id = None
                 self.window_title = None
                 self._reset_window_follow()
                 print("[RecordingPresenter] Mode set to: Full Screen (all screens)")
 
-            elif mode == 'fullscreen-single':
+            elif mode_normalized == 'fullscreen-single':
                 # Capture a specific screen
                 screen_index = kwargs.get('screen_index')
-                if screen_index is not None:
-                    self.screen_index = int(screen_index)
+                resolved_screen = None
+                if requested_display_id is not None:
+                    from memscreen.utils import get_screen_by_display_id
+
+                    resolved_screen = get_screen_by_display_id(int(requested_display_id))
+                    if not resolved_screen:
+                        raise ValueError(
+                            f"Invalid screen_display_id for fullscreen-single mode: {requested_display_id}"
+                        )
+                    self.screen_index = int(resolved_screen.index)
+                    self.screen_display_id = (
+                        int(resolved_screen.display_id)
+                        if resolved_screen.display_id is not None
+                        else int(requested_display_id)
+                    )
                     self.region_bbox = None
                     self.window_title = None
                     self._reset_window_follow()
-                    print(f"[RecordingPresenter] Mode set to: Full Screen {self.screen_index + 1}")
-                else:
-                    raise ValueError("screen_index is required for fullscreen-single mode")
+                    print(
+                        f"[RecordingPresenter] Mode set to: Full Screen {self.screen_index + 1} "
+                        f"(display_id={self.screen_display_id})"
+                    )
+                elif screen_index is not None:
+                    from memscreen.utils import get_screen_by_index
 
-            elif mode == 'region':
+                    self.screen_index = int(screen_index)
+                    resolved_screen = get_screen_by_index(self.screen_index)
+                    self.screen_display_id = (
+                        int(resolved_screen.display_id)
+                        if resolved_screen and resolved_screen.display_id is not None
+                        else None
+                    )
+                    self.region_bbox = None
+                    self.window_title = None
+                    self._reset_window_follow()
+                    print(
+                        f"[RecordingPresenter] Mode set to: Full Screen {self.screen_index + 1} "
+                        f"(display_id={self.screen_display_id})"
+                    )
+                else:
+                    raise ValueError("screen_index or screen_display_id is required for fullscreen-single mode")
+
+            elif mode_normalized == 'region':
                 bbox = kwargs.get('bbox')
                 if bbox and len(bbox) == 4:
                     # Ensure bbox elements are integers for PIL ImageGrab.
                     local_bbox = tuple(int(x) for x in bbox)
                     screen_index = kwargs.get('screen_index')
-                    if screen_index is not None:
+                    screen_info = None
+                    if requested_display_id is not None:
+                        from memscreen.utils import get_screen_by_display_id
+
+                        screen_info = get_screen_by_display_id(int(requested_display_id))
+                        if not screen_info:
+                            raise ValueError(
+                                f"Invalid screen_display_id for region mode: {requested_display_id}"
+                            )
+                        resolved_screen_index = int(screen_info.index)
+                    elif screen_index is not None:
                         from memscreen.utils import get_screen_by_index
                         resolved_screen_index = int(screen_index)
                         screen_info = get_screen_by_index(resolved_screen_index)
                         if not screen_info:
                             raise ValueError(f"Invalid screen_index for region mode: {resolved_screen_index}")
 
+                    if screen_info is not None:
                         # Region bbox from native selector is screen-local (top-left origin).
                         # Convert to global bbox in PIL coordinate space.
                         x1 = screen_info.x + local_bbox[0]
@@ -548,10 +629,20 @@ class RecordingPresenter(BasePresenter):
 
                         self.region_bbox = (x1, y1, x2, y2)
                         self.screen_index = resolved_screen_index
+                        self.screen_display_id = (
+                            int(screen_info.display_id)
+                            if screen_info.display_id is not None
+                            else (
+                                int(requested_display_id)
+                                if requested_display_id is not None
+                                else None
+                            )
+                        )
                     else:
                         # Backward-compatible path: treat bbox as global coordinates.
                         self.region_bbox = local_bbox
                         self.screen_index = None
+                        self.screen_display_id = None
                     if self.window_title:
                         self._enable_window_follow(self.window_title)
                         print(f"[RecordingPresenter] Mode set to: Window Region {self.region_bbox} ({self.window_title})")
@@ -562,7 +653,7 @@ class RecordingPresenter(BasePresenter):
                     raise ValueError("Invalid bbox for region mode")
 
             else:
-                raise ValueError(f"Invalid recording mode: {mode}")
+                raise ValueError(f"Invalid recording mode: {mode_normalized}")
 
             return True
 
@@ -781,7 +872,8 @@ class RecordingPresenter(BasePresenter):
         return {
             'mode': self.recording_mode,
             'bbox': self.region_bbox,
-            'screen_index': self.screen_index
+            'screen_index': self.screen_index,
+            'screen_display_id': self.screen_display_id,
         }
 
 
@@ -886,7 +978,8 @@ class RecordingPresenter(BasePresenter):
                     'name': screen.name,
                     'width': screen.width,
                     'height': screen.height,
-                    'is_primary': screen.is_primary
+                    'is_primary': screen.is_primary,
+                    'display_id': screen.display_id,
                 })
 
             return screen_list
@@ -1104,6 +1197,8 @@ Content Tags: {", ".join(content_tags)}
             return
         last_screenshot_time = time.time()
         last_save_time = time.time()
+        consecutive_capture_failures = 0
+        first_frame_deadline = (self.recording_start_time or time.time()) + 4.0
 
         # Check if permission was denied before entering recording loop
         if hasattr(self, '_preview_permission_denied') and self._preview_permission_denied:
@@ -1119,6 +1214,25 @@ Content Tags: {", ".join(content_tags)}
             while self.is_recording:
                 current_time = time.time()
                 elapsed = current_time - self.recording_start_time
+
+                # Startup guard: if no frame is captured shortly after start, fail fast
+                # so user can immediately reselect window/region and retry.
+                if self.frame_count == 0 and current_time > first_frame_deadline:
+                    if self.recording_mode == "region" and self._window_follow_enabled:
+                        self.last_start_error = (
+                            "Unable to capture selected window. "
+                            "Please reselect the target window and retry."
+                        )
+                    else:
+                        self.last_start_error = (
+                            "Unable to capture screen frames. "
+                            "Please retry recording."
+                        )
+                    print(f"[RecordingPresenter] {self.last_start_error}")
+                    self.is_recording = False
+                    if self.view:
+                        self.view.show_error(self.last_start_error)
+                    break
 
                 # Check if it's time to save a new video segment
                 time_since_last_save = current_time - last_save_time
@@ -1222,6 +1336,7 @@ Content Tags: {", ".join(content_tags)}
                         # Add to frames list
                         self.recording_frames.append(frame)
                         self.frame_count += 1
+                        consecutive_capture_failures = 0
                         last_screenshot_time = current_time
 
                         # Update view with frame count (every frame for responsiveness)
@@ -1245,6 +1360,16 @@ Content Tags: {", ".join(content_tags)}
                             print(f"[Recording] Error capturing frame: {grab_error}")
                             import traceback
                             traceback.print_exc()
+                            consecutive_capture_failures += 1
+                            if self.frame_count == 0 and consecutive_capture_failures >= 12:
+                                self.last_start_error = (
+                                    "Capture failed repeatedly at startup. "
+                                    "Please reselect region/window and retry."
+                                )
+                                self.is_recording = False
+                                if self.view:
+                                    self.view.show_error(self.last_start_error)
+                                break
                             # Continue to next iteration
                             last_screenshot_time = current_time
                             time.sleep(0.1)
@@ -1279,8 +1404,16 @@ Content Tags: {", ".join(content_tags)}
 
             # Save video
             fps = 1.0 / self.interval
+            target_w, target_h = self._normalize_video_size(frames[0].shape[1], frames[0].shape[0])
+            if target_w != frames[0].shape[1] or target_h != frames[0].shape[0]:
+                normalized = []
+                for frame in frames:
+                    if frame.shape[1] != target_w or frame.shape[0] != target_h:
+                        frame = cv2.resize(frame, (target_w, target_h))
+                    normalized.append(frame)
+                frames = normalized
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out = cv2.VideoWriter(filename, fourcc, fps, (frames[0].shape[1], frames[0].shape[0]))
+            out = cv2.VideoWriter(filename, fourcc, fps, (target_w, target_h))
 
             for frame in frames:
                 out.write(frame)
@@ -1341,8 +1474,16 @@ Content Tags: {", ".join(content_tags)}
 
             # Save video
             fps = 1.0 / self.interval
+            target_w, target_h = self._normalize_video_size(frames[0].shape[1], frames[0].shape[0])
+            if target_w != frames[0].shape[1] or target_h != frames[0].shape[0]:
+                normalized = []
+                for frame in frames:
+                    if frame.shape[1] != target_w or frame.shape[0] != target_h:
+                        frame = cv2.resize(frame, (target_w, target_h))
+                    normalized.append(frame)
+                frames = normalized
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out = cv2.VideoWriter(filename, fourcc, fps, (frames[0].shape[1], frames[0].shape[0]))
+            out = cv2.VideoWriter(filename, fourcc, fps, (target_w, target_h))
 
             for frame in frames:
                 out.write(frame)
@@ -1394,6 +1535,34 @@ Content Tags: {", ".join(content_tags)}
             self._memory_index_ready_event.set()
             self.handle_error(e, "Failed to save recording")
 
+    def _normalize_video_size(self, width: int, height: int) -> Tuple[int, int]:
+        """
+        Ensure output video dimensions are valid for common H264/AAC merge pipelines.
+        """
+        target_w = max(2, int(width) - (int(width) % 2))
+        target_h = max(2, int(height) - (int(height) % 2))
+        return target_w, target_h
+
+    def _resolve_ffmpeg_binary(self) -> Optional[str]:
+        """
+        Resolve ffmpeg binary path for packaged/runtime environments.
+        """
+        env_ffmpeg = os.environ.get("MEMSCREEN_FFMPEG_PATH")
+        if env_ffmpeg and os.path.exists(env_ffmpeg):
+            return env_ffmpeg
+        found = shutil.which("ffmpeg")
+        if found:
+            return found
+        try:
+            import imageio_ffmpeg  # type: ignore
+
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            if ffmpeg_exe and os.path.exists(ffmpeg_exe):
+                return ffmpeg_exe
+        except Exception:
+            pass
+        return None
+
     def _merge_audio_video(self, video_file: str, audio_file: str) -> str:
         """
         Merge audio and video files using moviepy or ffmpeg.
@@ -1434,8 +1603,13 @@ Content Tags: {", ".join(content_tags)}
         except Exception as e:
             print(f"[RecordingPresenter] moviepy merge failed: {e}. Trying ffmpeg merge...")
 
-        ffmpeg_cmd = [
-            "ffmpeg", "-y",
+        ffmpeg_bin = self._resolve_ffmpeg_binary()
+        if not ffmpeg_bin:
+            print("[RecordingPresenter] ffmpeg not found, skipping audio merge")
+            return video_file
+
+        ffmpeg_copy_cmd = [
+            ffmpeg_bin, "-y",
             "-i", video_file,
             "-i", audio_file,
             "-c:v", "copy",
@@ -1444,15 +1618,36 @@ Content Tags: {", ".join(content_tags)}
             output_file,
         ]
         try:
-            subprocess.run(ffmpeg_cmd, check=True, capture_output=True, text=True)
+            subprocess.run(ffmpeg_copy_cmd, check=True, capture_output=True, text=True)
             os.remove(video_file)
-            print(f"[RecordingPresenter] Merged audio and video with ffmpeg: {output_file}")
+            print(f"[RecordingPresenter] Merged audio and video with ffmpeg(copy): {output_file}")
             return output_file
-        except FileNotFoundError:
-            print("[RecordingPresenter] ffmpeg not found, skipping audio merge")
-            return video_file
         except Exception as e:
-            print(f"[RecordingPresenter] ffmpeg merge failed: {e}")
+            stderr = ""
+            if hasattr(e, "stderr") and e.stderr:
+                stderr = str(e.stderr).strip().splitlines()[-1]
+            print(f"[RecordingPresenter] ffmpeg(copy) merge failed: {e} {stderr}")
+
+        ffmpeg_reencode_cmd = [
+            ffmpeg_bin, "-y",
+            "-i", video_file,
+            "-i", audio_file,
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-shortest",
+            output_file,
+        ]
+        try:
+            subprocess.run(ffmpeg_reencode_cmd, check=True, capture_output=True, text=True)
+            os.remove(video_file)
+            print(f"[RecordingPresenter] Merged audio and video with ffmpeg(reencode): {output_file}")
+            return output_file
+        except Exception as e:
+            stderr = ""
+            if hasattr(e, "stderr") and e.stderr:
+                stderr = str(e.stderr).strip().splitlines()[-1]
+            print(f"[RecordingPresenter] ffmpeg(reencode) merge failed: {e} {stderr}")
             return video_file
 
     def _save_to_database(self, filename, frame_count, fps, duration, file_size, audio_file=None):

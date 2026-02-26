@@ -173,17 +173,13 @@ BOOTSTRAP_LOG="${LOG_DIR}/backend_bootstrap.log"
 API_HEALTH_URL="${MEMSCREEN_API_URL:-http://127.0.0.1:8765/health}"
 REQ_FILE="${APP_BACKEND_DIR}/requirements.lite.txt"
 SOURCE_MARKER="${APP_BACKEND_DIR}/src/memscreen/version.py"
+SOURCE_SHA_FILE="${RUNTIME_DIR}/.backend_source_sha"
 
 mkdir -p "$RUNTIME_DIR" "$LOG_DIR"
 touch "$BOOTSTRAP_LOG"
 exec >>"$BOOTSTRAP_LOG" 2>&1
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] [backend-bootstrap] begin"
-
-if curl -fsS "$API_HEALTH_URL" >/dev/null 2>&1; then
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] [backend-bootstrap] api already healthy"
-  exit 0
-fi
 
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] [backend-bootstrap] another bootstrap is running"
@@ -206,11 +202,63 @@ if [[ ! -f "$SOURCE_MARKER" ]]; then
   exit 1
 fi
 
+CURRENT_SOURCE_SHA="$(
+  python3 - "$APP_BACKEND_DIR/src/memscreen" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+h = hashlib.sha256()
+if root.exists():
+    for path in sorted(root.rglob("*.py")):
+        rel = str(path.relative_to(root)).encode("utf-8", "ignore")
+        h.update(rel)
+        h.update(b"\0")
+        try:
+            h.update(path.read_bytes())
+        except Exception:
+            continue
+        h.update(b"\0")
+print(h.hexdigest())
+PY
+)"
+PREV_SOURCE_SHA=""
+if [[ -f "$SOURCE_SHA_FILE" ]]; then
+  PREV_SOURCE_SHA="$(cat "$SOURCE_SHA_FILE" | tr -d '[:space:]')"
+fi
+SOURCE_CHANGED=0
+if [[ -n "$CURRENT_SOURCE_SHA" && "$CURRENT_SOURCE_SHA" != "$PREV_SOURCE_SHA" ]]; then
+  SOURCE_CHANGED=1
+fi
+if [[ "$SOURCE_CHANGED" == "1" ]]; then
+  echo "[backend-bootstrap] embedded backend source changed; restarting API process"
+  pkill -f "start_api_only.py" >/dev/null 2>&1 || true
+fi
+
+if curl -fsS "$API_HEALTH_URL" >/dev/null 2>&1 && [[ "$SOURCE_CHANGED" != "1" ]]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] [backend-bootstrap] api already healthy (source unchanged)"
+  exit 0
+fi
+
 if [[ ! -f "$STAMP_FILE" || "$REQ_FILE" -nt "$STAMP_FILE" || "$SOURCE_MARKER" -nt "$STAMP_FILE" ]]; then
   echo "[backend-bootstrap] installing lite runtime dependencies"
   "${VENV_DIR}/bin/python" -m pip install -r "$REQ_FILE"
   date +"%Y-%m-%d %H:%M:%S" > "$STAMP_FILE"
   echo "[backend-bootstrap] install complete"
+fi
+
+# Best-effort audio runtime support for packaged app.
+# Keep startup resilient: audio extras failing should not block recording/video usage.
+if ! "${VENV_DIR}/bin/python" -c "import pyaudio" >/dev/null 2>&1; then
+  echo "[backend-bootstrap] installing optional audio dependency: pyaudio"
+  if ! "${VENV_DIR}/bin/python" -m pip install pyaudio; then
+    echo "[backend-bootstrap] warning: optional pyaudio install failed; audio capture may be unavailable"
+  fi
+fi
+
+if [[ -n "$CURRENT_SOURCE_SHA" ]]; then
+  echo "$CURRENT_SOURCE_SHA" > "$SOURCE_SHA_FILE"
 fi
 
 if curl -fsS "$API_HEALTH_URL" >/dev/null 2>&1; then
@@ -224,7 +272,8 @@ if pgrep -f "${APP_BACKEND_DIR}/start_api_only.py" >/dev/null 2>&1; then
 fi
 
 echo "[backend-bootstrap] launching API"
-nohup env PYTHONPATH="${APP_BACKEND_DIR}/src${PYTHONPATH:+:$PYTHONPATH}" \
+nohup env MEMSCREEN_BACKEND_SRC="${APP_BACKEND_DIR}/src" \
+  PYTHONPATH="${APP_BACKEND_DIR}/src${PYTHONPATH:+:$PYTHONPATH}" \
   "${VENV_DIR}/bin/python" "${APP_BACKEND_DIR}/start_api_only.py" >>"$API_LOG" 2>&1 &
 echo "[backend-bootstrap] done"
 SH
@@ -256,15 +305,13 @@ WRAPPER_LOG="${LOG_DIR}/app_wrapper.log"
 if [[ -x "$BACKEND_BOOTSTRAP" ]]; then
   mkdir -p "$LOG_DIR"
   touch "$WRAPPER_LOG"
-  if ! curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
-    nohup "$BACKEND_BOOTSTRAP" >>"$WRAPPER_LOG" 2>&1 &
-    for _ in {1..5}; do
-      if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
-        break
-      fi
-      sleep 1
-    done
-  fi
+  nohup "$BACKEND_BOOTSTRAP" >>"$WRAPPER_LOG" 2>&1 &
+  for _ in {1..5}; do
+    if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
 fi
 
 exec "${APP_BIN_DIR}/memscreen_flutter_real" "$@"

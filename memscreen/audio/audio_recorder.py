@@ -62,13 +62,21 @@ class AudioRecorder:
         self.audio_source = AudioSource.NONE
         self.is_recording = False
         self.recording_thread = None
+        self._startup_check_done = threading.Event()
         self.audio_frames = []
         self.current_file = None
         self.effective_audio_source = AudioSource.NONE
         self.last_error: Optional[str] = None
         self.auto_route_system_output = True
+        self.system_audio_gain = float(os.environ.get("MEMSCREEN_SYSTEM_AUDIO_GAIN", "64.0"))
+        self.monitor_audio_gain = float(
+            os.environ.get("MEMSCREEN_MONITOR_AUDIO_GAIN", str(self.system_audio_gain))
+        )
         self._selected_system_device_name: Optional[str] = None
+        self._selected_system_output_device_name: Optional[str] = None
+        self._selected_system_channels: int = 1
         self._previous_output_device_id: Optional[int] = None
+        self._previous_system_output_device_id: Optional[int] = None
 
         # Check if PyAudio is available
         if not PYAUDIO_AVAILABLE:
@@ -239,6 +247,7 @@ class AudioRecorder:
             self.effective_audio_source = source
             self.is_recording = True
             self.audio_frames = []
+            self._startup_check_done.clear()
 
             # Start recording in background thread
             self.recording_thread = threading.Thread(
@@ -247,8 +256,8 @@ class AudioRecorder:
             )
             self.recording_thread.start()
 
-            # Give the worker thread a brief chance to fail fast (e.g. no system-audio signal).
-            threading.Event().wait(0.2)
+            # Wait for startup checks (device open / loopback verify) to complete.
+            self._startup_check_done.wait(timeout=1.5)
             if not self.is_recording:
                 print("[AudioRecorder] Audio recording failed during startup")
                 return False
@@ -327,7 +336,7 @@ class AudioRecorder:
             self._close_stream(mic_stream)
 
         if source in (AudioSource.SYSTEM_AUDIO, AudioSource.MIXED):
-            sys_stream = self._get_system_audio_stream(p)
+            sys_stream, _sys_channels = self._get_system_audio_stream(p)
             if sys_stream is not None:
                 result["system_device_available"] = True
                 result["system_signal_available"] = not self._stream_is_silent(sys_stream)
@@ -375,31 +384,58 @@ class AudioRecorder:
 
             # Configure stream based on source
             if self.audio_source in (AudioSource.SYSTEM_AUDIO, AudioSource.MIXED):
-                system_stream = self._get_system_audio_stream(p)
+                system_stream, system_channels = self._get_system_audio_stream(p)
                 if system_stream is not None:
                     if self.auto_route_system_output:
                         self._route_output_to_selected_system_device()
-                    streams.append(("system_audio", system_stream))
+                        # Re-open loopback stream after routing output.
+                        # Some virtual devices only produce usable capture once output
+                        # has already switched to that device.
+                        self._close_stream(system_stream)
+                        system_stream, system_channels = self._get_system_audio_stream(p)
+                        if system_stream is not None:
+                            loopback_ok = self._verify_loopback_signal(
+                                p, system_stream, system_channels
+                            )
+                            if not loopback_ok:
+                                self.last_error = (
+                                    "System loopback device is not providing audio signal. "
+                                    "Please use BlackHole/Loopback/Soundflower and ensure output "
+                                    "is routed to that loopback device."
+                                )
+                                print(f"[AudioRecorder] {self.last_error}")
+                                self._close_stream(system_stream)
+                                system_stream = None
+                                system_channels = 0
+                                # Avoid muting user output if loopback path is unavailable.
+                                self._restore_previous_output_device()
+                    if system_stream is not None:
+                        streams.append(
+                            {"name": "system_audio", "stream": system_stream, "channels": system_channels}
+                        )
 
             if self.audio_source in (AudioSource.MICROPHONE, AudioSource.MIXED):
                 mic_stream = self._open_microphone_stream(p)
                 if mic_stream is not None:
-                    streams.append(("microphone", mic_stream))
+                    streams.append({"name": "microphone", "stream": mic_stream, "channels": 1})
 
             if self.audio_source == AudioSource.SYSTEM_AUDIO and not streams:
-                self.last_error = (
-                    "No system-audio signal detected. "
-                    "Route macOS output to a loopback device (BlackHole/Loopback/Oray) and retry."
-                )
+                if not self.last_error:
+                    self.last_error = (
+                        "No system-audio signal detected. "
+                        "Route macOS output to a loopback device (BlackHole/Loopback/Oray) and retry."
+                    )
+                self._startup_check_done.set()
                 self.is_recording = False
                 return
 
             if self.audio_source in (AudioSource.MIXED, AudioSource.MICROPHONE) and not streams:
                 self.last_error = "No available audio input stream."
+                self._startup_check_done.set()
                 self.is_recording = False
                 return
 
-            opened_sources = {name for name, _ in streams}
+            opened_sources = {entry["name"] for entry in streams}
             if opened_sources == {"system_audio", "microphone"}:
                 self.effective_audio_source = AudioSource.MIXED
             elif "system_audio" in opened_sources:
@@ -408,6 +444,7 @@ class AudioRecorder:
                 self.effective_audio_source = AudioSource.MICROPHONE
             else:
                 print(f"[AudioRecorder] Unknown audio source: {self.audio_source}")
+                self._startup_check_done.set()
                 self.is_recording = False
                 return
 
@@ -415,12 +452,13 @@ class AudioRecorder:
                 f"[AudioRecorder] Recording from {self.audio_source.value} "
                 f"(effective={self.effective_audio_source.value}, streams={len(streams)})..."
             )
+            self._startup_check_done.set()
 
             if self._previous_output_device_id is not None:
                 monitor_name = self._ca_get_device_name(self._previous_output_device_id)
                 if monitor_name:
                     monitor_stream, monitor_channels = self._open_monitor_output_stream(
-                        p, monitor_name
+                        p, monitor_name, preferred_channels=max(2, int(self._selected_system_channels or 1))
                     )
                     if monitor_stream is not None:
                         print(
@@ -433,12 +471,18 @@ class AudioRecorder:
                     chunks = []
                     source_chunks = {}
                     alive_streams = []
-                    for name, stream in streams:
+                    for entry in streams:
+                        name = entry["name"]
+                        stream = entry["stream"]
+                        channels = int(entry.get("channels", 1) or 1)
                         try:
                             data = stream.read(self.chunk, exception_on_overflow=False)
-                            chunks.append(data)
-                            source_chunks[name] = data
-                            alive_streams.append((name, stream))
+                            data_for_mix = data
+                            if name == "system_audio" and self.system_audio_gain != 1.0:
+                                data_for_mix = self._apply_pcm_gain(data, self.system_audio_gain)
+                            chunks.append((data_for_mix, channels))
+                            source_chunks[name] = (data, channels)
+                            alive_streams.append(entry)
                         except Exception as stream_error:
                             print(f"[AudioRecorder] Dropping {name} stream after read error: {stream_error}")
                             try:
@@ -454,8 +498,9 @@ class AudioRecorder:
                     if monitor_stream is not None:
                         sys_chunk = source_chunks.get("system_audio")
                         if sys_chunk is not None:
+                            sys_data, sys_channels = sys_chunk
                             self._write_monitor_audio(
-                                monitor_stream, sys_chunk, monitor_channels
+                                monitor_stream, sys_data, monitor_channels, source_channels=sys_channels
                             )
 
                     data = self._mix_audio_chunks(chunks)
@@ -485,10 +530,13 @@ class AudioRecorder:
             print(f"[AudioRecorder] Recording error: {e}")
             import traceback
             traceback.print_exc()
+            self._startup_check_done.set()
             self.is_recording = False
         finally:
+            self._startup_check_done.set()
             # Always close streams
-            for _, stream in streams:
+            for entry in streams:
+                stream = entry["stream"]
                 try:
                     stream.stop_stream()
                     stream.close()
@@ -512,7 +560,7 @@ class AudioRecorder:
         Get audio stream for system audio (OS-specific).
 
         Returns:
-            PyAudio stream or None if not available
+            (PyAudio stream, channels) or (None, 0) if unavailable
         """
         import sys
 
@@ -525,7 +573,7 @@ class AudioRecorder:
             return self._get_windows_system_audio(p)
         else:
             print(f"[AudioRecorder] System audio not supported on {sys.platform}")
-            return None
+            return None, 0
 
     def _get_macos_system_audio(self, p):
         """
@@ -567,16 +615,30 @@ class AudioRecorder:
                     f"[AudioRecorder] Trying system-audio device: {device['name']} "
                     f"(index={device['index']}, score={score})"
                 )
-                stream = p.open(
-                    format=self.format,
-                    channels=self.channels,
-                    rate=self.rate,
-                    input=True,
-                    input_device_index=device['index'],
-                    frames_per_buffer=self.chunk
-                )
-                self._selected_system_device_name = str(device["name"])
-                return stream
+                # Prefer stereo capture for loopback devices; fall back to mono.
+                for channels in (2, 1):
+                    if int(device.get('max_input_channels', 0) or 0) < channels:
+                        continue
+                    try:
+                        stream = p.open(
+                            format=self.format,
+                            channels=channels,
+                            rate=self.rate,
+                            input=True,
+                            input_device_index=device['index'],
+                            frames_per_buffer=self.chunk
+                        )
+                        self._selected_system_device_name = str(device["name"])
+                        self._selected_system_channels = channels
+                        self._selected_system_output_device_name = self._resolve_output_device_name_for_loopback(
+                            devices, self._selected_system_device_name
+                        )
+                        return stream, channels
+                    except Exception as channel_error:
+                        print(
+                            f"[AudioRecorder] Failed opening {device['name']} as {channels}ch system audio: "
+                            f"{channel_error}"
+                        )
             except Exception as e:
                 print(
                     f"[AudioRecorder] Failed to open {device['name']} as system audio: {e}"
@@ -585,7 +647,27 @@ class AudioRecorder:
         print("[AudioRecorder] No usable loopback device found for system audio.")
         print("[AudioRecorder] Install one of: BlackHole / Soundflower / Loopback")
         print("[AudioRecorder] Example: brew install blackhole-2ch")
-        return None
+        return None, 0
+
+    def _resolve_output_device_name_for_loopback(self, devices: list, input_name: str) -> Optional[str]:
+        """
+        Resolve a loopback device's output-side name from its input-side name.
+        """
+        target = str(input_name).lower()
+        exact = None
+        fuzzy = None
+        for d in devices:
+            if not d.get("is_output"):
+                continue
+            name = str(d.get("name", ""))
+            lname = name.lower()
+            if lname == target:
+                exact = name
+                break
+            if target in lname or lname in target:
+                if fuzzy is None:
+                    fuzzy = name
+        return exact or fuzzy or input_name
 
     def _route_output_to_selected_system_device(self):
         """On macOS, route default system output to the selected loopback device."""
@@ -593,30 +675,66 @@ class AudioRecorder:
         if sys.platform != "darwin":
             return
         self._init_coreaudio()
-        target_name = self._selected_system_device_name
+        target_name = self._selected_system_output_device_name or self._selected_system_device_name
         if not target_name:
             return
         current = self._ca_get_default_output_device()
-        if not current:
-            return
-        current_id, current_name = current
-        if current_name.lower() == target_name.lower():
+        system_current = self._ca_get_default_system_output_device()
+        if not current and not system_current:
             return
         target = self._ca_find_device_by_name(target_name)
         if not target:
             print(f"[AudioRecorder] Cannot find output device for routing: {target_name}")
             return
         target_id, target_exact_name = target
-        status = self._ca_set_default_output_device(target_id)
-        if status == 0:
-            self._previous_output_device_id = current_id
-            print(
-                f"[AudioRecorder] Routed macOS output: '{current_name}' -> '{target_exact_name}'"
-            )
-        else:
-            print(
-                f"[AudioRecorder] Failed to route macOS output to '{target_exact_name}' (status={status})"
-            )
+        routed_output = False
+        routed_system = False
+
+        if current:
+            current_id, current_name = current
+            if current_name.lower() != target_exact_name.lower():
+                status = self._ca_set_default_output_device(target_id)
+                if status == 0:
+                    self._previous_output_device_id = current_id
+                    routed_output = True
+                    print(
+                        f"[AudioRecorder] Routed macOS output: '{current_name}' -> '{target_exact_name}'"
+                    )
+                else:
+                    print(
+                        f"[AudioRecorder] Failed to route macOS output to '{target_exact_name}' "
+                        f"(status={status})"
+                    )
+
+        if system_current:
+            system_id, system_name = system_current
+            if system_name.lower() != target_exact_name.lower():
+                status = self._ca_set_default_system_output_device(target_id)
+                if status == 0:
+                    self._previous_system_output_device_id = system_id
+                    routed_system = True
+                    print(
+                        f"[AudioRecorder] Routed macOS system output: '{system_name}' -> "
+                        f"'{target_exact_name}'"
+                    )
+                else:
+                    print(
+                        f"[AudioRecorder] Failed to route macOS system output to '{target_exact_name}' "
+                        f"(status={status})"
+                    )
+
+        # If target is already the default output and no history is available,
+        # remember current system-output device as fallback for restore/monitor.
+        if (
+            current
+            and current[1].lower() == target_exact_name.lower()
+            and self._previous_output_device_id is None
+            and self._previous_system_output_device_id is not None
+        ):
+            self._previous_output_device_id = self._previous_system_output_device_id
+
+        if not routed_output and not routed_system:
+            print("[AudioRecorder] Output already routed to loopback target.")
 
     def _restore_previous_output_device(self):
         """Restore macOS default output after recording."""
@@ -624,23 +742,58 @@ class AudioRecorder:
         if sys.platform != "darwin":
             return
         self._init_coreaudio()
-        if self._previous_output_device_id is None:
+        if (
+            self._previous_output_device_id is None
+            and self._previous_system_output_device_id is None
+        ):
             return
+
         device_id = self._previous_output_device_id
+        system_device_id = self._previous_system_output_device_id
         self._previous_output_device_id = None
-        status = self._ca_set_default_output_device(device_id)
-        if status == 0:
-            restored = self._ca_get_device_name(device_id) or str(device_id)
-            print(f"[AudioRecorder] Restored macOS output device: {restored}")
-        else:
-            print(f"[AudioRecorder] Failed to restore previous macOS output (status={status})")
+        self._previous_system_output_device_id = None
+
+        if device_id is not None:
+            status = self._ca_set_default_output_device(device_id)
+            if status == 0:
+                restored = self._ca_get_device_name(device_id) or str(device_id)
+                print(f"[AudioRecorder] Restored macOS output device: {restored}")
+            else:
+                print(f"[AudioRecorder] Failed to restore previous macOS output (status={status})")
+
+        if system_device_id is not None:
+            status = self._ca_set_default_system_output_device(system_device_id)
+            if status == 0:
+                restored = self._ca_get_device_name(system_device_id) or str(system_device_id)
+                print(f"[AudioRecorder] Restored macOS system output device: {restored}")
+            else:
+                print(
+                    f"[AudioRecorder] Failed to restore previous macOS system output "
+                    f"(status={status})"
+                )
 
     def _ca_get_default_output_device(self):
         """Return tuple (device_id, device_name) for macOS default output."""
         self._init_coreaudio()
+        if not hasattr(self, "_CA_K_AUDIO_HARDWARE_DEFAULT_OUTPUT_DEVICE"):
+            return None
+        return self._ca_get_default_device_by_selector(self._CA_K_AUDIO_HARDWARE_DEFAULT_OUTPUT_DEVICE)
+
+    def _ca_get_default_system_output_device(self):
+        """Return tuple (device_id, device_name) for macOS default system output."""
+        self._init_coreaudio()
+        if not hasattr(self, "_CA_K_AUDIO_HARDWARE_DEFAULT_SYSTEM_OUTPUT_DEVICE"):
+            return None
+        return self._ca_get_default_device_by_selector(
+            self._CA_K_AUDIO_HARDWARE_DEFAULT_SYSTEM_OUTPUT_DEVICE
+        )
+
+    def _ca_get_default_device_by_selector(self, selector: int):
+        """Return tuple (device_id, device_name) for a default-device selector."""
+        self._init_coreaudio()
         if not hasattr(self, "_ca"):
             return None
-        out_addr = self._ca_property_address(self._CA_K_AUDIO_HARDWARE_DEFAULT_OUTPUT_DEVICE)
+        out_addr = self._ca_property_address(selector)
         out_dev = ctypes.c_uint32(0)
         size = ctypes.c_uint32(ctypes.sizeof(out_dev))
         status = self._ca_audio_object_get_property_data(
@@ -727,7 +880,20 @@ class AudioRecorder:
         self._init_coreaudio()
         if not hasattr(self, "_ca"):
             return -1
-        out_addr = self._ca_property_address(self._CA_K_AUDIO_HARDWARE_DEFAULT_OUTPUT_DEVICE)
+        return self._ca_set_default_device(
+            self._CA_K_AUDIO_HARDWARE_DEFAULT_OUTPUT_DEVICE, device_id
+        )
+
+    def _ca_set_default_system_output_device(self, device_id: int) -> int:
+        self._init_coreaudio()
+        if not hasattr(self, "_ca"):
+            return -1
+        return self._ca_set_default_device(
+            self._CA_K_AUDIO_HARDWARE_DEFAULT_SYSTEM_OUTPUT_DEVICE, device_id
+        )
+
+    def _ca_set_default_device(self, selector: int, device_id: int) -> int:
+        out_addr = self._ca_property_address(selector)
         dev = ctypes.c_uint32(device_id)
         return int(
             self._ca_audio_object_set_property_data(
@@ -792,6 +958,7 @@ class AudioRecorder:
         self._CA_K_AUDIO_OBJECT_PROPERTY_SCOPE_GLOBAL = 0x676C6F62  # 'glob'
         self._CA_K_AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN = 0
         self._CA_K_AUDIO_HARDWARE_DEFAULT_OUTPUT_DEVICE = 0x644F7574  # 'dOut'
+        self._CA_K_AUDIO_HARDWARE_DEFAULT_SYSTEM_OUTPUT_DEVICE = 0x734F7574  # 'sOut'
         self._CA_K_AUDIO_HARDWARE_PROPERTY_DEVICES = 0x64657623  # 'dev#'
         self._CA_K_AUDIO_OBJECT_PROPERTY_NAME = 0x6C6E616D  # 'lnam'
         self._CA_K_CF_STRING_ENCODING_UTF8 = 0x08000100
@@ -843,50 +1010,93 @@ class AudioRecorder:
             pass
 
     def _mix_audio_chunks(self, chunks):
-        """Mix multiple PCM int16 chunks into one chunk."""
+        """
+        Mix multiple PCM chunks into mono int16 chunk.
+
+        Args:
+            chunks: list of (bytes, channels)
+        """
         if not chunks:
             return b""
-        if len(chunks) == 1 or not NUMPY_AVAILABLE:
-            return chunks[0]
-        arrays = [np.frombuffer(c, dtype=np.int16).astype(np.int32) for c in chunks]
-        mixed = np.sum(arrays, axis=0) / len(arrays)
+        if not NUMPY_AVAILABLE:
+            return chunks[0][0]
+
+        mono_arrays = []
+        for data, channels in chunks:
+            channels = int(channels or 1)
+            if not data:
+                continue
+            arr = np.frombuffer(data, dtype=np.int16).astype(np.int32)
+            if channels > 1:
+                frame_count = arr.size // channels
+                if frame_count <= 0:
+                    continue
+                arr = arr[: frame_count * channels].reshape(frame_count, channels).mean(axis=1)
+            mono_arrays.append(arr)
+
+        if not mono_arrays:
+            return b""
+        if len(mono_arrays) == 1:
+            return np.clip(mono_arrays[0], -32768, 32767).astype(np.int16).tobytes()
+
+        min_len = min(a.size for a in mono_arrays)
+        if min_len <= 0:
+            return b""
+        trimmed = [a[:min_len] for a in mono_arrays]
+        mixed = np.sum(trimmed, axis=0) / len(trimmed)
         mixed = np.clip(mixed, -32768, 32767).astype(np.int16)
         return mixed.tobytes()
 
-    def _open_monitor_output_stream(self, p, output_device_name: str):
+    def _open_monitor_output_stream(self, p, output_device_name: str, preferred_channels: int = 2):
         """Open an output stream on the previous output device for local monitoring."""
         devices = self.list_audio_devices()
-        candidate = None
         target = output_device_name.lower()
+        candidates = []
         for d in devices:
             if not d.get("is_output"):
                 continue
             name = str(d.get("name", ""))
-            if name.lower() == target:
-                candidate = d
-                break
-        if candidate is None:
-            for d in devices:
-                if not d.get("is_output"):
-                    continue
-                name = str(d.get("name", ""))
-                if target in name.lower() or name.lower() in target:
-                    candidate = d
-                    break
-        if candidate is None:
-            return None, 1
+            lname = name.lower()
+            if lname == target or target in lname or lname in target:
+                candidates.append(d)
 
-        # Prefer mono for compatibility; fallback to stereo.
-        for channels in (1, 2):
-            if candidate.get("max_output_channels", 0) < channels:
-                continue
+        def _candidate_score(d):
+            name = str(d.get("name", "")).lower()
+            out_ch = int(d.get("max_output_channels", 0) or 0)
+            score = out_ch * 10
+            # Avoid low-quality headset/hands-free output profiles when possible.
+            if "hands-free" in name or "handsfree" in name or "headset" in name or "hfp" in name:
+                score -= 50
+            return score
+
+        channel_order = [max(1, int(preferred_channels or 1)), 2, 1]
+        channel_order = list(dict.fromkeys(channel_order))
+
+        for candidate in sorted(candidates, key=_candidate_score, reverse=True):
+            for channels in channel_order:
+                if int(candidate.get("max_output_channels", 0) or 0) < channels:
+                    continue
+                try:
+                    stream = p.open(
+                        format=self.format,
+                        channels=channels,
+                        rate=self.rate,
+                        output=True,
+                        output_device_index=candidate["index"],
+                        frames_per_buffer=self.chunk,
+                    )
+                    return stream, channels
+                except Exception:
+                    continue
+
+        # Fallback to current default output, best effort.
+        for channels in channel_order:
             try:
                 stream = p.open(
                     format=self.format,
                     channels=channels,
                     rate=self.rate,
                     output=True,
-                    output_device_index=candidate["index"],
                     frames_per_buffer=self.chunk,
                 )
                 return stream, channels
@@ -894,18 +1104,32 @@ class AudioRecorder:
                 continue
         return None, 1
 
-    def _write_monitor_audio(self, stream, data: bytes, channels: int):
+    def _write_monitor_audio(self, stream, data: bytes, channels: int, source_channels: int = 1):
         """Write system-audio chunk to monitor output stream."""
         try:
             out = data
-            if channels == 2:
+            source_channels = int(source_channels or 1)
+            target_channels = int(channels or 1)
+            if source_channels != target_channels:
                 if NUMPY_AVAILABLE:
-                    mono = np.frombuffer(data, dtype=np.int16)
-                    stereo = np.column_stack((mono, mono)).reshape(-1).astype(np.int16)
-                    out = stereo.tobytes()
-                else:
-                    # Best effort: duplicate raw bytes when numpy is unavailable.
+                    arr = np.frombuffer(data, dtype=np.int16)
+                    if source_channels > 1:
+                        frame_count = arr.size // source_channels
+                        if frame_count > 0:
+                            arr = arr[: frame_count * source_channels].reshape(
+                                frame_count, source_channels
+                            ).mean(axis=1).astype(np.int16)
+                        else:
+                            arr = np.array([], dtype=np.int16)
+                    if target_channels == 2:
+                        out = np.column_stack((arr, arr)).reshape(-1).astype(np.int16).tobytes()
+                    else:
+                        out = arr.astype(np.int16).tobytes()
+                elif source_channels == 1 and target_channels == 2:
+                    # Best effort when numpy is unavailable.
                     out = b"".join(data[i:i + 2] * 2 for i in range(0, len(data), 2))
+            if self.monitor_audio_gain != 1.0:
+                out = self._apply_pcm_gain(out, self.monitor_audio_gain)
             stream.write(out)
         except Exception as e:
             print(f"[AudioRecorder] Monitor playback error: {e}")
@@ -933,6 +1157,121 @@ class AudioRecorder:
         print(f"[AudioRecorder] Probe level={avg_level:.2f} (threshold={level_threshold})")
         return avg_level < level_threshold
 
+    def _find_output_device_index_by_name(self, output_device_name: str) -> Optional[int]:
+        target = str(output_device_name or "").strip().lower()
+        if not target:
+            return None
+        candidates = []
+        for d in self.list_audio_devices():
+            if not d.get("is_output"):
+                continue
+            name = str(d.get("name", ""))
+            lname = name.lower()
+            if lname == target:
+                return int(d.get("index"))
+            if target in lname or lname in target:
+                candidates.append(d)
+        if candidates:
+            candidates.sort(
+                key=lambda d: int(d.get("max_output_channels", 0) or 0),
+                reverse=True,
+            )
+            return int(candidates[0].get("index"))
+        return None
+
+    def _apply_pcm_gain(self, data: bytes, gain: float) -> bytes:
+        """Apply linear gain to int16 PCM bytes."""
+        if not NUMPY_AVAILABLE or gain == 1.0 or not data:
+            return data
+        arr = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+        arr *= float(gain)
+        arr = np.clip(arr, -32768, 32767).astype(np.int16)
+        return arr.tobytes()
+
+    def _verify_loopback_signal(
+        self,
+        p,
+        stream,
+        source_channels: int,
+        level_threshold: float = 1.0,
+    ) -> bool:
+        """
+        Verify loopback device actually forwards output signal to its input.
+
+        Strategy:
+        - emit a short tone to current default output (already routed to loopback),
+        - read back from system input stream,
+        - ensure captured level is above threshold.
+        """
+        if not NUMPY_AVAILABLE:
+            return True
+        source_channels = max(1, int(source_channels or 1))
+        out_channels = 2 if source_channels >= 2 else 1
+        tone_stream = None
+        try:
+            output_device_index = self._find_output_device_index_by_name(
+                self._selected_system_output_device_name or self._selected_system_device_name or ""
+            )
+            tone_stream = p.open(
+                format=self.format,
+                channels=out_channels,
+                rate=self.rate,
+                output=True,
+                output_device_index=output_device_index,
+                frames_per_buffer=self.chunk,
+            )
+            # Drain stale buffered data before probe.
+            for _ in range(3):
+                try:
+                    stream.read(self.chunk, exception_on_overflow=False)
+                except Exception:
+                    break
+
+            tone_duration_sec = 0.15
+            tone_hz = 880.0
+            amp = 0.25
+            samples = max(1, int(self.rate * tone_duration_sec))
+            t = np.arange(samples, dtype=np.float32) / float(self.rate)
+            mono = (np.sin(2.0 * np.pi * tone_hz * t) * amp * 32767.0).astype(np.int16)
+            if out_channels == 2:
+                tone = np.column_stack((mono, mono)).reshape(-1).astype(np.int16).tobytes()
+            else:
+                tone = mono.tobytes()
+            tone_stream.write(tone)
+
+            levels = []
+            for _ in range(12):
+                data = stream.read(self.chunk, exception_on_overflow=False)
+                arr = np.frombuffer(data, dtype=np.int16)
+                if source_channels > 1:
+                    frame_count = arr.size // source_channels
+                    if frame_count <= 0:
+                        continue
+                    arr = arr[: frame_count * source_channels].reshape(
+                        frame_count, source_channels
+                    ).mean(axis=1)
+                levels.append(float(np.abs(arr).mean()))
+            max_level = max(levels) if levels else 0.0
+            print(
+                f"[AudioRecorder] Loopback verification max_level={max_level:.2f} "
+                f"(threshold={level_threshold})"
+            )
+            return max_level >= level_threshold
+        except Exception as e:
+            # Keep recording path resilient if probe fails unexpectedly.
+            print(f"[AudioRecorder] Loopback verification skipped due to error: {e}")
+            return True
+        finally:
+            if tone_stream is not None:
+                try:
+                    tone_stream.stop_stream()
+                except Exception:
+                    pass
+                try:
+                    tone_stream.close()
+                except Exception:
+                    pass
+
     def _get_windows_system_audio(self, p):
         """
         Get system audio stream on Windows.
@@ -942,7 +1281,7 @@ class AudioRecorder:
         # Windows WASAPI loopback requires special handling
         # For now, return None - would need pyaudio with WASAPI support
         print("[AudioRecorder] Windows system audio requires WASAPI loopback support")
-        return None
+        return None, 0
 
     def _save_audio(self) -> str:
         """

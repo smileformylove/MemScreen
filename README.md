@@ -183,7 +183,9 @@ See `setup/docker/README.md` for details.
 Packaging design:
 - one installer package for end users
 - backend bootstrap is embedded inside the app and runs in background
+- backend process always prefers bundled `Resources/backend/src` (independent from local Python env)
 - first launch auto-installs lite runtime dependencies to `~/.memscreen/runtime/.venv`
+- recording endpoints are smoke-tested in CI before artifact upload (`/health`, `/recording/screens`, `/recording/status`)
 - models are downloaded on demand (optional)
 - macOS signing/notarization automation is documented in `docs/RELEASE_PACKAGING.md`
 

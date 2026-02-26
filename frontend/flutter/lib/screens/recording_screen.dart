@@ -24,6 +24,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
   //
   String _mode = 'fullscreen';
   int? _screenIndex;
+  int? _screenDisplayId;
 
   //
   double _regionLeft = 0.0;
@@ -110,6 +111,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
           if (justStopped) {
             _mode = 'fullscreen';
             _screenIndex = null;
+            _screenDisplayId = null;
           }
           _screens = screens;
           _loading = false;
@@ -117,6 +119,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
             final selected = _findScreenByIndex(_screenIndex) ??
                 screens.firstWhere((x) => x.isPrimary,
                     orElse: () => screens.first);
+            _screenDisplayId =
+                (_screenIndex == null) ? null : selected.displayId;
             _screenWidth = selected.width.toDouble();
             _screenHeight = selected.height.toDouble();
             if (_regionRight <= _regionLeft || _regionBottom <= _regionTop) {
@@ -249,74 +253,74 @@ class _RecordingScreenState extends State<RecordingScreen> {
     final appState = context.read<AppState>();
     final duration = appState.recordingDurationSec;
     final interval = appState.recordingIntervalSec;
-    String? mode = _mode;
+    // "Screen" button should always start screen recording from dropdown selection.
+    String? mode = 'fullscreen';
     List<double>? region;
     int? screenIndex;
+    int? screenDisplayId;
 
-    if (_mode == 'region') {
-      //
-      final leftPx = (_regionLeft * _screenWidth).round();
-      final topPx = (_regionTop * _screenHeight).round();
-      final rightPx = (_regionRight * _screenWidth).round();
-      final bottomPx = (_regionBottom * _screenHeight).round();
-      region = [
-        leftPx.toDouble(),
-        topPx.toDouble(),
-        rightPx.toDouble(),
-        bottomPx.toDouble()
-      ];
-    } else if (_mode == 'fullscreen' && _screenIndex != null) {
+    if (_screenIndex != null) {
       mode = 'fullscreen-single';
       screenIndex = _screenIndex;
+      screenDisplayId = _screenDisplayId;
     }
 
     try {
-      final audioSource = appState.recordingAudioSource;
-      if (audioSource != 'none') {
-        final diagnosis =
-            await appState.recordingApi.diagnoseAudio(source: audioSource);
-        if (audioSource == 'microphone' && !diagnosis.microphoneAvailable) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Microphone is unavailable'),
-              ),
-            );
-          }
-          return;
+      final requestedAudioSource = appState.recordingAudioSource;
+      if (requestedAudioSource != 'none') {
+        final diagnosis = await appState.recordingApi
+            .diagnoseAudio(source: requestedAudioSource);
+
+        var useSystem = appState.recordSystemAudio;
+        var useMic = appState.recordMicrophoneAudio;
+        final notes = <String>[];
+
+        if (useMic && !diagnosis.microphoneAvailable) {
+          useMic = false;
+          notes.add('Microphone not ready. Microphone recording is disabled.');
         }
-        if (audioSource == 'system_audio' && !diagnosis.systemDeviceAvailable) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('System audio device is unavailable'),
-              ),
-            );
-          }
-          return;
+
+        if (useSystem && !diagnosis.systemDeviceAvailable) {
+          useSystem = false;
+          notes.add(
+              'System audio not ready. System audio recording is disabled.');
         }
-        if (audioSource == 'mixed' &&
-            !diagnosis.systemDeviceAvailable &&
-            diagnosis.microphoneAvailable) {
-          final proceed = await _showSystemAudioRoutingDialog(diagnosis);
-          if (proceed != true) {
-            return;
-          }
+
+        final resolvedAudioSource = _resolveAudioSource(useSystem, useMic);
+        if (resolvedAudioSource == 'none' &&
+            requestedAudioSource != 'none' &&
+            notes.isEmpty) {
+          notes.add(
+              'No available audio input. Recording will continue without audio.');
+        }
+
+        if (notes.isNotEmpty && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(notes.join('\n'))),
+          );
         }
       }
       if (_mode == 'fullscreen') {
         await FloatingBallService.show();
         await FloatingBallService.prepareScreenRecording(
           screenIndex: _screenIndex,
+          screenDisplayId: _screenDisplayId,
         );
       }
-      await context.read<AppState>().startRecording(
-            duration: duration,
-            interval: interval,
-            mode: mode,
-            region: region,
-            screenIndex: screenIndex,
-          );
+      await appState.startRecording(
+        duration: duration,
+        interval: interval,
+        mode: mode,
+        region: region,
+        screenIndex: screenIndex,
+        screenDisplayId: screenDisplayId,
+      );
+      final notice = appState.consumePendingRecordingNotice();
+      if (notice != null && notice.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(notice)),
+        );
+      }
       _wasRecording = true;
       _load();
     } catch (e) {
@@ -328,35 +332,18 @@ class _RecordingScreenState extends State<RecordingScreen> {
     }
   }
 
-  Future<bool?> _showSystemAudioRoutingDialog(AudioDiagnosis diagnosis) {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('System Audio Not Detected'),
-          content: Text(
-            '${diagnosis.message}\n\n${diagnosis.recommendedAction.isNotEmpty ? diagnosis.recommendedAction : 'Recording can continue with microphone only.'}',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Continue'),
-            ),
-          ],
-        );
-      },
-    );
+  String _resolveAudioSource(bool useSystem, bool useMic) {
+    if (useSystem && useMic) return 'mixed';
+    if (useSystem) return 'system_audio';
+    if (useMic) return 'microphone';
+    return 'none';
   }
 
   Future<void> _selectRegionWithFloatingBall() async {
     try {
       await FloatingBallService.show();
       await FloatingBallService.prepareRegionSelection(
-          screenIndex: _screenIndex);
+          screenIndex: _screenIndex, screenDisplayId: _screenDisplayId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -378,7 +365,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
     try {
       await FloatingBallService.show();
       await FloatingBallService.prepareWindowSelection(
-          screenIndex: _screenIndex);
+          screenIndex: _screenIndex, screenDisplayId: _screenDisplayId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -404,6 +391,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
         setState(() {
           _mode = 'fullscreen';
           _screenIndex = null;
+          _screenDisplayId = null;
         });
       }
       _wasRecording = false;
@@ -478,10 +466,24 @@ class _RecordingScreenState extends State<RecordingScreen> {
   }
 
   Future<void> _onModeChanged(String nextMode) async {
-    if (_mode == nextMode) return;
-    setState(() => _mode = nextMode);
     final isRecording = _status?.isRecording ?? false;
     if (isRecording) return;
+
+    // Allow repeated taps on Region/Window to re-open selector after cancel.
+    if (nextMode == 'region') {
+      setState(() => _mode = nextMode);
+      await _selectRegionWithFloatingBall();
+      return;
+    }
+    if (nextMode == 'window') {
+      setState(() => _mode = nextMode);
+      await _selectWindowWithFloatingBall();
+      return;
+    }
+
+    if (_mode == nextMode) return;
+    setState(() => _mode = nextMode);
+
     if (nextMode == 'region') {
       await _selectRegionWithFloatingBall();
     } else if (nextMode == 'window') {
@@ -497,6 +499,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
       _screenIndex = screenIndex;
       final selected = _findScreenByIndex(screenIndex);
       if (selected != null) {
+        _screenDisplayId = selected.displayId;
         _screenWidth = selected.width.toDouble();
         _screenHeight = selected.height.toDouble();
       } else if (_screens.isNotEmpty) {
@@ -504,8 +507,11 @@ class _RecordingScreenState extends State<RecordingScreen> {
           (x) => x.isPrimary,
           orElse: () => _screens.first,
         );
+        _screenDisplayId = (screenIndex == null) ? null : primary.displayId;
         _screenWidth = primary.width.toDouble();
         _screenHeight = primary.height.toDouble();
+      } else {
+        _screenDisplayId = null;
       }
     });
   }

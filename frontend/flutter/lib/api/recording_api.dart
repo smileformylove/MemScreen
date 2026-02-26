@@ -10,6 +10,7 @@ class RecordingApi {
     String? mode,
     List<double>? region,
     int? screenIndex,
+    int? screenDisplayId,
     String? windowTitle,
     String? audioSource,
   }) async {
@@ -20,6 +21,7 @@ class RecordingApi {
     if (mode != null) body['mode'] = mode;
     if (region != null) body['region'] = region;
     if (screenIndex != null) body['screen_index'] = screenIndex;
+    if (screenDisplayId != null) body['screen_display_id'] = screenDisplayId;
     if (windowTitle != null && windowTitle.isNotEmpty) {
       body['window_title'] = windowTitle;
     }
@@ -49,6 +51,7 @@ class RecordingApi {
       mode: m['mode'] as String? ?? 'fullscreen',
       region: region,
       screenIndex: m['screen_index'] as int?,
+      screenDisplayId: m['screen_display_id'] as int?,
     );
   }
 
@@ -78,6 +81,7 @@ class RecordingApi {
         width: x['width'] as int? ?? 0,
         height: x['height'] as int? ?? 0,
         isPrimary: x['is_primary'] as bool? ?? false,
+        displayId: x['display_id'] as int?,
       );
     }).toList();
   }
@@ -90,12 +94,14 @@ class RecordingScreenInfo {
     required this.width,
     required this.height,
     required this.isPrimary,
+    this.displayId,
   });
   final int index;
   final String name;
   final int width;
   final int height;
   final bool isPrimary;
+  final int? displayId;
 }
 
 class RecordingStatus {
@@ -109,6 +115,7 @@ class RecordingStatus {
     this.mode = 'fullscreen',
     this.region,
     this.screenIndex,
+    this.screenDisplayId,
   });
   final bool isRecording;
   final int duration;
@@ -119,6 +126,7 @@ class RecordingStatus {
   final String mode;
   final List<double>? region;
   final int? screenIndex;
+  final int? screenDisplayId;
 }
 
 class AudioDiagnosis {

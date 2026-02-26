@@ -68,6 +68,9 @@ jobs:
           APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
         run: ./scripts/release/build_frontend_macos.sh
 
+      - name: Smoke test installer (no-model runtime)
+        run: ./scripts/release/smoke_test_installer.sh dist/release/frontend/macos/MemScreen-v*-macos.dmg
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:

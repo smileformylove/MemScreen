@@ -22,11 +22,14 @@ class _VideoScreenState extends State<VideoScreen> {
   Timer? _autoRefreshTimer;
   final ScrollController _timelineScrollController = ScrollController();
   String? _latestTimelineVideoFilename;
+  bool _timelineStickToLatest = true;
+  bool _loadInFlight = false;
   VideoPlayerController? _controller;
   VideoItem? _currentVideo;
 
   String _positionLabel = '0:00';
   double _sliderValue = 0.0;
+  int _lastPositionSecond = -1;
   final Set<String> _reanalyzingFiles = <String>{};
   String _organizeMode = 'all'; // all | app | day | tag
   final Set<String> _selectedTags = <String>{};
@@ -37,7 +40,8 @@ class _VideoScreenState extends State<VideoScreen> {
     _appState = context.read<AppState>();
     _lastVideoRefreshVersion = _appState.videoRefreshVersion;
     _appState.addListener(_onAppStateChange);
-    _load();
+    _timelineScrollController.addListener(_onTimelineScroll);
+    _load(showLoading: true, autoScrollIfNew: true);
     _startAutoRefresh();
   }
 
@@ -45,6 +49,7 @@ class _VideoScreenState extends State<VideoScreen> {
   void dispose() {
     _appState.removeListener(_onAppStateChange);
     _autoRefreshTimer?.cancel();
+    _timelineScrollController.removeListener(_onTimelineScroll);
     _timelineScrollController.dispose();
     _controller?.dispose();
     super.dispose();
@@ -54,7 +59,7 @@ class _VideoScreenState extends State<VideoScreen> {
     _autoRefreshTimer?.cancel();
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       if (!mounted || _loading) return;
-      _load();
+      _load(showLoading: false, autoScrollIfNew: true);
     });
   }
 
@@ -63,12 +68,12 @@ class _VideoScreenState extends State<VideoScreen> {
 
     if (_appState.videoRefreshVersion != _lastVideoRefreshVersion) {
       _lastVideoRefreshVersion = _appState.videoRefreshVersion;
-      _load();
+      _load(showLoading: false, autoScrollIfNew: true);
       return;
     }
 
     if (_appState.desiredTabIndex == 1) {
-      _load();
+      _load(showLoading: false, autoScrollIfNew: false);
     }
   }
 
@@ -83,34 +88,102 @@ class _VideoScreenState extends State<VideoScreen> {
     if (_controller != null && _controller!.value.isInitialized) {
       final position = _controller!.value.position;
       final duration = _controller!.value.duration;
-      setState(() {
-        _positionLabel = _formatDuration(position);
-        if (duration.inMilliseconds > 0) {
-          _sliderValue = position.inMilliseconds / duration.inMilliseconds;
-        } else {
-          _sliderValue = 0.0;
-        }
-      });
+      final nextLabel = _formatDuration(position);
+      final nextSecond = position.inSeconds;
+      final nextSlider = duration.inMilliseconds > 0
+          ? position.inMilliseconds / duration.inMilliseconds
+          : 0.0;
+      final sliderChanged = (_sliderValue - nextSlider).abs() >= 0.01;
+      final labelChanged = _positionLabel != nextLabel;
+      final secondChanged = _lastPositionSecond != nextSecond;
+      if (!mounted) return;
+      if (labelChanged || (secondChanged && sliderChanged)) {
+        setState(() {
+          _positionLabel = nextLabel;
+          _sliderValue = nextSlider;
+          _lastPositionSecond = nextSecond;
+        });
+      }
     }
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  void _onTimelineScroll() {
+    if (!_timelineScrollController.hasClients) return;
+    _timelineStickToLatest = _timelineIsNearEnd();
+  }
+
+  bool _timelineIsNearEnd() {
+    if (!_timelineScrollController.hasClients) return true;
+    final position = _timelineScrollController.position;
+    return (position.maxScrollExtent - position.pixels) <= 28.0;
+  }
+
+  bool _isSameVideoList(List<VideoItem> a, List<VideoItem> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      final av = a[i];
+      final bv = b[i];
+      if (av.filename != bv.filename ||
+          av.timestamp != bv.timestamp ||
+          av.fileSize != bv.fileSize ||
+          av.duration != bv.duration ||
+          av.tags.length != bv.tags.length ||
+          av.contentTags.length != bv.contentTags.length) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<void> _load({
+    bool showLoading = false,
+    bool autoScrollIfNew = true,
+  }) async {
+    if (_loadInFlight) return;
+    _loadInFlight = true;
+    if (showLoading && mounted) {
+      setState(() => _loading = true);
+    }
+
+    final wasNearEnd = _timelineIsNearEnd();
+    final previousLatest = _latestTimelineVideoFilename;
+
     try {
       final list = await context.read<AppState>().videoApi.getList();
       final timelineSorted = _sortedByTimestampAscending(list);
       final latestFilename =
           timelineSorted.isNotEmpty ? timelineSorted.last.filename : null;
       if (mounted) {
-        setState(() {
-          _videos = list;
-          _latestTimelineVideoFilename = latestFilename;
-          _loading = false;
-        });
-        _scrollTimelineToLatest();
+        final listChanged = !_isSameVideoList(_videos, list);
+        final latestChanged = previousLatest != latestFilename;
+        if (listChanged ||
+            latestChanged ||
+            _loading ||
+            _latestTimelineVideoFilename == null) {
+          setState(() {
+            _videos = list;
+            _latestTimelineVideoFilename = latestFilename;
+            _loading = false;
+          });
+        } else if (_loading) {
+          setState(() => _loading = false);
+        }
+
+        final shouldScroll = autoScrollIfNew &&
+            latestFilename != null &&
+            (previousLatest == null ||
+                (latestChanged && (wasNearEnd || _timelineStickToLatest)));
+        if (shouldScroll) {
+          _scrollTimelineToLatest();
+        }
       }
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    } finally {
+      _loadInFlight = false;
     }
   }
 
@@ -270,7 +343,7 @@ class _VideoScreenState extends State<VideoScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _load,
+            onPressed: () => _load(showLoading: false, autoScrollIfNew: false),
           ),
         ],
       ),
@@ -344,7 +417,8 @@ class _VideoScreenState extends State<VideoScreen> {
               tooltip: 'Clear filters',
             ),
             IconButton(
-              onPressed: _load,
+              onPressed: () =>
+                  _load(showLoading: false, autoScrollIfNew: false),
               icon: const Icon(Icons.refresh, size: 18),
               tooltip: 'Refresh',
             ),
@@ -401,6 +475,7 @@ class _VideoScreenState extends State<VideoScreen> {
         ),
       ),
       child: ListView(
+        key: const PageStorageKey<String>('videos.timeline'),
         controller: _timelineScrollController,
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
@@ -605,6 +680,7 @@ class _VideoScreenState extends State<VideoScreen> {
     }
 
     return ListView.separated(
+      key: const PageStorageKey<String>('videos.all.list'),
       padding: const EdgeInsets.all(16),
       itemCount: videos.length,
       separatorBuilder: (context, index) => const SizedBox(height: 1),
@@ -686,6 +762,7 @@ class _VideoScreenState extends State<VideoScreen> {
     }
     final theme = Theme.of(context);
     return ListView.builder(
+      key: PageStorageKey<String>('videos.sectioned.$_organizeMode'),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
       itemCount: sectionKeys.length,
       itemBuilder: (context, sectionIndex) {

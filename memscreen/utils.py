@@ -432,6 +432,7 @@ class ScreenInfo:
     x: int  # Screen X position (for multi-monitor setups)
     y: int  # Screen Y position (for multi-monitor setups)
     is_primary: bool  # Whether this is the primary/main screen
+    display_id: Optional[int] = None  # Stable OS display identifier when available
 
     @property
     def bbox(self) -> Tuple[int, int, int, int]:
@@ -474,7 +475,19 @@ def _get_screens_macos() -> List[ScreenInfo]:
             logger.warning("[ScreenUtils] No screens detected via NSScreen")
             return _get_screens_fallback()
 
-        main_screen = NSScreen.mainScreen()
+        # Use screen at Cocoa origin (0,0) as the coordinate reference for
+        # PIL/ImageGrab top-left conversion. NSScreen.mainScreen() can change
+        # with focused window and may produce wrong mapping on multi-display.
+        reference_screen = None
+        for candidate in all_screens:
+            frame = candidate.frame()
+            if int(frame.origin.x) == 0 and int(frame.origin.y) == 0:
+                reference_screen = candidate
+                break
+        if reference_screen is None:
+            reference_screen = NSScreen.mainScreen() or all_screens[0]
+        reference_frame = reference_screen.frame()
+        reference_height = int(reference_frame.size.height)
 
         for idx, screen in enumerate(all_screens):
             frame = screen.frame()
@@ -494,24 +507,30 @@ def _get_screens_macos() -> List[ScreenInfo]:
             # PIL_y = main_height - cocoa_y - height
             # This puts the screen's bottom (cocoa_y) at the correct PIL position
 
-            # Get the main screen dimensions
-            main_frame = main_screen.frame()
-            main_height = int(main_frame.size.height)
-
             # Calculate PIL coordinates
             x = cocoa_x  # X is the same in both systems
 
             # Y conversion: PIL_top = main_height - cocoa_bottom
             # where cocoa_bottom is the screen's bottom edge in Cocoa coordinates
             # But cocoa_y is the bottom edge, so:
-            y = main_height - cocoa_y - height
+            y = reference_height - cocoa_y - height
 
             # Debug output
             logger.debug(f"[ScreenUtils] Screen {idx + 1}: Cocoa=({cocoa_x}, {cocoa_y}), "
                         f"PIL=({x}, {y}), size=({width}×{height})")
 
-            is_primary = (screen == main_screen)
+            is_primary = (screen == reference_screen)
             name = f"Screen {idx + 1}"
+            display_id = None
+            try:
+                device_desc = screen.deviceDescription()
+                raw_display_id = None
+                if device_desc is not None:
+                    raw_display_id = device_desc.get("NSScreenNumber")
+                if raw_display_id is not None:
+                    display_id = int(raw_display_id)
+            except Exception:
+                display_id = None
 
             screens.append(ScreenInfo(
                 index=idx,
@@ -520,7 +539,8 @@ def _get_screens_macos() -> List[ScreenInfo]:
                 height=height,
                 x=x,
                 y=y,
-                is_primary=is_primary
+                is_primary=is_primary,
+                display_id=display_id
             ))
 
         logger.info(f"[ScreenUtils] Detected {len(screens)} screen(s) on macOS")
@@ -649,7 +669,8 @@ def _get_screens_linux() -> List[ScreenInfo]:
                                 height=height,
                                 x=x,
                                 y=y,
-                                is_primary=is_primary
+                                is_primary=is_primary,
+                                display_id=None
                             ))
                             idx += 1
 
@@ -681,7 +702,8 @@ def _get_screens_fallback() -> List[ScreenInfo]:
             height=height,
             x=0,
             y=0,
-            is_primary=True
+            is_primary=True,
+            display_id=None
         )]
 
         logger.info(f"[ScreenUtils] Fallback: Detected {len(screens)} screen(s)")
@@ -700,7 +722,8 @@ def _get_screens_fallback() -> List[ScreenInfo]:
             height=1080,
             x=0,
             y=0,
-            is_primary=True
+            is_primary=True,
+            display_id=None
         )]
 
 
@@ -717,6 +740,27 @@ def get_screen_by_index(screen_index: int) -> Optional[ScreenInfo]:
     screens = get_screens()
     if 0 <= screen_index < len(screens):
         return screens[screen_index]
+    return None
+
+
+def get_screen_by_display_id(display_id: int) -> Optional[ScreenInfo]:
+    """
+    Get screen information by stable OS display identifier.
+
+    Args:
+        display_id: macOS NSScreenNumber / display id
+
+    Returns:
+        ScreenInfo object or None if not found
+    """
+    try:
+        resolved = int(display_id)
+    except Exception:
+        return None
+
+    for screen in get_screens():
+        if screen.display_id is not None and int(screen.display_id) == resolved:
+            return screen
     return None
 
 

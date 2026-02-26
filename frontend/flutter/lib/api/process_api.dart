@@ -66,6 +66,10 @@ class ProcessApi {
     await client.post('/process/tracking/stop');
   }
 
+  Future<void> markTrackingStart() async {
+    await client.post('/process/tracking/mark-start');
+  }
+
   /// 
   Future<TrackingStatus> getTrackingStatus() async {
     final m = await client.get('/process/tracking/status');

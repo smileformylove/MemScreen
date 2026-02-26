@@ -1,6 +1,114 @@
 import Cocoa
 import CoreGraphics
+import Carbon
 import FlutterMacOS
+
+private func referenceScreenHeightForGlobalTopLeft() -> CGFloat {
+    let screens = NSScreen.screens
+    if let originScreen = screens.first(where: {
+        abs($0.frame.origin.x) < 0.5 && abs($0.frame.origin.y) < 0.5
+    }) {
+        return originScreen.frame.height
+    }
+    if let first = screens.first {
+        return first.frame.height
+    }
+    return NSScreen.main?.frame.height ?? 0
+}
+
+private final class GlobalHotKeyManager {
+    private static let signature: OSType = 0x4D53484B // "MSHK"
+    private static let eventHandler: EventHandlerUPP = { _, event, userData in
+        guard let userData else { return noErr }
+        let manager = Unmanaged<GlobalHotKeyManager>.fromOpaque(userData).takeUnretainedValue()
+        return manager.handle(event: event)
+    }
+
+    private var eventHandlerRef: EventHandlerRef?
+    private var hotKeyRefs: [EventHotKeyRef] = []
+    private var actions: [UInt32: () -> Void] = [:]
+
+    init() {
+        installHandler()
+    }
+
+    deinit {
+        unregisterAll()
+    }
+
+    @discardableResult
+    func register(id: UInt32, keyCode: UInt32, modifiers: UInt32, action: @escaping () -> Void) -> Bool {
+        var hotKeyRef: EventHotKeyRef?
+        let hotKeyID = EventHotKeyID(signature: Self.signature, id: id)
+        let status = RegisterEventHotKey(
+            keyCode,
+            modifiers,
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+        guard status == noErr, let ref = hotKeyRef else {
+            print("[FloatingBall] Failed to register global hotkey id=\(id), status=\(status)")
+            return false
+        }
+        hotKeyRefs.append(ref)
+        actions[id] = action
+        return true
+    }
+
+    private func installHandler() {
+        guard eventHandlerRef == nil else { return }
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            Self.eventHandler,
+            1,
+            &eventType,
+            UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()),
+            &eventHandlerRef
+        )
+        if status != noErr {
+            print("[FloatingBall] Failed to install global hotkey handler, status=\(status)")
+        }
+    }
+
+    private func handle(event: EventRef?) -> OSStatus {
+        guard let event else { return noErr }
+        var hotKeyID = EventHotKeyID()
+        let status = GetEventParameter(
+            event,
+            EventParamName(kEventParamDirectObject),
+            EventParamType(typeEventHotKeyID),
+            nil,
+            MemoryLayout<EventHotKeyID>.size,
+            nil,
+            &hotKeyID
+        )
+        guard status == noErr else { return noErr }
+        if let action = actions[hotKeyID.id] {
+            DispatchQueue.main.async {
+                action()
+            }
+        }
+        return noErr
+    }
+
+    private func unregisterAll() {
+        for ref in hotKeyRefs {
+            UnregisterEventHotKey(ref)
+        }
+        hotKeyRefs.removeAll()
+        actions.removeAll()
+        if let handler = eventHandlerRef {
+            RemoveEventHandler(handler)
+            eventHandlerRef = nil
+        }
+    }
+}
 
 /// Native macOS floating ball window for MemScreen Flutter
 class FloatingBallWindow: NSPanel {
@@ -25,8 +133,8 @@ class FloatingBallWindow: NSPanel {
     private var selectedWindowSummaryForNextRecording: String?
     private var consumeSelectedWindowOnRecordStart = false
     private var selectedScreenIndexForNextRecording: Int?
-    private var localKeyboardMonitor: Any?
-    private var globalKeyboardMonitor: Any?
+    private var selectedScreenDisplayIDForNextRecording: Int?
+    private var hotKeyManager: GlobalHotKeyManager?
 
     // Drag state
     private var initialMouseLocation: NSPoint?
@@ -89,14 +197,7 @@ class FloatingBallWindow: NSPanel {
     }
 
     deinit {
-        if let monitor = localKeyboardMonitor {
-            NSEvent.removeMonitor(monitor)
-            localKeyboardMonitor = nil
-        }
-        if let monitor = globalKeyboardMonitor {
-            NSEvent.removeMonitor(monitor)
-            globalKeyboardMonitor = nil
-        }
+        hotKeyManager = nil
     }
 
     private func handleMouseDown(_ event: NSEvent) {
@@ -198,14 +299,17 @@ class FloatingBallWindow: NSPanel {
             onToggleTracking: { [weak self] in
                 self?.toggleTrackingFromToolbar()
             },
-            onScreenSelectionChanged: { [weak self] screenIndex in
-                self?.setSelectedScreenIndex(screenIndex)
+            onScreenSelectionChanged: { [weak self] screenIndex, screenDisplayID in
+                self?.setSelectedScreen(screenIndex, displayID: screenDisplayID)
             },
             onQuit: { [weak self] in
                 self?.onQuit?()
             }
         )
-        toolbarPanel?.setSelectedScreen(selectedScreenIndexForNextRecording)
+        toolbarPanel?.setSelectedScreen(
+            selectedScreenIndexForNextRecording,
+            displayID: selectedScreenDisplayIDForNextRecording
+        )
         toolbarPanel?.setSelectedRegion(selectedRegionForNextRecording)
         toolbarPanel?.setSelectedWindow(selectedWindowSummaryForNextRecording)
         toolbarPanel?.updateRecordingState(isRecording)
@@ -276,11 +380,21 @@ class FloatingBallWindow: NSPanel {
         toolbarPanel?.updateTrackingState(tracking)
     }
 
+    private func dismissSelectionPanels() {
+        regionSelector?.orderOut(nil)
+        regionSelector?.close()
+        regionSelector = nil
+        windowSelector?.orderOut(nil)
+        windowSelector?.close()
+        windowSelector = nil
+    }
+
     private func selectRegionForNextRecording() {
         guard !isRecording else {
             toolbarPanel?.showStatus("Status: Stop recording first", color: NSColor.systemOrange)
             return
         }
+        dismissSelectionPanels()
 
         let shouldReopenToolbar = isToolbarExpanded
         if let parentWindow = parentWindowRef, !parentWindow.isMiniaturized {
@@ -290,7 +404,6 @@ class FloatingBallWindow: NSPanel {
         collapseToolbar()
 
         let screen = selectionScreen()
-        let selectionScreenIndex = NSScreen.screens.firstIndex(where: { $0 == screen })
         regionSelector = RegionSelectionPanel(screen: screen) { [weak self] result in
             guard let self = self else { return }
 
@@ -307,14 +420,15 @@ class FloatingBallWindow: NSPanel {
                 return
             }
 
-            guard case let .confirmed(selectedRegion) = result else {
+            guard case let .confirmed(payload) = result else {
                 return
             }
+            let selectedRegion = payload.globalRegion
             self.selectedWindowRegionForNextRecording = nil
             self.selectedWindowSummaryForNextRecording = nil
             self.consumeSelectedWindowOnRecordStart = false
             self.selectedRegionForNextRecording = selectedRegion
-            self.selectedRegionScreenIndexForNextRecording = selectionScreenIndex
+            self.selectedRegionScreenIndexForNextRecording = nil
             self.consumeSelectedRegionOnRecordStart = true
             self.toolbarPanel?.setSelectedRegion(selectedRegion)
             self.toolbarPanel?.setSelectedWindow(nil)
@@ -322,7 +436,24 @@ class FloatingBallWindow: NSPanel {
             let width = Int(max(0, (selectedRegion[2] - selectedRegion[0]).rounded()))
             let height = Int(max(0, (selectedRegion[3] - selectedRegion[1]).rounded()))
             self.toolbarPanel?.showStatus("Status: Starting region \(width)x\(height)...", color: NSColor.systemBlue)
-            self.invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: selectionScreenIndex, windowTitle: nil)
+            self.invokeStartRecording(
+                mode: "region",
+                region: selectedRegion,
+                screenIndex: nil,
+                windowTitle: nil
+            ) { [weak self] started, errorText in
+                guard let self = self else { return }
+                if started {
+                    return
+                }
+                self.consumeSelectedRegionOnRecordStart = false
+                self.consumeSelectedWindowOnRecordStart = false
+                self.setRecordingState(false)
+                self.expandToolbar()
+                self.toolbarPanel?.setSelectedRegion(self.selectedRegionForNextRecording)
+                let reason = (errorText?.isEmpty == false) ? errorText! : "Unknown error"
+                self.toolbarPanel?.showStatus("Status: Start failed (\(reason)). Retry window/region selection.", color: NSColor.systemOrange)
+            }
         }
         regionSelector?.show()
     }
@@ -340,6 +471,7 @@ class FloatingBallWindow: NSPanel {
             toolbarPanel?.showStatus("Status: Stop recording first", color: NSColor.systemOrange)
             return
         }
+        dismissSelectionPanels()
 
         let shouldReopenToolbar = isToolbarExpanded
         if let parentWindow = parentWindowRef, !parentWindow.isMiniaturized {
@@ -357,6 +489,7 @@ class FloatingBallWindow: NSPanel {
             self.makeKeyAndOrderFront(nil)
 
             if case .cancelled = result {
+                self.consumeSelectedWindowOnRecordStart = false
                 if shouldReopenToolbar {
                     self.expandToolbar()
                 }
@@ -378,7 +511,24 @@ class FloatingBallWindow: NSPanel {
             self.toolbarPanel?.setSelectedWindow(summary)
 
             self.toolbarPanel?.showStatus("Status: Starting \(summary)...", color: NSColor.systemBlue)
-            self.invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: nil, windowTitle: summary)
+            self.invokeStartRecording(
+                mode: "region",
+                region: selectedRegion,
+                screenIndex: nil,
+                windowTitle: summary
+            ) { [weak self] started, errorText in
+                guard let self = self else { return }
+                if started {
+                    return
+                }
+                self.consumeSelectedRegionOnRecordStart = false
+                self.consumeSelectedWindowOnRecordStart = false
+                self.setRecordingState(false)
+                self.expandToolbar()
+                self.toolbarPanel?.setSelectedWindow(self.selectedWindowSummaryForNextRecording)
+                let reason = (errorText?.isEmpty == false) ? errorText! : "Unknown error"
+                self.toolbarPanel?.showStatus("Status: Window start failed (\(reason)). Reselect and retry.", color: NSColor.systemOrange)
+            }
         }
         windowSelector?.show()
     }
@@ -391,13 +541,29 @@ class FloatingBallWindow: NSPanel {
         selectWindowForNextRecording()
     }
 
-    func setSelectedScreenIndex(_ screenIndex: Int?) {
+    func setSelectedScreen(_ screenIndex: Int?, displayID: Int?) {
         if let idx = screenIndex, idx >= 0 {
             selectedScreenIndexForNextRecording = idx
         } else {
             selectedScreenIndexForNextRecording = nil
         }
-        toolbarPanel?.setSelectedScreen(selectedScreenIndexForNextRecording)
+        selectedScreenDisplayIDForNextRecording = displayID
+        toolbarPanel?.setSelectedScreen(
+            selectedScreenIndexForNextRecording,
+            displayID: selectedScreenDisplayIDForNextRecording
+        )
+    }
+
+    func setSelectedScreenIndex(_ screenIndex: Int?) {
+        setSelectedScreen(screenIndex, displayID: nil)
+    }
+
+    func setSelectedScreenDisplayID(_ displayID: Int?) {
+        selectedScreenDisplayIDForNextRecording = displayID
+        toolbarPanel?.setSelectedScreen(
+            selectedScreenIndexForNextRecording,
+            displayID: selectedScreenDisplayIDForNextRecording
+        )
     }
 
     private func toggleRecordingFromToolbar() {
@@ -413,8 +579,17 @@ class FloatingBallWindow: NSPanel {
             let width = Int(max(0, (selectedRegion[2] - selectedRegion[0]).rounded()))
             let height = Int(max(0, (selectedRegion[3] - selectedRegion[1]).rounded()))
             toolbarPanel?.showStatus("Status: Starting region \(width)x\(height)...", color: NSColor.systemBlue)
-            invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: selectedRegionScreenIndexForNextRecording, windowTitle: nil)
-            collapseToolbar()
+            invokeStartRecording(mode: "region", region: selectedRegion, screenIndex: nil, windowTitle: nil) { [weak self] started, errorText in
+                guard let self = self else { return }
+                if started {
+                    self.collapseToolbar()
+                    return
+                }
+                self.consumeSelectedRegionOnRecordStart = false
+                self.setRecordingState(false)
+                let reason = (errorText?.isEmpty == false) ? errorText! : "Unknown error"
+                self.toolbarPanel?.showStatus("Status: Region start failed (\(reason)).", color: NSColor.systemOrange)
+            }
             return
         }
 
@@ -422,19 +597,52 @@ class FloatingBallWindow: NSPanel {
             consumeSelectedWindowOnRecordStart = true
             let title = selectedWindowSummaryForNextRecording ?? "window"
             toolbarPanel?.showStatus("Status: Starting \(title)...", color: NSColor.systemBlue)
-            invokeStartRecording(mode: "region", region: selectedWindowRegion, screenIndex: nil, windowTitle: selectedWindowSummaryForNextRecording)
-            collapseToolbar()
+            invokeStartRecording(mode: "region", region: selectedWindowRegion, screenIndex: nil, windowTitle: selectedWindowSummaryForNextRecording) { [weak self] started, errorText in
+                guard let self = self else { return }
+                if started {
+                    self.collapseToolbar()
+                    return
+                }
+                self.consumeSelectedWindowOnRecordStart = false
+                self.setRecordingState(false)
+                let reason = (errorText?.isEmpty == false) ? errorText! : "Unknown error"
+                self.toolbarPanel?.showStatus("Status: Window start failed (\(reason)).", color: NSColor.systemOrange)
+            }
             return
         }
 
-        if let idx = selectedScreenIndexForNextRecording {
-            toolbarPanel?.showStatus("Status: Starting screen \(idx + 1) recording...", color: NSColor.systemBlue)
-            invokeStartRecording(mode: "fullscreen-single", region: nil, screenIndex: idx, windowTitle: nil)
+        if selectedScreenIndexForNextRecording != nil || selectedScreenDisplayIDForNextRecording != nil {
+            let label = selectedScreenIndexForNextRecording != nil
+                ? "screen \((selectedScreenIndexForNextRecording ?? 0) + 1)"
+                : "selected screen"
+            toolbarPanel?.showStatus("Status: Starting \(label) recording...", color: NSColor.systemBlue)
+            invokeStartRecording(
+                mode: "fullscreen-single",
+                region: nil,
+                screenIndex: selectedScreenIndexForNextRecording,
+                screenDisplayID: selectedScreenDisplayIDForNextRecording,
+                windowTitle: nil
+            ) { [weak self] started, errorText in
+                guard let self = self else { return }
+                if started {
+                    self.collapseToolbar()
+                    return
+                }
+                let reason = (errorText?.isEmpty == false) ? errorText! : "Unknown error"
+                self.toolbarPanel?.showStatus("Status: Screen start failed (\(reason)).", color: NSColor.systemOrange)
+            }
         } else {
             toolbarPanel?.showStatus("Status: Starting full-screen recording...", color: NSColor.systemBlue)
-            invokeStartRecording(mode: "fullscreen", region: nil, screenIndex: nil, windowTitle: nil)
+            invokeStartRecording(mode: "fullscreen", region: nil, screenIndex: nil, windowTitle: nil) { [weak self] started, errorText in
+                guard let self = self else { return }
+                if started {
+                    self.collapseToolbar()
+                    return
+                }
+                let reason = (errorText?.isEmpty == false) ? errorText! : "Unknown error"
+                self.toolbarPanel?.showStatus("Status: Start failed (\(reason)).", color: NSColor.systemOrange)
+            }
         }
-        collapseToolbar()
     }
 
     private func toggleTrackingFromToolbar() {
@@ -447,64 +655,34 @@ class FloatingBallWindow: NSPanel {
     }
 
     private func installKeyboardShortcuts() {
-        localKeyboardMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self = self else { return event }
-            if self.handleShortcutKeyDown(event) {
-                return nil
-            }
-            return event
-        }
+        let manager = GlobalHotKeyManager()
+        hotKeyManager = manager
+        let modifiers = UInt32(cmdKey | shiftKey)
 
-        globalKeyboardMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self = self else { return }
-            DispatchQueue.main.async {
-                _ = self.handleShortcutKeyDown(event)
-            }
+        _ = manager.register(id: 1, keyCode: UInt32(kVK_ANSI_R), modifiers: modifiers) { [weak self] in
+            self?.selectRegionForNextRecording()
         }
-    }
-
-    private func handleShortcutKeyDown(_ event: NSEvent) -> Bool {
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard flags.contains([.command, .shift]) else { return false }
-
-        let key = shortcutKey(from: event)
-        if key == "r" {
-            selectRegionForNextRecording()
-            return true
+        _ = manager.register(id: 2, keyCode: UInt32(kVK_ANSI_S), modifiers: modifiers) { [weak self] in
+            self?.toggleRecordingFromToolbar()
         }
-        if key == "s" {
-            toggleRecordingFromToolbar()
-            return true
+        _ = manager.register(id: 3, keyCode: UInt32(kVK_ANSI_Comma), modifiers: modifiers) { [weak self] in
+            self?.flutterChannel?.invokeMethod("openSettings", arguments: nil)
+            self?.collapseToolbar()
         }
-        if key == "," {
-            flutterChannel?.invokeMethod("openSettings", arguments: nil)
-            collapseToolbar()
-            return true
-        }
-        if key == "x" {
-            onQuit?()
-            return true
-        }
-        return false
-    }
-
-    private func shortcutKey(from event: NSEvent) -> String {
-        switch event.keyCode {
-        case 15: return "r"   // R
-        case 1: return "s"    // S
-        case 0: return "a"    // A
-        case 13: return "w"   // W
-        case 8: return "c"    // C
-        case 9: return "v"    // V
-        case 43: return ","   // Comma
-        case 7: return "x"    // X
-        case 40: return "k"   // K
-        default:
-            return event.charactersIgnoringModifiers?.lowercased() ?? ""
+        _ = manager.register(id: 4, keyCode: UInt32(kVK_ANSI_X), modifiers: modifiers) { [weak self] in
+            self?.onQuit?()
         }
     }
 
     private func selectionScreen() -> NSScreen {
+        if let targetDisplayID = selectedScreenDisplayIDForNextRecording {
+            for screen in NSScreen.screens {
+                if let raw = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+                   raw.intValue == targetDisplayID {
+                    return screen
+                }
+            }
+        }
         if let idx = selectedScreenIndexForNextRecording {
             let screens = NSScreen.screens
             if idx >= 0 && idx < screens.count {
@@ -523,7 +701,14 @@ class FloatingBallWindow: NSPanel {
         return NSScreen.main ?? NSScreen.screens.first!
     }
 
-    private func invokeStartRecording(mode: String, region: [Double]?, screenIndex: Int?, windowTitle: String?) {
+    private func invokeStartRecording(
+        mode: String,
+        region: [Double]?,
+        screenIndex: Int?,
+        screenDisplayID: Int? = nil,
+        windowTitle: String?,
+        onResult: ((Bool, String?) -> Void)? = nil
+    ) {
         var args: [String: Any] = ["mode": mode]
         if let region = region {
             args["region"] = region
@@ -531,20 +716,35 @@ class FloatingBallWindow: NSPanel {
         if let screenIndex = screenIndex {
             args["screenIndex"] = screenIndex
         }
+        if let screenDisplayID = screenDisplayID {
+            args["screenDisplayId"] = screenDisplayID
+        }
         if let windowTitle = windowTitle, !windowTitle.isEmpty {
             args["windowTitle"] = windowTitle
         }
-        flutterChannel?.invokeMethod("startRecording", arguments: args)
+        guard let channel = flutterChannel else {
+            onResult?(false, "Flutter channel unavailable")
+            return
+        }
+        channel.invokeMethod("startRecording", arguments: args) { result in
+            if let map = result as? [String: Any] {
+                let ok = (map["ok"] as? Bool) ?? true
+                let errorText = map["error"] as? String
+                onResult?(ok, errorText)
+                return
+            }
+            if let flutterError = result as? FlutterError {
+                onResult?(false, flutterError.message)
+                return
+            }
+            // Backward-compatible behavior: nil/unknown result means success.
+            onResult?(true, nil)
+        }
     }
 
     override func close() {
         collapseToolbar()
-        regionSelector?.orderOut(nil)
-        regionSelector?.close()
-        regionSelector = nil
-        windowSelector?.orderOut(nil)
-        windowSelector?.close()
-        windowSelector = nil
+        dismissSelectionPanels()
         super.close()
     }
 
@@ -573,7 +773,7 @@ class ToolbarPanel: NSPanel {
     private var onSelectRegion: (() -> Void)?
     private var onSelectWindow: (() -> Void)?
     private var onToggleTracking: (() -> Void)?
-    private var onScreenSelectionChanged: ((Int?) -> Void)?
+    private var onScreenSelectionChanged: ((Int?, Int?) -> Void)?
     private var onQuit: (() -> Void)?
     private var currentRecording = false
     private var currentPaused = false
@@ -588,7 +788,7 @@ class ToolbarPanel: NSPanel {
         onSelectRegion: @escaping () -> Void,
         onSelectWindow: @escaping () -> Void,
         onToggleTracking: @escaping () -> Void,
-        onScreenSelectionChanged: @escaping (Int?) -> Void,
+        onScreenSelectionChanged: @escaping (Int?, Int?) -> Void,
         onQuit: @escaping () -> Void
     ) {
         super.init(
@@ -652,10 +852,16 @@ class ToolbarPanel: NSPanel {
         screenPopup.action = #selector(screenSelectionChanged)
         screenPopup.addItem(withTitle: "Screen: All Screens")
         screenPopup.lastItem?.tag = -1
+        screenPopup.lastItem?.representedObject = nil
         for (idx, screen) in NSScreen.screens.enumerated() {
             let suffix = screen == NSScreen.main ? " [Primary]" : ""
             screenPopup.addItem(withTitle: "Screen \(idx + 1)\(suffix)")
             screenPopup.lastItem?.tag = idx
+            if let raw = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+                screenPopup.lastItem?.representedObject = raw.intValue
+            } else {
+                screenPopup.lastItem?.representedObject = nil
+            }
         }
         containerView.addSubview(screenPopup)
 
@@ -786,7 +992,9 @@ class ToolbarPanel: NSPanel {
 
     @objc private func screenSelectionChanged() {
         let selectedTag = screenPopup.selectedTag()
-        onScreenSelectionChanged?(selectedTag >= 0 ? selectedTag : nil)
+        let selectedIndex = selectedTag >= 0 ? selectedTag : nil
+        let selectedDisplayID = screenPopup.selectedItem?.representedObject as? Int
+        onScreenSelectionChanged?(selectedIndex, selectedDisplayID)
     }
 
     func updateRecordingState(_ isRecording: Bool) {
@@ -831,7 +1039,18 @@ class ToolbarPanel: NSPanel {
         refreshActionButtons()
     }
 
-    func setSelectedScreen(_ screenIndex: Int?) {
+    func setSelectedScreen(_ screenIndex: Int?, displayID: Int?) {
+        if let displayID = displayID {
+            for idx in 0..<screenPopup.numberOfItems {
+                if let item = screenPopup.item(at: idx),
+                   let itemDisplayID = item.representedObject as? Int,
+                   itemDisplayID == displayID {
+                    screenPopup.selectItem(at: idx)
+                    return
+                }
+            }
+        }
+
         let tag = screenIndex ?? -1
         let idx = screenPopup.indexOfItem(withTag: tag)
         if idx >= 0 {
@@ -908,9 +1127,14 @@ class ToolbarPanel: NSPanel {
     }
 }
 
+private struct RegionSelectionPayload {
+    let localRegion: [Double]   // screen-local top-left coordinates
+    let globalRegion: [Double]  // global top-left coordinates (PIL/ImageGrab space)
+}
+
 private enum RegionSelectionResult {
     case cancelled
-    case confirmed([Double])
+    case confirmed(RegionSelectionPayload)
 }
 
 private enum WindowSelectionResult {
@@ -976,6 +1200,7 @@ private struct CandidateWindow {
     let ownerName: String
     let windowName: String
     let ownerPID: pid_t
+    let windowNumber: Int
 }
 
 private class WindowSelectionPanel: NSPanel {
@@ -1036,6 +1261,8 @@ private class WindowSelectionView: NSView {
     private let completion: (WindowSelectionResult) -> Void
     private var windows: [CandidateWindow] = []
     private var selectedIndex: Int?
+    private var hasManualSelection = false
+    private var selectedWindowNumber: Int?
     private var confirmButtonRect: NSRect = .zero
     private var refreshTimer: Timer?
     private var lastSelectedBounds: CGRect?
@@ -1102,6 +1329,13 @@ private class WindowSelectionView: NSView {
         if selectedIndex == nil {
             selectedIndex = topMostWindowIndex()
         }
+        if let idx = selectedIndex, idx >= 0, idx < windows.count {
+            hasManualSelection = true
+            selectedWindowNumber = windows[idx].windowNumber > 0 ? windows[idx].windowNumber : nil
+        } else {
+            hasManualSelection = false
+            selectedWindowNumber = nil
+        }
         needsDisplay = true
     }
 
@@ -1120,6 +1354,8 @@ private class WindowSelectionView: NSView {
         // R: clear selection
         if event.charactersIgnoringModifiers?.lowercased() == "r" {
             selectedIndex = nil
+            hasManualSelection = false
+            selectedWindowNumber = nil
             confirmButtonRect = .zero
             refreshWindows(autoSelectTopMost: true)
             needsDisplay = true
@@ -1141,6 +1377,8 @@ private class WindowSelectionView: NSView {
         windows = loadCandidateWindows()
         if windows.isEmpty {
             selectedIndex = nil
+            hasManualSelection = false
+            selectedWindowNumber = nil
             lastSelectedBounds = nil
             if !confirmButtonRect.isEmpty {
                 confirmButtonRect = .zero
@@ -1150,7 +1388,16 @@ private class WindowSelectionView: NSView {
         }
 
         if autoSelectTopMost {
-            selectedIndex = topMostWindowIndex()
+            if hasManualSelection, let winNo = selectedWindowNumber {
+                selectedIndex = windows.firstIndex(where: { $0.windowNumber == winNo })
+                if selectedIndex == nil {
+                    hasManualSelection = false
+                    selectedWindowNumber = nil
+                    selectedIndex = topMostWindowIndex()
+                }
+            } else {
+                selectedIndex = topMostWindowIndex()
+            }
         } else if let idx = selectedIndex, idx >= 0, idx < windows.count {
             // Keep existing selected index only if still valid after refresh.
             selectedIndex = idx
@@ -1217,13 +1464,20 @@ private class WindowSelectionView: NSView {
             }
 
             let pidValue = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value ?? 0
-            out.append(CandidateWindow(bounds: bounds, ownerName: ownerName, windowName: windowName, ownerPID: pidValue))
+            let windowNumber = (info[kCGWindowNumber as String] as? NSNumber)?.intValue ?? 0
+            out.append(CandidateWindow(
+                bounds: bounds,
+                ownerName: ownerName,
+                windowName: windowName,
+                ownerPID: pidValue,
+                windowNumber: windowNumber
+            ))
         }
         return out
     }
 
     private func localRect(for topLeftRect: CGRect) -> NSRect {
-        let mainHeight = NSScreen.main?.frame.height ?? panelFrame.height
+        let mainHeight = referenceScreenHeightForGlobalTopLeft()
         let bottomY = mainHeight - (topLeftRect.origin.y + topLeftRect.height)
         return NSRect(
             x: topLeftRect.origin.x - panelFrame.origin.x,
@@ -1346,7 +1600,7 @@ private class RegionSelectionView: NSView {
     private var currentPoint: NSPoint?
     private let panelFrame: NSRect
     private let completion: (RegionSelectionResult) -> Void
-    private var lastConfirmedRegion: [Double]?
+    private var lastConfirmedPayload: RegionSelectionPayload?
     private var confirmButtonRect: NSRect = .zero
 
     init(frame frameRect: NSRect, panelFrame: NSRect, completion: @escaping (RegionSelectionResult) -> Void) {
@@ -1383,8 +1637,8 @@ private class RegionSelectionView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let location = convert(event.locationInWindow, from: nil)
-        if !confirmButtonRect.isEmpty, confirmButtonRect.contains(location), let region = lastConfirmedRegion {
-            completion(.confirmed(region))
+        if !confirmButtonRect.isEmpty, confirmButtonRect.contains(location), let payload = lastConfirmedPayload {
+            completion(.confirmed(payload))
             return
         }
         startPoint = location
@@ -1400,8 +1654,8 @@ private class RegionSelectionView: NSView {
     override func mouseUp(with event: NSEvent) {
         currentPoint = convert(event.locationInWindow, from: nil)
         let location = convert(event.locationInWindow, from: nil)
-        if !confirmButtonRect.isEmpty, confirmButtonRect.contains(location), let region = lastConfirmedRegion {
-            completion(.confirmed(region))
+        if !confirmButtonRect.isEmpty, confirmButtonRect.contains(location), let payload = lastConfirmedPayload {
+            completion(.confirmed(payload))
             return
         }
         finalizeSelection()
@@ -1414,8 +1668,8 @@ private class RegionSelectionView: NSView {
         }
         // Enter: confirm and start recording
         if event.keyCode == 36 || event.keyCode == 76 {
-            if let region = lastConfirmedRegion {
-                completion(.confirmed(region))
+            if let payload = lastConfirmedPayload {
+                completion(.confirmed(payload))
             }
             return
         }
@@ -1423,7 +1677,7 @@ private class RegionSelectionView: NSView {
         if event.charactersIgnoringModifiers?.lowercased() == "r" {
             startPoint = nil
             currentPoint = nil
-            lastConfirmedRegion = nil
+            lastConfirmedPayload = nil
             confirmButtonRect = .zero
             needsDisplay = true
             return
@@ -1450,31 +1704,44 @@ private class RegionSelectionView: NSView {
         guard rect.width >= minSelectionSize, rect.height >= minSelectionSize else {
             startPoint = nil
             currentPoint = nil
-            lastConfirmedRegion = nil
+            lastConfirmedPayload = nil
             confirmButtonRect = .zero
             needsDisplay = true
             return
         }
 
-        // Return region in screen-local top-left coordinates.
-        // Backend will map it onto the selected screen using screen_index.
+        // Build local/global regions in top-left coordinate space.
+        // Global region avoids screen-index remapping mismatch on multi-display setups.
         let x1 = rect.minX
         let x2 = rect.maxX
         let top = panelFrame.height - rect.maxY
         let bottom = panelFrame.height - rect.minY
 
-        let region: [Double] = [
+        let localRegion: [Double] = [
             Double(floor(x1)),
             Double(floor(top)),
             Double(ceil(x2)),
             Double(ceil(bottom))
         ]
-        lastConfirmedRegion = region
+
+        let mainHeight = referenceScreenHeightForGlobalTopLeft()
+        let globalX1 = panelFrame.origin.x + rect.minX
+        let globalX2 = panelFrame.origin.x + rect.maxX
+        let globalTop = mainHeight - (panelFrame.origin.y + rect.maxY)
+        let globalBottom = mainHeight - (panelFrame.origin.y + rect.minY)
+        let globalRegion: [Double] = [
+            Double(floor(globalX1)),
+            Double(floor(globalTop)),
+            Double(ceil(globalX2)),
+            Double(ceil(globalBottom))
+        ]
+
+        lastConfirmedPayload = RegionSelectionPayload(localRegion: localRegion, globalRegion: globalRegion)
         needsDisplay = true
     }
 
     private func drawConfirmButton(under rect: NSRect) {
-        guard lastConfirmedRegion != nil else {
+        guard lastConfirmedPayload != nil else {
             confirmButtonRect = .zero
             return
         }

@@ -424,11 +424,21 @@ class AppDelegate: FlutterAppDelegate {
             }
         case "prepareRegionSelection":
             var requestedScreenIndex: Int?
+            var requestedScreenDisplayID: Int?
             if let args = call.arguments as? [String: Any] {
                 if let idx = args["screenIndex"] as? Int {
                     requestedScreenIndex = idx
                 } else if let idxNum = args["screenIndex"] as? NSNumber {
                     requestedScreenIndex = idxNum.intValue
+                }
+                if let displayID = args["screenDisplayId"] as? Int {
+                    requestedScreenDisplayID = displayID
+                } else if let displayID = args["screen_display_id"] as? Int {
+                    requestedScreenDisplayID = displayID
+                } else if let displayIDNum = args["screenDisplayId"] as? NSNumber {
+                    requestedScreenDisplayID = displayIDNum.intValue
+                } else if let displayIDNum = args["screen_display_id"] as? NSNumber {
+                    requestedScreenDisplayID = displayIDNum.intValue
                 }
             }
             if floatingBall == nil {
@@ -440,17 +450,30 @@ class AppDelegate: FlutterAppDelegate {
             }
             floatingBall?.orderFront(nil)
             floatingBall?.makeKeyAndOrderFront(nil)
-            floatingBall?.setSelectedScreenIndex(requestedScreenIndex)
+            floatingBall?.setSelectedScreen(
+                requestedScreenIndex,
+                displayID: requestedScreenDisplayID
+            )
             minimizeMainWindow()
             floatingBall?.beginRegionSelectionFromMainUI()
             result(nil)
         case "prepareWindowSelection":
             var requestedScreenIndex: Int?
+            var requestedScreenDisplayID: Int?
             if let args = call.arguments as? [String: Any] {
                 if let idx = args["screenIndex"] as? Int {
                     requestedScreenIndex = idx
                 } else if let idxNum = args["screenIndex"] as? NSNumber {
                     requestedScreenIndex = idxNum.intValue
+                }
+                if let displayID = args["screenDisplayId"] as? Int {
+                    requestedScreenDisplayID = displayID
+                } else if let displayID = args["screen_display_id"] as? Int {
+                    requestedScreenDisplayID = displayID
+                } else if let displayIDNum = args["screenDisplayId"] as? NSNumber {
+                    requestedScreenDisplayID = displayIDNum.intValue
+                } else if let displayIDNum = args["screen_display_id"] as? NSNumber {
+                    requestedScreenDisplayID = displayIDNum.intValue
                 }
             }
             if floatingBall == nil {
@@ -462,17 +485,30 @@ class AppDelegate: FlutterAppDelegate {
             }
             floatingBall?.orderFront(nil)
             floatingBall?.makeKeyAndOrderFront(nil)
-            floatingBall?.setSelectedScreenIndex(requestedScreenIndex)
+            floatingBall?.setSelectedScreen(
+                requestedScreenIndex,
+                displayID: requestedScreenDisplayID
+            )
             minimizeMainWindow()
             floatingBall?.beginWindowSelectionFromMainUI()
             result(nil)
         case "prepareScreenRecording":
             var requestedScreenIndex: Int?
+            var requestedScreenDisplayID: Int?
             if let args = call.arguments as? [String: Any] {
                 if let idx = args["screenIndex"] as? Int {
                     requestedScreenIndex = idx
                 } else if let idxNum = args["screenIndex"] as? NSNumber {
                     requestedScreenIndex = idxNum.intValue
+                }
+                if let displayID = args["screenDisplayId"] as? Int {
+                    requestedScreenDisplayID = displayID
+                } else if let displayID = args["screen_display_id"] as? Int {
+                    requestedScreenDisplayID = displayID
+                } else if let displayIDNum = args["screenDisplayId"] as? NSNumber {
+                    requestedScreenDisplayID = displayIDNum.intValue
+                } else if let displayIDNum = args["screen_display_id"] as? NSNumber {
+                    requestedScreenDisplayID = displayIDNum.intValue
                 }
             }
             if floatingBall == nil {
@@ -484,7 +520,10 @@ class AppDelegate: FlutterAppDelegate {
             }
             floatingBall?.orderFront(nil)
             floatingBall?.makeKeyAndOrderFront(nil)
-            floatingBall?.setSelectedScreenIndex(requestedScreenIndex)
+            floatingBall?.setSelectedScreen(
+                requestedScreenIndex,
+                displayID: requestedScreenDisplayID
+            )
             minimizeMainWindow()
             result(nil)
         default:

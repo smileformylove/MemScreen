@@ -59,6 +59,7 @@ class AppState extends ChangeNotifier {
   bool get recordSystemAudio => _recordSystemAudio;
   bool _recordMicrophoneAudio = true;
   bool get recordMicrophoneAudio => _recordMicrophoneAudio;
+  bool _recordingAudioUserConfigured = false;
   bool get recordingAudioEnabled =>
       _recordSystemAudio || _recordMicrophoneAudio;
   String get recordingAudioSource {
@@ -71,6 +72,8 @@ class AppState extends ChangeNotifier {
   bool _autoTrackInputWithRecording = true;
   bool get autoTrackInputWithRecording => _autoTrackInputWithRecording;
   bool _trackingStartedByRecording = false;
+  bool _trackingBoundToRecording = false;
+  String? _pendingRecordingNotice;
   String get _settingsFilePath =>
       '${Platform.environment['HOME'] ?? ''}/.memscreen/flutter_settings.json';
 
@@ -170,7 +173,9 @@ class AppState extends ChangeNotifier {
       final audioSource = map['recording_audio_source'];
       final systemAudioEnabled = map['record_system_audio_enabled'];
       final microphoneAudioEnabled = map['record_microphone_audio_enabled'];
+      final audioUserConfigured = map['recording_audio_user_configured'];
       final autoTrack = map['auto_track_input_with_recording'];
+      var loadedAudioSource = false;
       if (duration is int && duration > 0) {
         _recordingDurationSec = duration;
       }
@@ -183,11 +188,15 @@ class AppState extends ChangeNotifier {
       if (microphoneAudioEnabled is bool) {
         _recordMicrophoneAudio = microphoneAudioEnabled;
       }
+      if (audioUserConfigured is bool) {
+        _recordingAudioUserConfigured = audioUserConfigured;
+      }
       if (audioSource is String &&
           (audioSource == 'mixed' ||
               audioSource == 'system_audio' ||
               audioSource == 'microphone' ||
               audioSource == 'none')) {
+        loadedAudioSource = true;
         if (audioSource == 'mixed') {
           _recordSystemAudio = true;
           _recordMicrophoneAudio = true;
@@ -201,6 +210,20 @@ class AppState extends ChangeNotifier {
           _recordSystemAudio = false;
           _recordMicrophoneAudio = false;
         }
+      }
+      // Backward-compatibility migration:
+      // Older builds could persist "none" while audio switches looked enabled in UI
+      // due IndexedStack state caching. If no explicit user-config marker exists,
+      // recover to the current default (both enabled).
+      final shouldMigrateLegacyAudioOff = audioUserConfigured is! bool &&
+          loadedAudioSource &&
+          audioSource == 'none' &&
+          !_recordSystemAudio &&
+          !_recordMicrophoneAudio;
+      if (shouldMigrateLegacyAudioOff) {
+        _recordSystemAudio = true;
+        _recordMicrophoneAudio = true;
+        await _persistRecordingSettings();
       }
       if (autoTrack is bool) {
         _autoTrackInputWithRecording = autoTrack;
@@ -224,8 +247,18 @@ class AppState extends ChangeNotifier {
 
   Future<void> setAutoTrackInputWithRecording(bool enabled) async {
     _autoTrackInputWithRecording = enabled;
+    if (!enabled) {
+      _trackingStartedByRecording = false;
+      _trackingBoundToRecording = false;
+    }
     notifyListeners();
     await _persistRecordingSettings();
+  }
+
+  String? consumePendingRecordingNotice() {
+    final notice = _pendingRecordingNotice;
+    _pendingRecordingNotice = null;
+    return notice;
   }
 
   Future<void> setRecordingAudioSource(String source) async {
@@ -248,6 +281,7 @@ class AppState extends ChangeNotifier {
       _recordSystemAudio = false;
       _recordMicrophoneAudio = false;
     }
+    _recordingAudioUserConfigured = true;
     notifyListeners();
     await _persistRecordingSettings();
   }
@@ -255,18 +289,21 @@ class AppState extends ChangeNotifier {
   Future<void> setRecordingAudioEnabled(bool enabled) async {
     _recordSystemAudio = enabled;
     _recordMicrophoneAudio = enabled;
+    _recordingAudioUserConfigured = true;
     notifyListeners();
     await _persistRecordingSettings();
   }
 
   Future<void> setRecordSystemAudio(bool enabled) async {
     _recordSystemAudio = enabled;
+    _recordingAudioUserConfigured = true;
     notifyListeners();
     await _persistRecordingSettings();
   }
 
   Future<void> setRecordMicrophoneAudio(bool enabled) async {
     _recordMicrophoneAudio = enabled;
+    _recordingAudioUserConfigured = true;
     notifyListeners();
     await _persistRecordingSettings();
   }
@@ -282,6 +319,7 @@ class AppState extends ChangeNotifier {
           'recording_audio_source': recordingAudioSource,
           'record_system_audio_enabled': _recordSystemAudio,
           'record_microphone_audio_enabled': _recordMicrophoneAudio,
+          'recording_audio_user_configured': _recordingAudioUserConfigured,
           'auto_track_input_with_recording': _autoTrackInputWithRecording,
         }),
       );
@@ -291,39 +329,65 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _maybeStartTrackingForRecording() async {
+    _trackingStartedByRecording = false;
+    _trackingBoundToRecording = false;
     if (!_autoTrackInputWithRecording) return;
     try {
       final status = await _processApi.getTrackingStatus();
+      if (status.isTracking) {
+        await _processApi.markTrackingStart();
+        _trackingBoundToRecording = true;
+        updateFloatingBallTracking(true);
+        requestRecordingStatusRefresh();
+        return;
+      }
       if (!status.isTracking) {
         await _processApi.startTracking();
         _trackingStartedByRecording = true;
+        _trackingBoundToRecording = true;
         updateFloatingBallTracking(true);
         requestRecordingStatusRefresh();
       }
     } catch (e) {
+      String reason = 'Key-Mouse tracking did not start. Video recording continues.';
+      if (e is ApiException) {
+        final details = e.message.trim();
+        if (details.isNotEmpty) {
+          reason = 'Key-Mouse tracking disabled for this recording: $details';
+        }
+      }
+      _pendingRecordingNotice = reason;
       debugPrint('[AppState] Failed to auto-start input tracking: $e');
     }
   }
 
-  Future<void> _maybeStopTrackingAfterRecording() async {
-    if (!_trackingStartedByRecording) return;
+  Future<void> _saveTrackingSessionForRecording() async {
+    await Future.delayed(const Duration(milliseconds: 400));
     try {
-      await _processApi.stopTracking();
-      updateFloatingBallTracking(false);
-      requestRecordingStatusRefresh();
-      _trackingStartedByRecording = false;
-      Future.delayed(const Duration(milliseconds: 400), () async {
-        try {
-          final result = await _processApi.saveSessionFromTracking();
-          if (result.eventsSaved > 0) {
-            requestVideoRefresh();
-          }
-        } catch (e) {
-          debugPrint('[AppState] Error auto-saving tracking session: $e');
-        }
-      });
+      final result = await _processApi.saveSessionFromTracking();
+      if (result.eventsSaved > 0) {
+        requestVideoRefresh();
+      }
+    } catch (e) {
+      // Ignore "no events"/small interactions; keep logs for diagnostics only.
+      debugPrint('[AppState] Error auto-saving tracking session: $e');
+    }
+  }
+
+  Future<void> _maybeStopTrackingAfterRecording() async {
+    if (!_trackingBoundToRecording) return;
+    try {
+      if (_trackingStartedByRecording) {
+        await _processApi.stopTracking();
+        updateFloatingBallTracking(false);
+        requestRecordingStatusRefresh();
+      }
+      await _saveTrackingSessionForRecording();
     } catch (e) {
       debugPrint('[AppState] Failed to auto-stop input tracking: $e');
+    } finally {
+      _trackingStartedByRecording = false;
+      _trackingBoundToRecording = false;
     }
   }
 
@@ -333,20 +397,70 @@ class AppState extends ChangeNotifier {
     String? mode,
     List<double>? region,
     int? screenIndex,
+    int? screenDisplayId,
     String? windowTitle,
   }) async {
     await _maybeStartTrackingForRecording();
+    final effectiveAudioSource = await _resolveRecordingAudioSourceForStart();
     await _recordingApi.start(
       duration: duration,
       interval: interval,
       mode: mode,
       region: region,
       screenIndex: screenIndex,
+      screenDisplayId: screenDisplayId,
       windowTitle: windowTitle,
-      audioSource: recordingAudioSource,
+      audioSource: effectiveAudioSource,
     );
+    // Confirm backend entered recording state; if not, surface immediate failure
+    // so floating-ball selection flow can recover and allow instant retry.
+    await Future.delayed(const Duration(milliseconds: 500));
+    final status = await _recordingApi.getStatus();
+    if (!status.isRecording) {
+      updateFloatingBallState(false);
+      requestRecordingStatusRefresh();
+      throw Exception(
+          'Recording did not start. Please reselect target and retry.');
+    }
     updateFloatingBallState(true);
     requestRecordingStatusRefresh();
+  }
+
+  Future<String> _resolveRecordingAudioSourceForStart() async {
+    final requested = recordingAudioSource;
+    if (requested == 'none') return requested;
+    try {
+      final diagnosis = await _recordingApi.diagnoseAudio(source: requested);
+      var useSystem = _recordSystemAudio;
+      var useMic = _recordMicrophoneAudio;
+
+      if (useSystem && !diagnosis.systemDeviceAvailable) {
+        useSystem = false;
+      }
+      if (useMic && !diagnosis.microphoneAvailable) {
+        useMic = false;
+      }
+
+      final resolved = _composeAudioSource(useSystem, useMic);
+      if (resolved != requested) {
+        debugPrint(
+          '[AppState] Audio source fallback: requested=$requested, resolved=$resolved',
+        );
+      }
+      return resolved;
+    } catch (e) {
+      debugPrint(
+        '[AppState] Audio diagnosis failed, using requested source=$requested: $e',
+      );
+      return requested;
+    }
+  }
+
+  String _composeAudioSource(bool useSystem, bool useMic) {
+    if (useSystem && useMic) return 'mixed';
+    if (useSystem) return 'system_audio';
+    if (useMic) return 'microphone';
+    return 'none';
   }
 
   Future<void> stopRecording() async {
@@ -380,6 +494,9 @@ class AppState extends ChangeNotifier {
           final rawMode = args['mode'];
           var mode =
               rawMode is String && rawMode.isNotEmpty ? rawMode : 'fullscreen';
+          if (mode == 'window') {
+            mode = 'region';
+          }
 
           List<double>? region;
           final rawRegion = args['region'];
@@ -397,6 +514,14 @@ class AppState extends ChangeNotifier {
           } else if (rawScreenIndex is num) {
             screenIndex = rawScreenIndex.toInt();
           }
+          int? screenDisplayId;
+          final rawScreenDisplayId =
+              args['screenDisplayId'] ?? args['screen_display_id'];
+          if (rawScreenDisplayId is int) {
+            screenDisplayId = rawScreenDisplayId;
+          } else if (rawScreenDisplayId is num) {
+            screenDisplayId = rawScreenDisplayId.toInt();
+          }
           final rawWindowTitle = args['windowTitle'] ?? args['window_title'];
           final windowTitle =
               rawWindowTitle is String && rawWindowTitle.isNotEmpty
@@ -405,7 +530,9 @@ class AppState extends ChangeNotifier {
 
           // Safety fallback: avoid invalid region start when selector payload is missing.
           if (mode == 'region' && (region == null || region.length != 4)) {
-            mode = (screenIndex != null) ? 'fullscreen-single' : 'fullscreen';
+            mode = (screenIndex != null || screenDisplayId != null)
+                ? 'fullscreen-single'
+                : 'fullscreen';
             region = null;
           }
 
@@ -415,31 +542,38 @@ class AppState extends ChangeNotifier {
             mode: mode,
             region: region,
             screenIndex: screenIndex,
+            screenDisplayId: screenDisplayId,
             windowTitle: windowTitle,
           );
+          final notice = consumePendingRecordingNotice();
+          if (notice != null && notice.isNotEmpty) {
+            debugPrint('[AppState] Recording notice: $notice');
+          }
           debugPrint(
-            '[AppState] Recording started from floating ball: mode=$mode, region=$region, screen=$screenIndex, windowTitle=$windowTitle',
+            '[AppState] Recording started from floating ball: mode=$mode, region=$region, screen=$screenIndex, displayId=$screenDisplayId, windowTitle=$windowTitle',
           );
+          return <String, dynamic>{'ok': true};
         } catch (e) {
           debugPrint('[AppState] Error starting recording: $e');
           updateFloatingBallState(false);
           requestRecordingStatusRefresh();
+          return <String, dynamic>{'ok': false, 'error': '$e'};
         }
-        break;
 
       case 'stopRecording':
         try {
           await stopRecording();
           debugPrint('[AppState] Recording stopped from floating ball');
+          return <String, dynamic>{'ok': true};
         } catch (e) {
           debugPrint('[AppState] Error stopping recording: $e');
+          return <String, dynamic>{'ok': false, 'error': '$e'};
         }
-        break;
 
       case 'togglePause':
         // Pause/resume functionality to be implemented
         debugPrint('[AppState] Toggle pause called (not fully implemented)');
-        break;
+        return <String, dynamic>{'ok': true};
 
       case 'toggleTracking':
         try {
@@ -468,28 +602,29 @@ class AppState extends ChangeNotifier {
             requestRecordingStatusRefresh();
             debugPrint('[AppState] Input tracking started from floating ball');
           }
+          return <String, dynamic>{'ok': true};
         } catch (e) {
           debugPrint('[AppState] Error toggling input tracking: $e');
+          return <String, dynamic>{'ok': false, 'error': '$e'};
         }
-        break;
 
       case 'openQuickChat':
         _desiredTabIndex = 3;
         notifyListeners();
         debugPrint('[AppState] Requesting tab switch to Chat (3)');
-        break;
+        return <String, dynamic>{'ok': true};
 
       case 'openVideos':
         _desiredTabIndex = 1;
         notifyListeners();
         debugPrint('[AppState] Requesting tab switch to Videos (1)');
-        break;
+        return <String, dynamic>{'ok': true};
 
       case 'openSettings':
         _desiredTabIndex = 4;
         notifyListeners();
         debugPrint('[AppState] Requesting tab switch to Settings (4)');
-        break;
+        return <String, dynamic>{'ok': true};
 
       case 'quitApp':
         // Exit the application completely
@@ -505,10 +640,11 @@ class AppState extends ChangeNotifier {
             debugPrint('[AppState] Error during quit: $e');
           }
         });
-        break;
+        return <String, dynamic>{'ok': true};
 
       default:
         debugPrint('[AppState] Unknown method: ${call.method}');
+        return <String, dynamic>{'ok': false, 'error': 'Unknown method'};
     }
   }
 

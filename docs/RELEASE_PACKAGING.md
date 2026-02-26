@@ -32,6 +32,7 @@ On app launch:
 2. if backend is unavailable, it starts embedded backend bootstrap in background
 3. bootstrap creates `~/.memscreen/runtime/.venv` and installs lite runtime dependencies
 4. backend API starts locally, Flutter can reconnect immediately from the UI
+5. backend startup always prioritizes bundled backend source (`MemScreen.app/Contents/Resources/backend/src`)
 
 First launch can take longer because local backend runtime is prepared.
 
@@ -86,5 +87,9 @@ Workflow:
 Behavior:
 - `workflow_dispatch`: build installer and upload artifact
 - `push tag v*`: build installer and publish GitHub release asset
+- before upload/release, installer smoke test must pass:
+  - mount dmg
+  - run embedded backend bootstrap
+  - verify `/health` + `/recording/screens` + `/recording/status`
 
 Current release output is a single macOS installer package.

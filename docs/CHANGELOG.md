@@ -10,6 +10,8 @@
   - on-demand model bootstrap script
 - added GitHub Actions release packaging workflow
 - added optional macOS signing/notarization support for frontend packaging
+- fixed packaged backend import path resolution to always use bundled source
+- added CI installer smoke test for no-model recording runtime availability
 - cleaned legacy scripts and historical/obsolete docs
 
 ## v0.6.2
