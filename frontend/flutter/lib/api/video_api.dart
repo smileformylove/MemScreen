@@ -50,7 +50,14 @@ class VideoApi {
               .where((x) => x.isNotEmpty)
               .toList()
           : const [],
+      contentKeywords: (m['content_keywords'] is List)
+          ? (m['content_keywords'] as List)
+              .whereType<String>()
+              .where((x) => x.isNotEmpty)
+              .toList()
+          : const [],
       contentSummary: m['content_summary'] as String?,
+      analysisStatus: m['analysis_status'] as String?,
     );
   }
 
@@ -118,7 +125,9 @@ class VideoItem {
     this.appName,
     this.tags = const [],
     this.contentTags = const [],
+    this.contentKeywords = const [],
     this.contentSummary,
+    this.analysisStatus,
     this.isPlaying = false,
   });
   final String filename;
@@ -133,6 +142,8 @@ class VideoItem {
   final String? appName;
   final List<String> tags;
   final List<String> contentTags;
+  final List<String> contentKeywords;
   final String? contentSummary;
+  final String? analysisStatus;
   bool isPlaying;
 }

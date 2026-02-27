@@ -33,6 +33,8 @@ class _VideoScreenState extends State<VideoScreen> {
   final Set<String> _reanalyzingFiles = <String>{};
   String _organizeMode = 'all'; // all | app | day | tag
   final Set<String> _selectedTags = <String>{};
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -51,6 +53,7 @@ class _VideoScreenState extends State<VideoScreen> {
     _autoRefreshTimer?.cancel();
     _timelineScrollController.removeListener(_onTimelineScroll);
     _timelineScrollController.dispose();
+    _searchController.dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -128,8 +131,13 @@ class _VideoScreenState extends State<VideoScreen> {
           av.timestamp != bv.timestamp ||
           av.fileSize != bv.fileSize ||
           av.duration != bv.duration ||
-          av.tags.length != bv.tags.length ||
-          av.contentTags.length != bv.contentTags.length) {
+          av.recordingMode != bv.recordingMode ||
+          av.windowTitle != bv.windowTitle ||
+          av.contentSummary != bv.contentSummary ||
+          (av.analysisStatus ?? '') != (bv.analysisStatus ?? '') ||
+          av.tags.join('|') != bv.tags.join('|') ||
+          av.contentTags.join('|') != bv.contentTags.join('|') ||
+          av.contentKeywords.join('|') != bv.contentKeywords.join('|')) {
         return false;
       }
     }
@@ -226,11 +234,31 @@ class _VideoScreenState extends State<VideoScreen> {
   }
 
   List<VideoItem> get _visibleVideos {
-    if (_selectedTags.isEmpty) return _videos;
-    return _videos.where((v) {
+    var filtered = _videos.where((v) {
       final tags = v.tags.toSet();
       return _selectedTags.every(tags.contains);
     }).toList();
+
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return filtered;
+
+    filtered = filtered.where((v) {
+      final parts = <String>[
+        v.filename,
+        v.timestamp,
+        v.recordingMode,
+        v.windowTitle ?? '',
+        v.appName ?? '',
+        v.contentSummary ?? '',
+        v.analysisStatus ?? '',
+        ...v.tags,
+        ...v.contentTags,
+        ...v.contentKeywords,
+      ];
+      final haystack = parts.join(' | ').toLowerCase();
+      return haystack.contains(q);
+    }).toList();
+    return filtered;
   }
 
   void _toggleTag(String tag) {
@@ -306,11 +334,22 @@ class _VideoScreenState extends State<VideoScreen> {
       final tags = (result['content_tags'] is List)
           ? (result['content_tags'] as List).whereType<String>().join(', ')
           : '';
+      final keywords = (result['content_keywords'] is List)
+          ? (result['content_keywords'] as List)
+              .whereType<String>()
+              .take(8)
+              .join(', ')
+          : '';
+      var tip = 'Reanalysis complete';
+      if (tags.isNotEmpty) {
+        tip = 'Tags: $tags';
+      }
+      if (keywords.isNotEmpty) {
+        tip = tags.isNotEmpty ? '$tip | Keywords: $keywords' : 'Keywords: $keywords';
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            tags.isEmpty ? 'Reanalysis complete' : 'Reanalysis complete: $tags',
-          ),
+          content: Text(tip),
           duration: const Duration(seconds: 3),
         ),
       );
@@ -358,6 +397,7 @@ class _VideoScreenState extends State<VideoScreen> {
               children: [
                 _buildTimeline(),
                 _buildOrganizationBar(),
+                _buildSearchBar(),
                 _buildTagFilterBar(),
                 Expanded(
                   child: _currentVideo != null
@@ -428,6 +468,30 @@ class _VideoScreenState extends State<VideoScreen> {
               tooltip: 'Refresh',
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      child: TextField(
+        controller: _searchController,
+        onChanged: (value) => setState(() => _searchQuery = value),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'Search by content, tags, app, or window',
+          prefixIcon: const Icon(Icons.search, size: 18),
+          suffixIcon: _searchQuery.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close, size: 16),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                ),
         ),
       ),
     );
@@ -641,10 +705,12 @@ class _VideoScreenState extends State<VideoScreen> {
     final tags = _prioritizedTags(video.tags).map(_formatTag).toList();
     final preview = tags.take(4).toList();
     final tagText = preview.isEmpty ? '-' : preview.join(', ');
+    final statusLabel = _analysisStatusLabel(video);
     return [
       'Time: ${video.timestamp}',
       'Duration: ${video.duration.toStringAsFixed(1)}s',
       'App: ${_extractAppName(video)}',
+      if (statusLabel != null) 'Status: $statusLabel',
       'Tags: $tagText',
     ].join('\n');
   }
@@ -822,6 +888,7 @@ class _VideoScreenState extends State<VideoScreen> {
     final theme = Theme.of(context);
     final isPlaying = _currentVideo?.filename == v.filename;
     final isReanalyzing = _reanalyzingFiles.contains(v.filename);
+    final statusLabel = _analysisStatusLabel(v);
     return Container(
       decoration: BoxDecoration(
         color: isPlaying
@@ -871,6 +938,7 @@ class _VideoScreenState extends State<VideoScreen> {
             _metaText(v.timestamp),
             _metaText('${v.duration}s'),
             _metaChip(_extractAppName(v)),
+            if (statusLabel != null) _metaChip(statusLabel),
             ..._prioritizedTags(v.tags)
                 .take(2)
                 .map((x) => _metaChip(_formatTag(x))),
@@ -966,14 +1034,27 @@ class _VideoScreenState extends State<VideoScreen> {
     return 'All Screens';
   }
 
+  String? _analysisStatusLabel(VideoItem v) {
+    final status = (v.analysisStatus ?? '').trim().toLowerCase();
+    if (status == 'model_unavailable') return 'No Model';
+    if (status == 'pending') return 'Analyzing';
+    return null;
+  }
+
   List<String> _topTags(List<String> tags) {
     if (tags.isEmpty) return const [];
     const allowedPrefixes = [
       'topic:',
       'purpose:',
-      'time:',
-      'length:',
-      'weekday:',
+      'intent:',
+      'task:',
+      'action:',
+      'entity:',
+      'keyword:',
+      'ui:',
+      'error:',
+      'app:',
+      'mode:',
       'audio:'
     ];
     final picked = <String>[];
@@ -989,17 +1070,53 @@ class _VideoScreenState extends State<VideoScreen> {
     if (tags.isEmpty) return const [];
     final topics = <String>[];
     final purposes = <String>[];
+    final intents = <String>[];
+    final tasks = <String>[];
+    final actions = <String>[];
+    final entities = <String>[];
+    final keywords = <String>[];
+    final uiTags = <String>[];
+    final appTags = <String>[];
+    final errorTags = <String>[];
     final others = <String>[];
     for (final t in _topTags(tags)) {
       if (t.startsWith('topic:')) {
         topics.add(t);
       } else if (t.startsWith('purpose:')) {
         purposes.add(t);
+      } else if (t.startsWith('intent:')) {
+        intents.add(t);
+      } else if (t.startsWith('task:')) {
+        tasks.add(t);
+      } else if (t.startsWith('action:')) {
+        actions.add(t);
+      } else if (t.startsWith('entity:')) {
+        entities.add(t);
+      } else if (t.startsWith('keyword:')) {
+        keywords.add(t);
+      } else if (t.startsWith('ui:')) {
+        uiTags.add(t);
+      } else if (t.startsWith('app:')) {
+        appTags.add(t);
+      } else if (t.startsWith('error:')) {
+        errorTags.add(t);
       } else {
         others.add(t);
       }
     }
-    return [...topics, ...purposes, ...others];
+    return [
+      ...topics,
+      ...purposes,
+      ...intents,
+      ...tasks,
+      ...actions,
+      ...entities,
+      ...keywords,
+      ...uiTags,
+      ...appTags,
+      ...errorTags,
+      ...others,
+    ];
   }
 
   String _formatTag(String tag) {
@@ -1020,6 +1137,27 @@ class _VideoScreenState extends State<VideoScreen> {
     }
     if (tag.startsWith('audio:')) {
       return 'Audio: ${tag.substring(6)}';
+    }
+    if (tag.startsWith('entity:')) {
+      return 'Entity: ${tag.substring(7)}';
+    }
+    if (tag.startsWith('intent:')) {
+      return 'Intent: ${tag.substring(7)}';
+    }
+    if (tag.startsWith('ui:')) {
+      return 'UI: ${tag.substring(3)}';
+    }
+    if (tag.startsWith('error:')) {
+      return 'Error: ${tag.substring(6)}';
+    }
+    if (tag.startsWith('action:')) {
+      return 'Action: ${tag.substring(7)}';
+    }
+    if (tag.startsWith('task:')) {
+      return 'Task: ${tag.substring(5)}';
+    }
+    if (tag.startsWith('keyword:')) {
+      return 'Keyword: ${tag.substring(8)}';
     }
     if (tag.startsWith('mode:')) {
       return 'Mode: ${tag.substring(5)}';

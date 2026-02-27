@@ -209,7 +209,9 @@ class RecordingPresenter(BasePresenter):
                     region_bbox TEXT,
                     window_title TEXT,
                     content_tags TEXT,
+                    content_keywords TEXT,
                     content_summary TEXT,
+                    analysis_status TEXT,
                     audio_file TEXT,
                     audio_source TEXT
                 )
@@ -252,6 +254,16 @@ class RecordingPresenter(BasePresenter):
 
             try:
                 cursor.execute('ALTER TABLE recordings ADD COLUMN content_summary TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute('ALTER TABLE recordings ADD COLUMN content_keywords TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute('ALTER TABLE recordings ADD COLUMN analysis_status TEXT')
             except sqlite3.OperationalError:
                 pass  # Column already exists
 
@@ -1114,11 +1126,16 @@ class RecordingPresenter(BasePresenter):
                 captured_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             content_description, frame_details = self._analyze_video_content(filename, frame_count, fps)
-            content_tags = self._generate_content_tags(content_description, frame_details)
+            profile = self._build_recording_content_profile(content_description, frame_details)
+            content_summary = profile["content_summary"]
+            content_keywords = profile["content_keywords"]
+            content_tags = profile["content_tags"]
             self._save_recording_content_metadata(
                 filename=filename,
-                content_description=content_description,
+                content_description=content_summary,
                 content_tags=content_tags,
+                content_keywords=content_keywords,
+                analysis_status="ready",
             )
 
             # Refresh memory metadata/text as well when memory is available.
@@ -1134,20 +1151,25 @@ class RecordingPresenter(BasePresenter):
 Observed Timeline (when things were seen):
 {frame_summary}
 
-Content Description: {content_description}
+Content Description: {content_summary}
 
 Content Tags: {", ".join(content_tags)}
 """
                 metadata_updates = {
-                    "content_description": content_description,
+                    "content_description": content_summary,
                     "timeline_text": timeline_text,
                     "frame_details_json": json.dumps(frame_details, ensure_ascii=False),
                     "content_tags": ",".join(content_tags),
                     "content_tags_json": json.dumps(content_tags, ensure_ascii=False),
+                    "content_keywords": ",".join(content_keywords),
+                    "content_keywords_json": json.dumps(content_keywords, ensure_ascii=False),
                     "suggestions": " | ".join(suggestion_items),
                     "analysis_status": "ready",
-                    "ocr_text": content_description,
-                    "tags": self._build_recording_memory_tags(content_tags),
+                    "ocr_text": content_summary,
+                    "tags": self._build_recording_memory_tags(
+                        content_tags=content_tags,
+                        content_keywords=content_keywords,
+                    ),
                 }
                 memory_id = self._find_recording_memory_id(filename)
                 if memory_id:
@@ -1175,7 +1197,8 @@ Content Tags: {", ".join(content_tags)}
                 "ok": True,
                 "filename": filename,
                 "content_tags": content_tags,
-                "content_summary": content_description,
+                "content_keywords": content_keywords,
+                "content_summary": content_summary,
             }
         except Exception as e:
             self.handle_error(e, f"Failed to reanalyze recording: {filename}")
@@ -1817,21 +1840,23 @@ Content Tags: {", ".join(content_tags)}
             region_bbox = json.dumps(self.region_bbox) if getattr(self, 'region_bbox', None) else None
             window_title = getattr(self, 'window_title', None)
             content_tags = None
+            content_keywords = None
             content_summary = None
+            analysis_status = "pending"
             audio_source = self._active_audio_source if self._active_audio_source != AudioSource.NONE else self.audio_source
             audio_source_str = audio_source.value if audio_source != AudioSource.NONE else None
 
             cursor.execute('''
                 INSERT INTO recordings (
                     filename, timestamp, frame_count, fps, duration, file_size,
-                    recording_mode, region_bbox, window_title, content_tags, content_summary,
-                    audio_file, audio_source
+                    recording_mode, region_bbox, window_title, content_tags, content_keywords,
+                    content_summary, analysis_status, audio_file, audio_source
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 filename, timestamp, frame_count, fps, duration, file_size,
-                recording_mode, region_bbox, window_title, content_tags, content_summary,
-                audio_file, audio_source_str
+                recording_mode, region_bbox, window_title, content_tags, content_keywords,
+                content_summary, analysis_status, audio_file, audio_source_str
             ))
 
             conn.commit()
@@ -1917,6 +1942,16 @@ When users ask about what was on their screen or what they were doing, always re
             print(f"[RecordingPresenter] ✅ Fast memory added: {filename} (id={memory_id})")
             self._memory_index_ready_event.set()
 
+            if not self.model_capability.is_async_enrichment_available():
+                self._mark_memory_enrichment_unavailable(
+                    memory_id=memory_id,
+                    filename=filename,
+                    frame_count=frame_count,
+                    duration=duration,
+                    captured_at=timestamp,
+                )
+                return
+
             # Enrich content asynchronously to avoid blocking chat availability.
             enrich_thread = threading.Thread(
                 target=self._enrich_recording_memory,
@@ -1933,6 +1968,65 @@ When users ask about what was on their screen or what they were doing, always re
                 return
             self.handle_error(e, "Failed to add video to memory")
 
+    def _mark_memory_enrichment_unavailable(
+        self,
+        memory_id: Optional[str],
+        filename: str,
+        frame_count: int,
+        duration: float,
+        captured_at: str,
+    ) -> None:
+        """Finalize memory entry when model backend is unavailable."""
+        try:
+            fallback_summary = (
+                "Visual enrichment skipped because local model backend is unavailable. "
+                "Recording is saved and searchable by time/file. Reanalyze after model setup."
+            )
+            fallback_tags = ["topic:general"]
+            fallback_keywords: List[str] = []
+            self._save_recording_content_metadata(
+                filename=filename,
+                content_description=fallback_summary,
+                content_tags=fallback_tags,
+                content_keywords=fallback_keywords,
+                analysis_status="model_unavailable",
+            )
+
+            if not memory_id:
+                return
+
+            fallback_text = f"""Screen Recording captured at {captured_at}:
+- Duration: {duration:.1f} seconds
+- Frames: {frame_count}
+- File: {filename}
+
+Observed Timeline:
+- {captured_at}: Recording finished. Visual enrichment is unavailable in current environment.
+"""
+            metadata_updates = {
+                "content_description": fallback_summary,
+                "timeline_text": f"+0.00s: recording saved ({os.path.basename(filename)})",
+                "frame_details_json": "[]",
+                "content_tags": ",".join(fallback_tags),
+                "content_tags_json": json.dumps(fallback_tags, ensure_ascii=False),
+                "content_keywords": "",
+                "content_keywords_json": "[]",
+                "analysis_status": "model_unavailable",
+                "suggestions": (
+                    "Install/start local model backend and click Reanalyze in Videos "
+                    "to build semantic tags and timeline details."
+                ),
+                "ocr_text": os.path.basename(filename),
+                "tags": "screen_recording,model_unavailable",
+            }
+            self._update_recording_memory_entry(memory_id, fallback_text, metadata_updates)
+            print(
+                "[RecordingPresenter] Async memory enrichment skipped (model unavailable): "
+                f"{os.path.basename(filename)}"
+            )
+        except Exception as e:
+            print(f"[RecordingPresenter] Failed to mark model-unavailable enrichment state: {e}")
+
     def _enrich_recording_memory(
         self,
         memory_id: Optional[str],
@@ -1945,18 +2039,23 @@ When users ask about what was on their screen or what they were doing, always re
         """Asynchronously enrich recording memory with timeline/details."""
         try:
             content_description, frame_details = self._analyze_video_content(filename, frame_count, fps)
-            content_tags = self._generate_content_tags(content_description, frame_details)
+            profile = self._build_recording_content_profile(content_description, frame_details)
+            content_summary = profile["content_summary"]
+            content_keywords = profile["content_keywords"]
+            content_tags = profile["content_tags"]
             self._save_recording_content_metadata(
                 filename=filename,
-                content_description=content_description,
+                content_description=content_summary,
                 content_tags=content_tags,
+                content_keywords=content_keywords,
+                analysis_status="ready",
             )
 
             if not self.model_capability.can_enrich_memory(self.memory_system):
                 print(f"[RecordingPresenter] Content tags saved without memory_system: {filename} -> {content_tags}")
                 return
             timeline_lines, timeline_text = self._build_recording_timeline(captured_at, frame_details)
-            suggestions = self._generate_recording_suggestions(content_description, frame_details)
+            suggestions = self._generate_recording_suggestions(content_summary, frame_details)
             suggestion_text = "\n".join(f"- {item}" for item in suggestions)
             frame_summary = "\n".join(timeline_lines) if timeline_lines else "No frame analysis available."
             content_tag_text = ", ".join(content_tags) if content_tags else "general"
@@ -1969,7 +2068,7 @@ When users ask about what was on their screen or what they were doing, always re
 Observed Timeline (when things were seen):
 {frame_summary}
 
-Content Description: {content_description}
+Content Description: {content_summary}
 
 Content Tags: {content_tag_text}
 
@@ -1980,16 +2079,21 @@ This video screen recording shows what was displayed on screen during the record
 When users ask about what was on their screen or what they were doing, reference this recording with explicit time points."""
 
             metadata_updates = {
-                "content_description": content_description,
+                "content_description": content_summary,
                 "timeline_text": timeline_text,
                 "frame_details_json": json.dumps(frame_details, ensure_ascii=False),
                 "content_tags": ",".join(content_tags),
                 "content_tags_json": json.dumps(content_tags, ensure_ascii=False),
+                "content_keywords": ",".join(content_keywords),
+                "content_keywords_json": json.dumps(content_keywords, ensure_ascii=False),
                 "suggestions": " | ".join(suggestions),
                 "analysis_status": "ready",
-                "ocr_text": content_description,
+                "ocr_text": content_summary,
                 "category": "screen_recording",
-                "tags": self._build_recording_memory_tags(content_tags),
+                "tags": self._build_recording_memory_tags(
+                    content_tags=content_tags,
+                    content_keywords=content_keywords,
+                ),
             }
 
             updated = self._update_recording_memory_entry(memory_id, enriched_text, metadata_updates)
@@ -2127,42 +2231,94 @@ When users ask about what was on their screen or what they were doing, reference
         self,
         content_description: str,
         frame_details: List[Dict[str, Any]],
+        content_keywords: Optional[List[str]] = None,
     ) -> List[str]:
         """
-        Generate content-centric semantic tags from vision-analyzed frame text.
-        Tags are derived from frame-level visual descriptions + OCR fallbacks.
+        Generate content-centric semantic tags from vision/OCR output.
+
+        Tags are intentionally structured so both Videos UI and memory retrieval
+        can leverage them:
+        - `topic:*` broad domain
+        - `purpose:*` likely user intent
+        - `ui:*` visible app/surface hints
+        - `error:*` error/debug traces
+        - `entity:*` salient keywords from frames/OCR
         """
         text_pool: List[str] = [content_description or ""]
         for frame in frame_details[:8]:
             text_pool.append(str(frame.get("text", "")))
+        if self.window_title:
+            text_pool.append(self.window_title)
         merged = " ".join(text_pool).lower()
+        keywords = content_keywords or self._extract_content_keywords(
+            content_description,
+            frame_details,
+        )
+        merged_for_match = (merged + " " + " ".join(keywords)).lower()
 
         tags: List[str] = []
 
         tag_rules = {
-            "coding": ["vscode", "xcode", "pycharm", "intellij", "source code", "coding"],
-            "terminal": ["terminal", "shell", "bash", "zsh", "powershell", "command line"],
-            "debugging": ["error", "exception", "traceback", "failed", "warning"],
-            "meeting": ["zoom", "teams", "meeting", "feishu", "google meet"],
-            "browser": ["chrome", "safari", "firefox", "edge", "browser", "web"],
-            "research": ["paper", "arxiv", "abstract", "reference", "research"],
-            "document": ["doc", "document", "pdf", "notion", "word", "notes"],
-            "spreadsheet": ["excel", "spreadsheet", "sheet", "table"],
-            "chat": ["slack", "discord", "wechat", "telegram", "chat", "message"],
-            "design": ["figma", "sketch", "photoshop", "design", "ui", "canvas"],
-            "presentation": ["ppt", "slides", "keynote", "presentation"],
-            "dashboard": ["dashboard", "grafana", "datadog", "analytics", "metrics"],
+            "topic:coding": ["vscode", "xcode", "pycharm", "intellij", "source code", "coding", "repo"],
+            "topic:terminal": ["terminal", "shell", "bash", "zsh", "powershell", "command line"],
+            "topic:meeting": ["zoom", "teams", "meeting", "feishu", "google meet"],
+            "topic:browser": ["chrome", "safari", "firefox", "edge", "browser", "web"],
+            "topic:research": ["paper", "arxiv", "abstract", "reference", "research"],
+            "topic:document": ["doc", "document", "pdf", "notion", "word", "notes"],
+            "topic:spreadsheet": ["excel", "spreadsheet", "sheet", "table", "csv"],
+            "topic:chat": ["slack", "discord", "wechat", "telegram", "chat", "message"],
+            "topic:design": ["figma", "sketch", "photoshop", "design", "canvas"],
+            "topic:presentation": ["ppt", "slides", "keynote", "presentation"],
+            "topic:dashboard": ["dashboard", "grafana", "datadog", "analytics", "metrics"],
+            "topic:ai": ["llm", "model", "embedding", "prompt", "ollama", "openai", "transformer"],
+            "topic:data": ["sql", "query", "database", "pandas", "dataframe", "dataset", "table"],
+            "purpose:debugging": ["error", "exception", "traceback", "failed", "warning", "not found"],
+            "purpose:writing": ["notes", "doc", "document", "draft", "summary"],
+            "purpose:planning": ["todo", "deadline", "plan", "task", "milestone"],
+            "purpose:learning": ["tutorial", "course", "readme", "guide", "documentation"],
+            "purpose:analysis": ["analysis", "review", "investigate", "compare", "benchmark"],
+            "intent:searching": ["search", "find", "lookup", "query"],
+            "intent:reading": ["read", "paper", "article", "pdf", "document"],
+            "intent:editing": ["edit", "modify", "update", "refactor", "rewrite"],
+            "intent:testing": ["test", "pytest", "unit test", "integration test", "assert"],
+            "ui:vscode": ["vscode", "visual studio code"],
+            "ui:terminal": ["terminal", "bash", "zsh", "shell"],
+            "ui:browser": ["chrome", "safari", "firefox", "edge"],
+            "ui:slides": ["slides", "keynote", "ppt"],
+            "ui:ide": ["pycharm", "intellij", "xcode"],
+            "ui:notion": ["notion"],
+            "error:runtime": ["traceback", "exception", "runtime error"],
+            "error:permission": ["permission denied", "access denied", "forbidden"],
+            "error:not_found": ["not found", "404", "missing"],
+            "action:debug": ["traceback", "exception", "error", "debug", "fix"],
+            "action:search": ["search", "lookup", "query", "find"],
+            "action:code": ["commit", "branch", "merge", "pull request", "refactor"],
+            "task:todo": ["todo", "fixme", "backlog", "jira", "ticket"],
+            "task:meeting_notes": ["action items", "meeting notes", "follow-up"],
+            "app:chrome": ["chrome"],
+            "app:safari": ["safari"],
+            "app:firefox": ["firefox"],
+            "app:vscode": ["vscode", "visual studio code"],
+            "app:terminal": ["terminal", "iterm", "shell"],
+            "app:notion": ["notion"],
+            "app:slack": ["slack"],
+            "app:figma": ["figma"],
         }
 
-        for tag, keywords in tag_rules.items():
-            if any(k in merged for k in keywords):
+        for tag, rule_keywords in tag_rules.items():
+            if any(k in merged_for_match for k in rule_keywords):
                 tags.append(tag)
 
-        # Fallback + cap
-        if not tags:
-            tags.append("general")
+        # Keep broad discoverability for precise search.
+        for keyword in keywords:
+            entity = self._normalize_entity_keyword(keyword)
+            if entity:
+                tags.append(f"entity:{entity}")
 
-        # Keep deterministic order (no hard cap on tag count).
+        if not any(t.startswith("topic:") for t in tags):
+            tags.append("topic:general")
+
+        # Keep deterministic order.
         deduped: List[str] = []
         seen = set()
         for tag in tags:
@@ -2172,11 +2328,241 @@ When users ask about what was on their screen or what they were doing, reference
             deduped.append(tag)
         return deduped
 
-    def _build_recording_memory_tags(self, content_tags: List[str]) -> str:
+    def _build_recording_content_profile(
+        self,
+        content_description: str,
+        frame_details: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        Build one consistent semantic profile used by both:
+        1) async enrichment while recording,
+        2) manual reanalyze from Videos.
+        """
+        normalized_summary = " ".join(str(content_description or "").split()).strip()
+        if len(normalized_summary) > 500:
+            normalized_summary = normalized_summary[:500].rstrip() + "..."
+        keywords = self._extract_content_keywords(normalized_summary, frame_details)
+        tags = self._generate_content_tags(
+            normalized_summary,
+            frame_details,
+            content_keywords=keywords,
+        )
+        return {
+            "content_summary": normalized_summary,
+            "content_keywords": keywords,
+            "content_tags": tags,
+        }
+
+    def _extract_content_keywords(
+        self,
+        content_description: str,
+        frame_details: List[Dict[str, Any]],
+    ) -> List[str]:
+        """
+        Extract searchable keywords from visual text for precise retrieval.
+        """
+        text_sources: List[Tuple[str, float]] = []
+        if content_description:
+            text_sources.append((str(content_description), 4.0))
+        if self.window_title:
+            text_sources.append((self.window_title, 3.0))
+        for idx, frame in enumerate(frame_details[:12]):
+            text = str(frame.get("text", "")).strip()
+            if not text:
+                continue
+            weight = 2.2 if idx < 3 else (1.8 if idx < 7 else 1.4)
+            text_sources.append((text, weight))
+
+        if not text_sources:
+            return []
+
+        phrase_rules = [
+            "permission denied",
+            "access denied",
+            "not found",
+            "module not found",
+            "connection refused",
+            "traceback",
+            "runtime error",
+            "import error",
+            "build failed",
+            "test failed",
+            "api key",
+            "pull request",
+            "merge conflict",
+            "unit test",
+            "integration test",
+            "stack trace",
+        ]
+        stopwords = {
+            "the",
+            "and",
+            "for",
+            "that",
+            "with",
+            "this",
+            "from",
+            "have",
+            "your",
+            "you",
+            "are",
+            "was",
+            "were",
+            "http",
+            "https",
+            "www",
+            "com",
+            "org",
+            "net",
+            "open",
+            "close",
+            "click",
+            "show",
+            "shows",
+            "showing",
+            "window",
+            "screen",
+            "video",
+            "recording",
+            "capture",
+            "menu",
+            "file",
+            "edit",
+            "view",
+            "help",
+            "home",
+            "back",
+            "next",
+            "page",
+            "untitled",
+            "document",
+        }
+
+        token_pattern = r"[A-Za-z][A-Za-z0-9_./:+-]{2,}"
+        cjk_pattern = r"[\u4e00-\u9fff]{2,12}"
+        score_map: Dict[str, float] = {}
+        first_seen: Dict[str, int] = {}
+
+        def _bump(term: str, score: float, seen_order: int) -> None:
+            if not term:
+                return
+            score_map[term] = score_map.get(term, 0.0) + score
+            if term not in first_seen:
+                first_seen[term] = seen_order
+
+        for order, (text, base_weight) in enumerate(text_sources):
+            lowered = text.lower()
+            for phrase in phrase_rules:
+                if phrase in lowered:
+                    _bump(phrase, 3.5 + base_weight, order)
+
+            for token in re.findall(token_pattern, text):
+                normalized = self._normalize_keyword_token(token, stopwords)
+                if not normalized:
+                    continue
+                bonus = 0.0
+                if any(sym in normalized for sym in ["/", ".", "_", "-"]):
+                    bonus += 0.8
+                if re.search(r"[0-9]", normalized):
+                    bonus += 0.6
+                if normalized.endswith((".py", ".js", ".ts", ".tsx", ".md", ".json", ".yaml", ".yml")):
+                    bonus += 1.2
+                _bump(normalized, 1.2 + base_weight + bonus, order)
+
+            for token in re.findall(cjk_pattern, text):
+                normalized = self._normalize_keyword_token(token, stopwords)
+                if not normalized:
+                    continue
+                _bump(normalized, 1.4 + base_weight, order)
+
+        ranked_terms = sorted(
+            score_map.items(),
+            key=lambda item: (-item[1], first_seen.get(item[0], 10**6), item[0]),
+        )
+        # Keep all meaningful keywords; only filter obvious low-confidence noise.
+        base_keywords = [term for term, score in ranked_terms if score >= 3.0]
+
+        # Reduce noisy duplicates: if a phrase exists, drop its weak single-token parts.
+        phrase_parts = set()
+        for item in base_keywords:
+            if " " not in item:
+                continue
+            for part in item.split():
+                clean_part = part.strip()
+                if len(clean_part) >= 3:
+                    phrase_parts.add(clean_part)
+
+        refined: List[str] = []
+        for item in base_keywords:
+            if " " not in item and item in phrase_parts:
+                continue
+            refined.append(item)
+        return refined
+
+    def _normalize_keyword_token(self, token: str, stopwords: set) -> str:
+        """Normalize one keyword candidate and drop obvious noise."""
+        clean = " ".join(str(token or "").split()).strip().lower()
+        if not clean:
+            return ""
+        clean = clean.strip(".,:;()[]{}<>\"'`")
+        if clean in stopwords:
+            return ""
+        if clean.startswith(("http://", "https://")):
+            clean = clean.split("://", 1)[1]
+        if clean.startswith("www."):
+            clean = clean[4:]
+        clean = clean.strip("/")
+        if not clean:
+            return ""
+        if len(clean) > 96:
+            clean = clean[:96].rstrip()
+        if re.fullmatch(r"[0-9._-]+", clean):
+            return ""
+        if "." in clean and clean.split(".", 1)[0] in {"com", "org", "net"}:
+            return ""
+        contains_cjk = bool(re.search(r"[\u4e00-\u9fff]", clean))
+        contains_alpha = bool(re.search(r"[a-z]", clean))
+        if not contains_cjk and not contains_alpha:
+            return ""
+        if contains_alpha and len(clean) < 3:
+            return ""
+        if contains_cjk and len(clean) < 2:
+            return ""
+        non_word = sum(
+            1
+            for ch in clean
+            if not (ch.isalnum() or ("\u4e00" <= ch <= "\u9fff") or ch in "._/-:+")
+        )
+        if len(clean) >= 8 and (non_word / len(clean)) > 0.24:
+            return ""
+        return clean
+
+    def _normalize_entity_keyword(self, keyword: str) -> str:
+        """Normalize keyword for stable `entity:*` tags."""
+        clean = " ".join(str(keyword or "").split()).strip().lower()
+        if not clean:
+            return ""
+        clean = clean.replace(",", " ").replace("|", " ")
+        if len(clean) > 48:
+            clean = clean[:48].rstrip()
+        if not re.search(r"[a-z0-9\u4e00-\u9fff]", clean):
+            return ""
+        return clean
+
+    def _build_recording_memory_tags(
+        self,
+        content_tags: List[str],
+        content_keywords: Optional[List[str]] = None,
+    ) -> str:
         """Build comma-separated tags string for memory payload filtering/ranking."""
         base_tags = ["screen_recording", "timeline_ready", "ocr_enriched"]
         semantic_tags = [f"semantic:{tag}" for tag in content_tags if tag]
-        merged = base_tags + semantic_tags
+        keyword_tags: List[str] = []
+        for kw in content_keywords or []:
+            normalized = self._normalize_entity_keyword(kw).replace(" ", "_")
+            if normalized:
+                keyword_tags.append(f"kw:{normalized}")
+        merged = base_tags + semantic_tags + keyword_tags
         # Preserve order while deduping
         out: List[str] = []
         seen = set()
@@ -2192,6 +2578,8 @@ When users ask about what was on their screen or what they were doing, reference
         filename: str,
         content_description: str,
         content_tags: List[str],
+        content_keywords: Optional[List[str]] = None,
+        analysis_status: str = "ready",
     ) -> None:
         """Persist enriched content metadata into recordings DB for video organization."""
         try:
@@ -2200,12 +2588,14 @@ When users ask about what was on their screen or what they were doing, reference
             cursor.execute(
                 """
                 UPDATE recordings
-                SET content_tags = ?, content_summary = ?
+                SET content_tags = ?, content_keywords = ?, content_summary = ?, analysis_status = ?
                 WHERE filename = ?
                 """,
                 (
                     json.dumps(content_tags, ensure_ascii=False),
+                    json.dumps(content_keywords or [], ensure_ascii=False),
                     content_description[:500] if content_description else None,
+                    analysis_status,
                     filename,
                 ),
             )

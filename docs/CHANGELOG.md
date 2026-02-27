@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.6.4
+
+- unified visual-memory enrichment path for both:
+  - async analysis after recording
+  - manual reanalyze from Videos
+- upgraded content tagging and keyword extraction for precision retrieval
+- improved chat/video ranking with query-aware relevance scoring
+- added graceful no-model fallback for async memory enrichment:
+  - recording remains fully usable
+  - enrichment state is persisted as `model_unavailable` instead of staying pending
+- added minimal `analysis_status` propagation and UI badges in Videos:
+  - `Analyzing`
+  - `No Model`
+- unified project version to `0.6.4` across Python, Flutter, and README
+
 ## v0.6.3
 
 - unified project version to `0.6.3` across Python package, API, Flutter, and README

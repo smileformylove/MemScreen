@@ -28,7 +28,9 @@ class VideoInfo:
     def __init__(self, filename: str, timestamp: str, frame_count: int, fps: float,
                  duration: float, file_size: int, recording_mode: str = "fullscreen",
                  window_title: Optional[str] = None, audio_source: Optional[str] = None,
-                 content_tags: Optional[List[str]] = None, content_summary: Optional[str] = None):
+                 content_tags: Optional[List[str]] = None, content_summary: Optional[str] = None,
+                 content_keywords: Optional[List[str]] = None,
+                 analysis_status: Optional[str] = None):
         self.filename = filename
         self.timestamp = timestamp
         self.frame_count = frame_count
@@ -40,6 +42,8 @@ class VideoInfo:
         self.audio_source = audio_source
         self.content_tags = content_tags or []
         self.content_summary = content_summary
+        self.content_keywords = content_keywords or []
+        self.analysis_status = (analysis_status or "").strip().lower() or "pending"
 
     def to_dict(self) -> Dict[str, Any]:
         app_name = self._extract_app_name()
@@ -58,6 +62,8 @@ class VideoInfo:
             "tags": tags,
             "content_tags": self.content_tags,
             "content_summary": self.content_summary,
+            "content_keywords": self.content_keywords,
+            "analysis_status": self.analysis_status,
         }
 
     def _extract_app_name(self) -> str:
@@ -103,14 +109,34 @@ class VideoInfo:
             tags.append("purpose:communication")
 
         # Content-centric tags from vision/OCR enrichment (high priority).
+        known_prefixes = (
+            "topic:",
+            "purpose:",
+            "intent:",
+            "entity:",
+            "ui:",
+            "error:",
+            "action:",
+            "task:",
+            "app:",
+            "mode:",
+            "audio:",
+            "keyword:",
+        )
         for tag in self.content_tags:
             clean = str(tag).strip().lower()
             if not clean:
                 continue
-            if clean.startswith("topic:"):
+            if clean.startswith(known_prefixes):
                 tags.append(clean)
             else:
                 tags.append(f"topic:{clean}")
+
+        for kw in self.content_keywords:
+            clean_kw = str(kw).strip().lower()
+            if not clean_kw:
+                continue
+            tags.append(f"keyword:{clean_kw}")
 
         # Duration bucket
         duration = float(self.duration or 0.0)
@@ -242,7 +268,8 @@ class VideoPresenter(BasePresenter):
             try:
                 cursor.execute('''
                     SELECT filename, timestamp, frame_count, fps, duration, file_size,
-                           recording_mode, window_title, audio_source, content_tags, content_summary
+                           recording_mode, window_title, audio_source, content_tags, content_summary,
+                           content_keywords, analysis_status
                     FROM recordings
                     ORDER BY timestamp DESC
                 ''')
@@ -274,6 +301,8 @@ class VideoPresenter(BasePresenter):
                         audio_source=row[8] if len(row) > 8 else None,
                         content_tags=self._parse_content_tags(row[9] if len(row) > 9 else None),
                         content_summary=row[10] if len(row) > 10 else None,
+                        content_keywords=self._parse_content_keywords(row[11] if len(row) > 11 else None),
+                        analysis_status=row[12] if len(row) > 12 else "pending",
                     )
                     videos.append(video)
                     print(f"[VideoPresenter] ✅ Video exists: {os.path.basename(filename)}")
@@ -701,6 +730,10 @@ class VideoPresenter(BasePresenter):
                 out.append(p)
         return out
 
+    def _parse_content_keywords(self, raw: Any) -> List[str]:
+        """Parse serialized content keywords from DB."""
+        return self._parse_content_tags(raw)
+
     def _resolve_ffmpeg_binary(self) -> Optional[str]:
         """
         Resolve ffmpeg binary for packaged/runtime environments.
@@ -730,7 +763,8 @@ class VideoPresenter(BasePresenter):
             try:
                 cursor.execute('''
                     SELECT filename, timestamp, frame_count, fps, duration, file_size,
-                           recording_mode, window_title, audio_source, content_tags, content_summary
+                           recording_mode, window_title, audio_source, content_tags, content_summary,
+                           content_keywords, analysis_status
                     FROM recordings
                     WHERE filename = ?
                 ''', (filename,))
@@ -757,6 +791,8 @@ class VideoPresenter(BasePresenter):
                     audio_source=row[8] if len(row) > 8 else None,
                     content_tags=self._parse_content_tags(row[9] if len(row) > 9 else None),
                     content_summary=row[10] if len(row) > 10 else None,
+                    content_keywords=self._parse_content_keywords(row[11] if len(row) > 11 else None),
+                    analysis_status=row[12] if len(row) > 12 else "pending",
                 )
 
             return None

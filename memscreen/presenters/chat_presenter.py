@@ -825,15 +825,28 @@ class ChatPresenter(BasePresenter):
 
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT filename, timestamp, duration, frame_count
-                FROM recordings
-                ORDER BY rowid DESC
-                LIMIT ?
-                """,
-                (limit,),
-            )
+            try:
+                cursor.execute(
+                    """
+                    SELECT filename, timestamp, duration, frame_count,
+                           recording_mode, window_title, content_tags,
+                           content_summary, content_keywords
+                    FROM recordings
+                    ORDER BY rowid DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                )
+            except sqlite3.OperationalError:
+                cursor.execute(
+                    """
+                    SELECT filename, timestamp, duration, frame_count
+                    FROM recordings
+                    ORDER BY rowid DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                )
             rows = cursor.fetchall()
             conn.close()
 
@@ -850,6 +863,11 @@ class ChatPresenter(BasePresenter):
                         "timestamp": str(timestamp),
                         "duration": float(duration) if duration is not None else 0.0,
                         "frame_count": int(frame_count) if frame_count is not None else 0,
+                        "recording_mode": row[4] if len(row) > 4 else "fullscreen",
+                        "window_title": str(row[5] or "") if len(row) > 5 else "",
+                        "content_tags": row[6] if len(row) > 6 else "",
+                        "content_summary": str(row[7] or "") if len(row) > 7 else "",
+                        "content_keywords": row[8] if len(row) > 8 else "",
                     }
                 )
             return results
@@ -976,6 +994,156 @@ class ChatPresenter(BasePresenter):
             score += 1
         return score
 
+    def _parse_serialized_tag_list(self, raw: Any) -> List[str]:
+        """Parse JSON/CSV tag-like payload into normalized list."""
+        if raw is None:
+            return []
+        if isinstance(raw, list):
+            return [str(x).strip().lower() for x in raw if str(x).strip()]
+
+        text = str(raw).strip()
+        if not text:
+            return []
+
+        out: List[str] = []
+        try:
+            arr = json.loads(text)
+            if isinstance(arr, list):
+                for item in arr:
+                    clean = str(item).strip().lower()
+                    if clean:
+                        out.append(clean)
+                return out
+        except Exception:
+            pass
+
+        for part in text.split(","):
+            clean = part.strip().lower()
+            if clean:
+                out.append(clean)
+        return out
+
+    def _recording_row_query_match_score(self, row: Dict[str, Any], query: str) -> int:
+        """
+        Lexical + semantic score for one DB recording row.
+        """
+        q = str(query or "").strip().lower()
+        if not q:
+            return 0
+
+        query_keywords = self._extract_query_keywords(q)
+        query_phrases = self._extract_query_phrases(query)
+        if not query_keywords:
+            query_keywords = [t for t in re.split(r"\s+", q) if len(t) >= 2]
+
+        content_tags = self._parse_serialized_tag_list(row.get("content_tags"))
+        content_keywords = self._parse_serialized_tag_list(row.get("content_keywords"))
+        summary = str(row.get("content_summary", "") or "").lower()
+        window_title = str(row.get("window_title", "") or "").lower()
+        filename = str(row.get("basename", "") or row.get("filename", "") or "").lower()
+        mode = str(row.get("recording_mode", "") or "").lower()
+        tag_blob = " ".join(content_tags).lower()
+        keyword_blob = " ".join(content_keywords).lower()
+
+        haystack_parts = [
+            summary,
+            window_title,
+            filename,
+            mode,
+            tag_blob,
+            keyword_blob,
+        ]
+        haystack = " | ".join(p for p in haystack_parts if p)
+
+        score = 0
+        if q in haystack:
+            score += 16
+
+        for phrase in query_phrases:
+            if phrase and phrase in haystack:
+                score += 12
+
+        for kw in query_keywords:
+            if kw in content_keywords:
+                score += 12
+            elif kw in keyword_blob:
+                score += 8
+            if any(kw in tag for tag in content_tags):
+                score += 9
+            if kw in summary:
+                score += 6
+            if kw in window_title:
+                score += 7
+            if kw in filename:
+                score += 6
+            if kw in mode:
+                score += 2
+            if kw in haystack:
+                score += 2
+
+        keyword_hit_count = sum(1 for kw in query_keywords if kw and kw in keyword_blob)
+        tag_hit_count = sum(1 for kw in query_keywords if kw and kw in tag_blob)
+        score += min(24, keyword_hit_count * 4)
+        score += min(20, tag_hit_count * 3)
+
+        # Reuse semantic hint score by adapting row fields as metadata.
+        pseudo_meta: Dict[str, Any] = {
+            "analysis_status": "ready" if summary else "",
+            "tags": ",".join(content_tags),
+            "content_tags_json": json.dumps(content_tags, ensure_ascii=False),
+        }
+        score += self._recording_tag_match_score(pseudo_meta, query)
+        return score
+
+    def _rank_recording_rows_for_query(
+        self,
+        rows: List[Dict[str, Any]],
+        query: str,
+    ) -> List[Dict[str, Any]]:
+        """Sort recording rows by query relevance, then recency."""
+        if not rows:
+            return rows
+
+        def _row_rank(row: Dict[str, Any]) -> Tuple[int, float]:
+            match_score = self._recording_row_query_match_score(row, query)
+            ts = self._parse_memory_timestamp({"timestamp": row.get("timestamp", "")})
+            ts_score = ts.timestamp() if ts else 0.0
+            return match_score, ts_score
+
+        ranked = sorted(rows, key=_row_rank, reverse=True)
+        return ranked
+
+    def _recording_memory_metadata_match_score(self, metadata: Dict[str, Any], query: str) -> int:
+        """Score query relevance directly from memory payload metadata."""
+        raw_tags = self._parse_serialized_tag_list(metadata.get("tags"))
+        content_tags = self._parse_serialized_tag_list(
+            metadata.get("content_tags_json") or metadata.get("content_tags")
+        )
+        content_keywords = self._parse_serialized_tag_list(
+            metadata.get("content_keywords_json") or metadata.get("content_keywords")
+        )
+
+        for tag in raw_tags:
+            if tag.startswith("semantic:"):
+                content_tags.append(tag[len("semantic:"):])
+            elif tag.startswith("kw:"):
+                content_keywords.append(tag[len("kw:"):].replace("_", " "))
+
+        pseudo_row: Dict[str, Any] = {
+            "content_tags": content_tags,
+            "content_keywords": content_keywords,
+            "content_summary": metadata.get("content_description")
+            or metadata.get("ocr_text")
+            or metadata.get("timeline_text")
+            or "",
+            "window_title": metadata.get("window_title") or "",
+            "basename": os.path.basename(str(metadata.get("filename", "") or "")),
+            "filename": metadata.get("filename") or "",
+            "recording_mode": metadata.get("recording_mode") or "",
+            "timestamp": metadata.get("timestamp") or metadata.get("seen_at") or "",
+        }
+        return self._recording_row_query_match_score(pseudo_row, query)
+
     def _get_easyocr_reader(self):
         """Lazy-load easyocr reader for text extraction."""
         if self._easyocr_reader is not None:
@@ -1092,21 +1260,91 @@ class ChatPresenter(BasePresenter):
 
     def _extract_query_keywords(self, query: str) -> List[str]:
         """Extract simple keywords for lightweight matching against OCR text."""
-        q = query.lower()
-        tokens = re.findall(r"[a-zA-Z0-9_]+|[\u4e00-\u9fff]{2,}", q)
+        q = str(query or "").lower()
+        if not q:
+            return []
+
+        tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9_./:-]{1,}|[\u4e00-\u9fff]{2,}", q)
         stop_tokens = {
-            "when", "", "just now", "just now", "recent", "today", "yesterday",
-            "morning", "afternoon", "noon", "evening", "night", "saw", "", "", "screen",
-            "what", "when", "today", "yesterday", "recent", "screen", "recording",
+            "what",
+            "when",
+            "where",
+            "which",
+            "who",
+            "how",
+            "did",
+            "does",
+            "is",
+            "are",
+            "was",
+            "were",
+            "just",
+            "now",
+            "recent",
+            "recently",
+            "today",
+            "yesterday",
+            "morning",
+            "afternoon",
+            "noon",
+            "evening",
+            "night",
+            "screen",
+            "recording",
+            "video",
+            "videos",
+            "clip",
+            "clips",
+            "content",
+            "show",
+            "shown",
+            "display",
+            "displayed",
         }
-        out: List[str] = []
+
+        deduped: List[str] = []
+        seen = set()
         for tok in tokens:
-            if tok in stop_tokens:
+            clean = tok.strip(".,:;()[]{}<>\"'`").lower()
+            if not clean:
                 continue
-            if len(tok) < 2:
+            if clean in stop_tokens:
                 continue
-            out.append(tok)
-        return out[:8]
+            if re.fullmatch(r"[0-9._-]+", clean):
+                continue
+            if len(clean) < 2:
+                continue
+            if clean not in seen:
+                seen.add(clean)
+                deduped.append(clean)
+        return deduped[:14]
+
+    def _extract_query_phrases(self, query: str) -> List[str]:
+        """Extract quoted and adjacent token phrases for stronger exact matching."""
+        q = " ".join(str(query or "").strip().split()).lower()
+        if not q:
+            return []
+
+        phrases: List[str] = []
+        quoted = re.findall(r"[\"“'‘](.+?)[\"”'’]", q)
+        for item in quoted:
+            clean = " ".join(item.split()).strip().lower()
+            if len(clean) >= 3:
+                phrases.append(clean)
+
+        keywords = self._extract_query_keywords(q)
+        for idx in range(len(keywords) - 1):
+            pair = f"{keywords[idx]} {keywords[idx + 1]}".strip()
+            if len(pair) >= 5:
+                phrases.append(pair)
+
+        deduped: List[str] = []
+        seen = set()
+        for item in phrases:
+            if item and item not in seen:
+                seen.add(item)
+                deduped.append(item)
+        return deduped[:8]
 
     def _extract_ocr_snippets(
         self,
@@ -1862,6 +2100,31 @@ class ChatPresenter(BasePresenter):
             timeline_text = " | ".join(compact_timeline)
             ocr_text = " | ".join(self._dedupe_text_items(text_pool, limit=10))
             payload = dict(getattr(existing, "payload", {}) or {})
+            existing_tags = []
+            for item in str(payload.get("tags", "")).split(","):
+                clean = item.strip()
+                if clean:
+                    existing_tags.append(clean)
+            keyword_tags = []
+            for item in self._dedupe_text_items(text_pool, limit=12):
+                key = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "_", item.lower()).strip("_")
+                if not key:
+                    continue
+                if len(key) > 36:
+                    key = key[:36].rstrip("_")
+                keyword_tags.append(f"kw:{key}")
+            merged_tags = []
+            seen_tags = set()
+            for tag in existing_tags + [
+                "screen_recording",
+                "timeline_ready",
+                "ocr_enriched",
+                "harness_v2",
+            ] + keyword_tags:
+                if not tag or tag in seen_tags:
+                    continue
+                seen_tags.add(tag)
+                merged_tags.append(tag)
             payload.update(
                 {
                     "content_description": overview[:300],
@@ -1870,7 +2133,7 @@ class ChatPresenter(BasePresenter):
                     "analysis_status": "ready",
                     "ocr_text": ocr_text[:1500],
                     "category": "screen_recording",
-                    "tags": "screen_recording,timeline_ready,ocr_enriched,harness_v1",
+                    "tags": ",".join(merged_tags),
                     "updated_at": datetime.now().isoformat(),
                 }
             )
@@ -1907,6 +2170,7 @@ class ChatPresenter(BasePresenter):
         location_query = self._is_visual_location_query(query)
         window = self._infer_time_window(query)
         candidate_rows = self._filter_recordings_by_time_window(rows, window) or rows
+        candidate_rows = self._rank_recording_rows_for_query(candidate_rows, query)
 
         if specific_hint:
             matched: List[Dict[str, Any]] = []
@@ -1924,7 +2188,7 @@ class ChatPresenter(BasePresenter):
             if paper_like:
                 candidate_rows = sorted(candidate_rows, key=lambda r: float(r.get("duration", 0.0)), reverse=True)
             else:
-                candidate_rows = sorted(candidate_rows, key=lambda r: str(r.get("timestamp", "")), reverse=True)
+                candidate_rows = self._rank_recording_rows_for_query(candidate_rows, query)
 
         # Keep online latency bounded (API timeout=180s). Broad queries analyze fewer videos.
         if specific_hint:
@@ -2193,6 +2457,7 @@ class ChatPresenter(BasePresenter):
 
         specific_hint = self._extract_specific_recording_hint(query)
         candidate_rows = filtered if filtered else rows
+        candidate_rows = self._rank_recording_rows_for_query(candidate_rows, query)
         if specific_hint:
             matched: List[Dict[str, Any]] = []
             for row in rows:
@@ -2215,12 +2480,7 @@ class ChatPresenter(BasePresenter):
         elif paper_like:
             candidate_rows = sorted(candidate_rows, key=lambda r: float(r.get("duration", 0.0)), reverse=True)
         else:
-            # Blend recency and readability: prefer recent first, then duration.
-            candidate_rows = sorted(
-                candidate_rows,
-                key=lambda r: (str(r.get("timestamp", "")), float(r.get("duration", 0.0))),
-                reverse=True,
-            )
+            candidate_rows = self._rank_recording_rows_for_query(candidate_rows, query)
 
         candidate_rows = candidate_rows[:max_videos]
         q_keywords = self._extract_query_keywords(query)
@@ -2361,15 +2621,26 @@ class ChatPresenter(BasePresenter):
             elif isinstance(result, list):
                 rows = result
 
-            def _rank(item: Dict[str, Any]) -> Tuple[int, str]:
+            def _rank(item: Dict[str, Any]) -> Tuple[int, int, float]:
                 md = item.get("metadata", {}) if isinstance(item, dict) else {}
                 status = str(md.get("analysis_status", "")).lower()
-                ts = str(md.get("timestamp") or md.get("seen_at") or "")
+                query_score = self._recording_memory_metadata_match_score(md, query)
                 tag_score = self._recording_tag_match_score(md, query)
-                # tag hits first, then ready first, then newer first
-                return (-tag_score, 0 if status == "ready" else 1, ts)
+                ts = self._parse_memory_timestamp(
+                    {
+                        "timestamp": md.get("timestamp"),
+                        "seen_at": md.get("seen_at"),
+                    }
+                )
+                ts_score = ts.timestamp() if ts else 0.0
+                # Query relevance first, then semantic-tag hits, then ready-state, then recency.
+                return (
+                    query_score,
+                    tag_score + (2 if status == "ready" else 0),
+                    ts_score,
+                )
 
-            rows = sorted(rows, key=_rank, reverse=False)
+            rows = sorted(rows, key=_rank, reverse=True)
 
             out: List[str] = []
             seen_file = set()
@@ -2683,6 +2954,7 @@ class ChatPresenter(BasePresenter):
         rows = self._load_recent_recordings_from_db(limit=db_limit)
         if not rows:
             return "", stats
+        rows = self._rank_recording_rows_for_query(rows, query)
 
         stats["db_rows"] = len(rows)
         window = self._infer_time_window(query)
@@ -2695,7 +2967,10 @@ class ChatPresenter(BasePresenter):
             )
             target_rows = rows[: min(4, len(rows))]
         elif window:
-            target_rows = target_rows[: min(4, len(target_rows))]
+            target_rows = self._rank_recording_rows_for_query(
+                target_rows,
+                query,
+            )[: min(4, len(target_rows))]
         else:
             target_rows = rows[: min(4, len(rows))]
 
@@ -2730,6 +3005,7 @@ class ChatPresenter(BasePresenter):
                 key=lambda r: float(r.get("duration", 0.0)),
                 reverse=True,
             )
+            ocr_scan_rows = self._rank_recording_rows_for_query(ocr_scan_rows, query)
             ocr_limit = max(ocr_limit, 2)
 
         ocr_lines: List[str] = []
@@ -2745,7 +3021,7 @@ class ChatPresenter(BasePresenter):
             preview = " / ".join(snippets[:2]) if snippets else ocr_text
             if len(preview) > 180:
                 preview = preview[:180] + "..."
-            ocr_line = f"- {row.get('timestamp', 'Unknown time')}{preview}"
+            ocr_line = f"- {row.get('timestamp', 'Unknown time')} | {preview}"
             ocr_lines.append(ocr_line)
             stats["ocr_lines"].append(ocr_line)
             stats["ocr_details"].append(

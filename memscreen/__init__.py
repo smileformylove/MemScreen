@@ -4,7 +4,7 @@ MemScreen - Ask Screen Anything with AI-Powered Visual Memory
 A local, privacy-focused screen recording and analysis system that uses
 computer vision and language models to understand and remember your screen content.
 
-Version: v0.6.3
+Version: v0.6.4
 
 Architecture:
 - MVP Pattern: Presenters handle business logic

@@ -23,12 +23,15 @@ class RecordingModelCapabilityService:
         self._memory_enrichment_enabled = True
         self._vision_analysis_enabled = True
         self._model_unavailable_reason: Optional[str] = None
+        self._ollama_base_url = ollama_base_url.rstrip("/")
         self._vision_generate_url = f"{ollama_base_url.rstrip('/')}/api/generate"
         self._vision_model = vision_model
         self._vision_timeout_sec = vision_timeout_sec
         self._recovery_cooldown_sec = max(3, int(recovery_cooldown_sec))
         self._model_disabled_until_ts = 0.0
         self._easyocr_reader = None
+        self._backend_probe_ok: Optional[bool] = None
+        self._backend_probe_next_ts: float = 0.0
 
     @property
     def memory_enrichment_enabled(self) -> bool:
@@ -41,6 +44,38 @@ class RecordingModelCapabilityService:
     def can_enrich_memory(self, memory_system) -> bool:
         self._maybe_recover_model_features()
         return bool(memory_system and self._memory_enrichment_enabled)
+
+    def is_async_enrichment_available(self, timeout_sec: float = 0.8) -> bool:
+        """
+        Fast readiness check for recording-time async enrichment.
+
+        Returns False quickly when model backend is unavailable so recording flow
+        can skip async enrichment without hanging in pending state.
+        """
+        self._maybe_recover_model_features()
+        if not self._memory_enrichment_enabled or not self._vision_analysis_enabled:
+            return False
+
+        now = time.time()
+        if self._backend_probe_ok is not None and now < self._backend_probe_next_ts:
+            return bool(self._backend_probe_ok)
+
+        try:
+            import requests
+
+            resp = requests.get(f"{self._ollama_base_url}/api/tags", timeout=timeout_sec)
+            ok = resp.status_code == 200
+            self._backend_probe_ok = ok
+            # Keep success probes fresh but cheap; failures cached longer.
+            self._backend_probe_next_ts = now + (12.0 if ok else 25.0)
+            if not ok:
+                self._disable_model_features(f"ollama health check status={resp.status_code}")
+            return ok
+        except Exception as e:
+            self._backend_probe_ok = False
+            self._backend_probe_next_ts = now + 25.0
+            self._disable_model_features(str(e))
+            return False
 
     def is_model_backend_error(self, error: Exception) -> bool:
         """Return whether an exception indicates model backend is unavailable."""
@@ -73,6 +108,8 @@ class RecordingModelCapabilityService:
         self._vision_analysis_enabled = False
         self._model_unavailable_reason = reason
         self._model_disabled_until_ts = time.time() + float(self._recovery_cooldown_sec)
+        self._backend_probe_ok = False
+        self._backend_probe_next_ts = self._model_disabled_until_ts
         if not already_disabled:
             print(f"[RecordingPresenter] Model backend unavailable. Running in recording-only mode: {reason}")
 
@@ -84,6 +121,8 @@ class RecordingModelCapabilityService:
             return
         self._memory_enrichment_enabled = True
         self._vision_analysis_enabled = True
+        self._backend_probe_ok = None
+        self._backend_probe_next_ts = 0.0
         print("[RecordingPresenter] Retrying model capabilities after cooldown")
 
     def _get_easyocr_reader(self):
@@ -244,3 +283,6 @@ class NoopRecordingModelCapabilityService(RecordingModelCapabilityService):
 
     def extract_text_from_frame(self, frame, use_vision: bool = True) -> str:
         return self.extract_text_fallback(frame)
+
+    def is_async_enrichment_available(self, timeout_sec: float = 0.8) -> bool:
+        return False
