@@ -33,6 +33,7 @@ What it does:
 ## Optional model setup
 
 Model capability is optional and not bundled in release runtime packages.
+You can download required models directly in app: `Settings -> Local models`.
 
 ```bash
 ./scripts/release/download_models.sh recommended

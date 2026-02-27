@@ -41,6 +41,11 @@ class SetModelBody(BaseModel):
     model: str
 
 
+class ModelDownloadBody(BaseModel):
+    model: str
+    timeout_sec: int = 1800
+
+
 class ProcessSaveSessionBody(BaseModel):
     events: List[dict]
     start_time: str
@@ -190,6 +195,207 @@ async def chat_set_model(body: SetModelBody):
     if not ok:
         raise HTTPException(status_code=400, detail=f"Model not available: {body.model}")
     return {"model": presenter.get_current_model()}
+
+
+@app.get("/models/catalog")
+async def models_catalog():
+    """List required local models with install status from Ollama runtime."""
+    from memscreen.config import get_config
+    import os
+    import requests
+
+    cfg = get_config()
+    base_url = cfg.ollama_base_url.rstrip("/")
+    disable_models = os.getenv("MEMSCREEN_DISABLE_MODELS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+    required_specs = [
+        (cfg.ollama_llm_model, "Chat", True),
+        (cfg.ollama_vision_model, "Video tags", True),
+        (cfg.ollama_embedding_model, "Memory retrieval", True),
+        ("qwen2.5vl:7b", "Advanced vision (optional)", False),
+    ]
+
+    deduped_specs = []
+    seen_names = set()
+    for name, purpose, required in required_specs:
+        clean = str(name or "").strip()
+        if not clean or clean in seen_names:
+            continue
+        seen_names.add(clean)
+        deduped_specs.append((clean, purpose, required))
+
+    installed = {}
+    runtime_ready = False
+    runtime_error = None
+    try:
+        resp = requests.get(f"{base_url}/api/tags", timeout=4)
+        if resp.status_code != 200:
+            runtime_error = f"HTTP {resp.status_code}"
+        else:
+            runtime_ready = True
+            payload = resp.json() if resp.content else {}
+            for item in payload.get("models", []) or []:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name", "")).strip()
+                if not name:
+                    continue
+                installed[name] = {
+                    "size_bytes": item.get("size"),
+                    "modified_at": item.get("modified_at"),
+                }
+    except Exception as e:
+        runtime_error = str(e)
+
+    def _split_model_ref(name: str):
+        clean = str(name or "").strip().lower()
+        if not clean:
+            return "", None
+        if ":" in clean:
+            base, tag = clean.rsplit(":", 1)
+            if base and tag and "/" not in tag:
+                return base, tag
+        return clean, None
+
+    def _find_installed_model(name: str):
+        req_base, req_tag = _split_model_ref(name)
+        if not req_base:
+            return None, {}
+        for installed_name, meta in installed.items():
+            ins_base, ins_tag = _split_model_ref(installed_name)
+            if ins_base != req_base:
+                continue
+            if req_tag is None:
+                return installed_name, meta
+            if ins_tag == req_tag:
+                return installed_name, meta
+            if req_tag == "latest" and ins_tag is None:
+                return installed_name, meta
+        return None, {}
+
+    models = []
+    for name, purpose, required in deduped_specs:
+        matched_name, meta = _find_installed_model(name)
+        models.append(
+            {
+                "name": name,
+                "purpose": purpose,
+                "required": required,
+                "installed": matched_name is not None,
+                "installed_name": matched_name,
+                "size_bytes": meta.get("size_bytes"),
+                "modified_at": meta.get("modified_at"),
+            }
+        )
+
+    return {
+        "base_url": base_url,
+        "models_disabled": disable_models,
+        "runtime_ready": runtime_ready,
+        "runtime_error": runtime_error,
+        "models": models,
+    }
+
+
+@app.post("/models/download")
+async def models_download(body: ModelDownloadBody):
+    """Download one local model through Ollama runtime."""
+    from memscreen.config import get_config
+    import subprocess
+    import time
+    import shutil
+    import requests
+
+    model_name = str(body.model or "").strip()
+    if not model_name:
+        raise HTTPException(status_code=400, detail="model is required")
+
+    timeout_sec = int(body.timeout_sec) if int(body.timeout_sec) > 0 else 1800
+    timeout_sec = max(60, min(timeout_sec, 7200))
+    base_url = get_config().ollama_base_url.rstrip("/")
+
+    def _ensure_ollama_runtime() -> bool:
+        try:
+            health = requests.get(f"{base_url}/api/tags", timeout=2)
+            if health.status_code == 200:
+                return True
+        except Exception:
+            pass
+
+        ollama_bin = shutil.which("ollama")
+        if not ollama_bin:
+            return False
+
+        try:
+            subprocess.Popen(
+                [ollama_bin, "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception:
+            return False
+
+        for _ in range(6):
+            try:
+                health = requests.get(f"{base_url}/api/tags", timeout=2)
+                if health.status_code == 200:
+                    return True
+            except Exception:
+                pass
+            time.sleep(1.0)
+        return False
+
+    def _pull():
+        if not _ensure_ollama_runtime():
+            return {
+                "ok": False,
+                "error": "Ollama runtime is unavailable. Please start Ollama and retry.",
+            }
+
+        try:
+            response = requests.post(
+                f"{base_url}/api/pull",
+                json={"name": model_name, "stream": False},
+                timeout=timeout_sec,
+            )
+        except Exception as e:
+            return {"ok": False, "error": f"Ollama is unavailable: {e}"}
+
+        if response.status_code != 200:
+            detail = ""
+            try:
+                payload = response.json()
+                detail = str(payload.get("error") or payload.get("detail") or "").strip()
+            except Exception:
+                detail = response.text.strip()
+            error = (
+                f"Model download failed (HTTP {response.status_code})"
+                + (f": {detail}" if detail else "")
+            )
+            return {"ok": False, "error": error}
+
+        status_text = "success"
+        try:
+            payload = response.json() if response.content else {}
+            status_text = str(payload.get("status") or payload.get("detail") or "success")
+        except Exception:
+            pass
+        return {"ok": True, "status": status_text}
+
+    result = await asyncio.get_event_loop().run_in_executor(_executor, _pull)
+    if not result.get("ok"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Model download failed"))
+    return {
+        "ok": True,
+        "model": model_name,
+        "status": result.get("status", "success"),
+    }
 
 
 @app.get("/chat/history")
@@ -447,8 +653,8 @@ async def process_save_session_from_tracking():
         if event.get("content"):
             text += f" ({event['content']})"
         session_events.append({"time": time_str, "text": text, "type": event_type, "_dt": ts})
-    if len(session_events) <= 1:
-        raise HTTPException(status_code=400, detail="Not enough events to save (need at least 2)")
+    if len(session_events) < 1:
+        raise HTTPException(status_code=400, detail="No meaningful events to save")
     session_events.sort(key=lambda e: e["_dt"])
     start_time = session_events[0]["time"]
     end_time = session_events[-1]["time"]
@@ -460,6 +666,10 @@ async def process_save_session_from_tracking():
         lambda: session_analysis.save_session(
             events=session_events, start_time=start_time, end_time=end_time, db_path=db_path
         ),
+    )
+    # Advance baseline after saving so repeated saves do not include already-saved history.
+    await asyncio.get_event_loop().run_in_executor(
+        _executor, lambda: presenter.advance_tracking_baseline()
     )
     return {"ok": True, "events_saved": len(session_events), "start_time": start_time, "end_time": end_time}
 

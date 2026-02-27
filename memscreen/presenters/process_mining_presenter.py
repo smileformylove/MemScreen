@@ -157,7 +157,8 @@ class ProcessMiningPresenter(BasePresenter):
                 self.input_tracker.stop_tracking()
 
             self.is_tracking = False
-            self._tracking_start_event_id = 0
+            # Keep baseline event id so the caller can still save the just-finished
+            # tracking window after stop. Baseline is advanced after session save.
 
             # Notify view
             if self.view:
@@ -183,7 +184,10 @@ class ProcessMiningPresenter(BasePresenter):
             return []
 
         try:
-            since_id = self._tracking_start_event_id if self.is_tracking else None
+            # Use baseline whenever available, even right after stop_tracking().
+            # This keeps one-session save boundaries aligned with the latest
+            # recording/tracking window instead of returning full history.
+            since_id = self._tracking_start_event_id if self._tracking_start_event_id > 0 else None
             events = self.input_tracker.get_recent_events(
                 limit=limit,
                 since_id=since_id,
@@ -205,12 +209,27 @@ class ProcessMiningPresenter(BasePresenter):
         if not self.is_tracking or not self.input_tracker:
             return False
         try:
+            return self.advance_tracking_baseline()
+        except Exception as e:
+            self.handle_error(e, "Failed to mark tracking baseline")
+            return False
+
+    def advance_tracking_baseline(self) -> bool:
+        """
+        Move session baseline to current latest event.
+
+        Unlike mark_tracking_baseline(), this can be used after tracking stops
+        (e.g. after saving one session) to avoid duplicate historic windows.
+        """
+        if not self.input_tracker:
+            return False
+        try:
             self._tracking_start_event_id = self.input_tracker.get_latest_event_id()
             self.event_count = 0
             self.last_event_count = 0
             return True
         except Exception as e:
-            self.handle_error(e, "Failed to mark tracking baseline")
+            self.handle_error(e, "Failed to advance tracking baseline")
             return False
 
     @staticmethod

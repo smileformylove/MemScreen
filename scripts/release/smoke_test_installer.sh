@@ -128,6 +128,25 @@ if status != "ok":
 print(f"[smoke] health ok: {payload}")
 PY
 
+RUNTIME_PY="$TEST_HOME/.memscreen/runtime/.venv/bin/python"
+if [[ -x "$RUNTIME_PY" ]]; then
+  "$RUNTIME_PY" - <<'PY'
+import importlib.util
+import os
+
+for mod in ("httpx", "imageio_ffmpeg", "pyaudio"):
+    if importlib.util.find_spec(mod) is None:
+        raise SystemExit(f"[smoke] missing runtime module: {mod}")
+
+import imageio_ffmpeg  # noqa
+
+ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+if not ffmpeg_exe or not os.path.exists(ffmpeg_exe):
+    raise SystemExit(f"[smoke] imageio-ffmpeg executable is unavailable: {ffmpeg_exe}")
+print(f"[smoke] runtime deps ok, bundled ffmpeg={ffmpeg_exe}")
+PY
+fi
+
 SCREENS_JSON="$TMP_ROOT/screens.json"
 SCREENS_CODE="$(curl -sS -o "$SCREENS_JSON" -w '%{http_code}' "$API_BASE_URL/recording/screens" || true)"
 if [[ "$SCREENS_CODE" != "200" ]]; then
@@ -161,6 +180,26 @@ if [[ "$STATUS_CODE" != "200" ]]; then
   dump_logs
   exit 1
 fi
+
+CHAT_MODELS_JSON="$TMP_ROOT/chat_models.json"
+CHAT_MODELS_CODE="$(curl -sS -o "$CHAT_MODELS_JSON" -w '%{http_code}' "$API_BASE_URL/chat/models" || true)"
+if [[ "$CHAT_MODELS_CODE" != "200" ]]; then
+  echo "[smoke] /chat/models returned HTTP $CHAT_MODELS_CODE"
+  cat "$CHAT_MODELS_JSON" || true
+  dump_logs
+  exit 1
+fi
+echo "[smoke] chat models endpoint ok"
+
+MODELS_JSON="$TMP_ROOT/models_catalog.json"
+MODELS_CODE="$(curl -sS -o "$MODELS_JSON" -w '%{http_code}' "$API_BASE_URL/models/catalog" || true)"
+if [[ "$MODELS_CODE" != "200" ]]; then
+  echo "[smoke] /models/catalog returned HTTP $MODELS_CODE"
+  cat "$MODELS_JSON" || true
+  dump_logs
+  exit 1
+fi
+echo "[smoke] models catalog endpoint ok"
 
 TRACK_STATUS_JSON="$TMP_ROOT/tracking_status.json"
 TRACK_STATUS_CODE="$(curl -sS -o "$TRACK_STATUS_JSON" -w '%{http_code}' "$API_BASE_URL/process/tracking/status" || true)"

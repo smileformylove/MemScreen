@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 
@@ -8,6 +9,7 @@ import 'api/api_client.dart';
 import 'api/chat_api.dart';
 import 'api/config_api.dart';
 import 'api/health_api.dart';
+import 'api/model_api.dart';
 import 'api/process_api.dart';
 import 'api/recording_api.dart';
 import 'api/video_api.dart';
@@ -26,6 +28,7 @@ class AppState extends ChangeNotifier {
     _recordingApi = RecordingApi(_client);
     _videoApi = VideoApi(_client);
     _configApi = ConfigApi(_client);
+    _modelApi = ModelApi(_client);
 
     // Setup method channel handler for floating ball
     if (Platform.isMacOS || Platform.isWindows) {
@@ -73,6 +76,9 @@ class AppState extends ChangeNotifier {
   bool get autoTrackInputWithRecording => _autoTrackInputWithRecording;
   bool _trackingStartedByRecording = false;
   bool _trackingBoundToRecording = false;
+  bool _recordingExpectedActive = false;
+  bool _syncingUnexpectedRecordingStop = false;
+  Timer? _recordingWatchdogTimer;
   String? _pendingRecordingNotice;
   String get _settingsFilePath =>
       '${Platform.environment['HOME'] ?? ''}/.memscreen/flutter_settings.json';
@@ -82,12 +88,14 @@ class AppState extends ChangeNotifier {
   late RecordingApi _recordingApi;
   late VideoApi _videoApi;
   late ConfigApi _configApi;
+  late ModelApi _modelApi;
 
   ChatApi get chatApi => _chatApi;
   ProcessApi get processApi => _processApi;
   RecordingApi get recordingApi => _recordingApi;
   VideoApi get videoApi => _videoApi;
   ConfigApi get configApi => _configApi;
+  ModelApi get modelApi => _modelApi;
   ApiClient get client => _client;
   ApiConfig get config => _config;
 
@@ -116,6 +124,7 @@ class AppState extends ChangeNotifier {
       _recordingApi = RecordingApi(_client);
       _videoApi = VideoApi(_client);
       _configApi = ConfigApi(_client);
+      _modelApi = ModelApi(_client);
     }
     _connectionState = state;
     notifyListeners();
@@ -363,14 +372,30 @@ class AppState extends ChangeNotifier {
 
   Future<void> _saveTrackingSessionForRecording() async {
     await Future.delayed(const Duration(milliseconds: 400));
-    try {
-      final result = await _processApi.saveSessionFromTracking();
-      if (result.eventsSaved > 0) {
-        requestVideoRefresh();
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final result = await _processApi.saveSessionFromTracking();
+        if (result.eventsSaved > 0) {
+          requestVideoRefresh();
+        }
+        return;
+      } catch (e) {
+        // Retry briefly because tracker flush may lag behind recording stop.
+        final msg = e.toString().toLowerCase();
+        final noEvents =
+            msg.contains('no events') ||
+            msg.contains('no meaningful events') ||
+            msg.contains('not enough events');
+        if (noEvents) {
+          if (attempt == 2) {
+            return;
+          }
+        } else if (attempt == 2) {
+          debugPrint('[AppState] Error auto-saving tracking session: $e');
+          return;
+        }
+        await Future.delayed(Duration(milliseconds: 250 * (attempt + 1)));
       }
-    } catch (e) {
-      // Ignore "no events"/small interactions; keep logs for diagnostics only.
-      debugPrint('[AppState] Error auto-saving tracking session: $e');
     }
   }
 
@@ -391,6 +416,22 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> _rollbackTrackingForFailedRecordingStart() async {
+    if (!_trackingBoundToRecording) return;
+    try {
+      if (_trackingStartedByRecording) {
+        await _processApi.stopTracking();
+        updateFloatingBallTracking(false);
+        requestRecordingStatusRefresh();
+      }
+    } catch (e) {
+      debugPrint('[AppState] Failed to rollback input tracking after start failure: $e');
+    } finally {
+      _trackingStartedByRecording = false;
+      _trackingBoundToRecording = false;
+    }
+  }
+
   Future<void> startRecording({
     required int duration,
     required double interval,
@@ -401,29 +442,42 @@ class AppState extends ChangeNotifier {
     String? windowTitle,
   }) async {
     await _maybeStartTrackingForRecording();
-    final effectiveAudioSource = await _resolveRecordingAudioSourceForStart();
-    await _recordingApi.start(
-      duration: duration,
-      interval: interval,
-      mode: mode,
-      region: region,
-      screenIndex: screenIndex,
-      screenDisplayId: screenDisplayId,
-      windowTitle: windowTitle,
-      audioSource: effectiveAudioSource,
-    );
-    // Confirm backend entered recording state; if not, surface immediate failure
-    // so floating-ball selection flow can recover and allow instant retry.
-    await Future.delayed(const Duration(milliseconds: 500));
-    final status = await _recordingApi.getStatus();
-    if (!status.isRecording) {
-      updateFloatingBallState(false);
+    try {
+      final effectiveAudioSource = await _resolveRecordingAudioSourceForStart();
+      await _recordingApi.start(
+        duration: duration,
+        interval: interval,
+        mode: mode,
+        region: region,
+        screenIndex: screenIndex,
+        screenDisplayId: screenDisplayId,
+        windowTitle: windowTitle,
+        audioSource: effectiveAudioSource,
+      );
+      // Confirm backend entered recording state; if not, surface immediate failure
+      // so floating-ball selection flow can recover and allow instant retry.
+      await Future.delayed(const Duration(milliseconds: 500));
+      final status = await _recordingApi.getStatus();
+      if (!status.isRecording) {
+        await _rollbackTrackingForFailedRecordingStart();
+        updateFloatingBallState(false);
+        requestRecordingStatusRefresh();
+        throw Exception(
+            'Recording did not start. Please reselect target and retry.');
+      }
+      if (_autoTrackInputWithRecording && !_trackingBoundToRecording) {
+        await _maybeStartTrackingForRecording();
+      }
+      _recordingExpectedActive = true;
+      _startRecordingWatchdog();
+      updateFloatingBallState(true);
       requestRecordingStatusRefresh();
-      throw Exception(
-          'Recording did not start. Please reselect target and retry.');
+    } catch (_) {
+      await _rollbackTrackingForFailedRecordingStart();
+      _recordingExpectedActive = false;
+      _recordingWatchdogTimer?.cancel();
+      rethrow;
     }
-    updateFloatingBallState(true);
-    requestRecordingStatusRefresh();
   }
 
   Future<String> _resolveRecordingAudioSourceForStart() async {
@@ -465,11 +519,56 @@ class AppState extends ChangeNotifier {
 
   Future<void> stopRecording() async {
     await _recordingApi.stop();
+    _recordingExpectedActive = false;
+    _recordingWatchdogTimer?.cancel();
     updateFloatingBallState(false);
     requestRecordingStatusRefresh();
     requestVideoRefresh();
     _schedulePostStopRefreshes();
     await _maybeStopTrackingAfterRecording();
+  }
+
+  Future<void> syncRecordingStateFromBackend(bool isRecording) async {
+    if (isRecording) {
+      _recordingExpectedActive = true;
+      _startRecordingWatchdog();
+      return;
+    }
+    if (!_recordingExpectedActive) return;
+    _recordingExpectedActive = false;
+    _recordingWatchdogTimer?.cancel();
+    updateFloatingBallState(false);
+    requestRecordingStatusRefresh();
+    if (_syncingUnexpectedRecordingStop) return;
+    _syncingUnexpectedRecordingStop = true;
+    try {
+      await _maybeStopTrackingAfterRecording();
+      requestVideoRefresh();
+    } catch (e) {
+      debugPrint('[AppState] Failed to handle unexpected recording stop: $e');
+    } finally {
+      _syncingUnexpectedRecordingStop = false;
+    }
+  }
+
+  void _startRecordingWatchdog() {
+    _recordingWatchdogTimer?.cancel();
+    _recordingWatchdogTimer =
+        Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (!_recordingExpectedActive) return;
+      try {
+        final status = await _recordingApi.getStatus();
+        if (!status.isRecording) {
+          await syncRecordingStateFromBackend(false);
+          return;
+        }
+        if (_autoTrackInputWithRecording && !_trackingBoundToRecording) {
+          await _maybeStartTrackingForRecording();
+        }
+      } catch (e) {
+        debugPrint('[AppState] Recording watchdog poll failed: $e');
+      }
+    });
   }
 
   void _schedulePostStopRefreshes() {
@@ -651,5 +750,11 @@ class AppState extends ChangeNotifier {
   /// Clear the desired tab index after it has been consumed
   void clearDesiredTab() {
     _desiredTabIndex = null;
+  }
+
+  @override
+  void dispose() {
+    _recordingWatchdogTimer?.cancel();
+    super.dispose();
   }
 }

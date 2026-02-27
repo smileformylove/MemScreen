@@ -248,6 +248,25 @@ if [[ ! -f "$STAMP_FILE" || "$REQ_FILE" -nt "$STAMP_FILE" || "$SOURCE_MARKER" -n
   echo "[backend-bootstrap] install complete"
 fi
 
+# Runtime self-heal: ensure critical chat/model modules exist even on older runtimes.
+ensure_python_module() {
+  local module_name="$1"
+  local package_name="$2"
+  if "${VENV_DIR}/bin/python" - <<PY >/dev/null 2>&1
+import importlib.util
+import sys
+sys.exit(0 if importlib.util.find_spec("${module_name}") else 1)
+PY
+  then
+    return 0
+  fi
+  echo "[backend-bootstrap] installing missing dependency: ${package_name} (module: ${module_name})"
+  "${VENV_DIR}/bin/python" -m pip install "${package_name}" || true
+}
+
+ensure_python_module "httpx" "httpx>=0.27.0"
+ensure_python_module "ollama" "ollama>=0.5.0"
+
 # Best-effort audio runtime support for packaged app.
 # Keep startup resilient: audio extras failing should not block recording/video usage.
 if ! "${VENV_DIR}/bin/python" -c "import pyaudio" >/dev/null 2>&1; then
@@ -360,9 +379,8 @@ Troubleshooting logs:
   ~/.memscreen/logs/app_wrapper.log
 
 Model capability is optional. To install models:
-  open Terminal and run:
-  ~/.memscreen/runtime/.venv/bin/python -m pip install ollama
-  then use the bundled script in app resources:
+  use Settings -> Local models in the app
+  or run the bundled script in app resources:
   MemScreen.app/Contents/Resources/backend/download_models.sh
 TXT
 

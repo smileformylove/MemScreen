@@ -47,6 +47,7 @@ class ApiClient {
   Future<Map<String, dynamic>> post(
     String path, {
     Map<String, dynamic>? body,
+    Duration timeout = const Duration(seconds: 60),
   }) async {
     try {
       final uri = Uri.parse(_url(path));
@@ -56,10 +57,7 @@ class ApiClient {
             headers: {'Content-Type': 'application/json'},
             body: body != null ? jsonEncode(body) : null,
           )
-          .timeout(
-            const Duration(seconds: 60),
-            onTimeout: () => throw ApiException('Request timeout'),
-          );
+          .timeout(timeout, onTimeout: () => throw ApiException('Request timeout'));
       return _handleResponse(response);
     } on SocketException {
       throw ApiException(_backendUnavailableMessage());

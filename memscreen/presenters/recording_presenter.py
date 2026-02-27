@@ -389,6 +389,10 @@ class RecordingPresenter(BasePresenter):
             self.recording_frames = []
             self.recording_start_time = time.time()
             self.frame_count = 0
+            print(
+                "[RecordingPresenter] Recording start requested "
+                f"(mode={self.recording_mode}, duration={self.duration}, interval={self.interval})"
+            )
 
             # Start audio recording if audio source is set
             if self.audio_source != AudioSource.NONE:
@@ -1195,10 +1199,17 @@ Content Tags: {", ".join(content_tags)}
             print("[RecordingPresenter] ERROR: cv2 not available for recording")
             self.is_recording = False
             return
-        last_screenshot_time = time.time()
+        # Capture the very first frame immediately on start.
+        # Waiting a full interval before first capture can trigger false startup
+        # timeout for users with larger saved interval values.
+        last_screenshot_time = 0.0
         last_save_time = time.time()
         consecutive_capture_failures = 0
-        first_frame_deadline = (self.recording_start_time or time.time()) + 4.0
+        # Allow at least one capture interval before declaring startup failure.
+        # If interval is configured to a large value (set in Settings), a fixed
+        # 4s timeout can falsely fail startup before first frame capture.
+        startup_grace = max(4.0, min(30.0, float(self.interval) * 3.0 + 2.0))
+        first_frame_deadline = (self.recording_start_time or time.time()) + startup_grace
 
         # Check if permission was denied before entering recording loop
         if hasattr(self, '_preview_permission_denied') and self._preview_permission_denied:
@@ -1370,8 +1381,12 @@ Content Tags: {", ".join(content_tags)}
                                 if self.view:
                                     self.view.show_error(self.last_start_error)
                                 break
-                            # Continue to next iteration
-                            last_screenshot_time = current_time
+                            # Continue to next iteration.
+                            # Keep retrying quickly until first frame succeeds.
+                            if self.frame_count == 0:
+                                last_screenshot_time = 0.0
+                            else:
+                                last_screenshot_time = current_time
                             time.sleep(0.1)
                             continue
 

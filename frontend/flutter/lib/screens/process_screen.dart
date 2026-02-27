@@ -6,6 +6,53 @@ import 'package:provider/provider.dart';
 import '../api/process_api.dart';
 import '../app_state.dart';
 
+DateTime? _parseDisplayTimestamp(String raw) {
+  final value = raw.trim();
+  if (value.isEmpty) return null;
+  return DateTime.tryParse(value.replaceFirst(' ', 'T'));
+}
+
+String _two(int value) => value.toString().padLeft(2, '0');
+
+String _formatDisplayTimestamp(String raw) {
+  final dt = _parseDisplayTimestamp(raw);
+  if (dt == null) return raw;
+  final yyyy = dt.year.toString().padLeft(4, '0');
+  final mm = _two(dt.month);
+  final dd = _two(dt.day);
+  final hh = _two(dt.hour);
+  final mi = _two(dt.minute);
+  final ss = _two(dt.second);
+  return '$yyyy-$mm-$dd $hh:$mi:$ss';
+}
+
+String _formatDisplayRange(String start, String end) {
+  final s = _parseDisplayTimestamp(start);
+  final e = _parseDisplayTimestamp(end);
+  if (s != null && e != null) {
+    final span = e.difference(s).inMinutes;
+    // Legacy buggy sessions may include a very old start boundary.
+    // For these outliers, align list time with Videos by showing end time.
+    if (span > 360 || span < 0) {
+      return _formatDisplayTimestamp(end);
+    }
+    final sameDay = s.year == e.year && s.month == e.month && s.day == e.day;
+    if (sameDay) {
+      final yyyy = s.year.toString().padLeft(4, '0');
+      final mm = _two(s.month);
+      final dd = _two(s.day);
+      final sh = _two(s.hour);
+      final sm = _two(s.minute);
+      final ss = _two(s.second);
+      final eh = _two(e.hour);
+      final em = _two(e.minute);
+      final es = _two(e.second);
+      return '$yyyy-$mm-$dd $sh:$sm:$ss — $eh:$em:$es';
+    }
+  }
+  return '${_formatDisplayTimestamp(start)} — ${_formatDisplayTimestamp(end)}';
+}
+
 /// type (keypress/click/info)texttime API_HTTP.md / CORE_API
 class SessionEvent {
   SessionEvent({this.type = 'info', this.text = '', this.time = ''});
@@ -109,7 +156,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(
-                    'Stopped tracking. Saved ${result.eventsSaved} events (${result.startTime} — ${result.endTime})')),
+                    'Stopped tracking. Saved ${result.eventsSaved} events (${_formatDisplayRange(result.startTime, result.endTime)})')),
           );
         }
         // Reload sessions to show the newly saved one
@@ -250,7 +297,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
                         child: ListTile(
                           dense: true,
                           title: Text(
-                            '${s.startTime} - ${s.endTime}',
+                            _formatDisplayRange(s.startTime, s.endTime),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -613,7 +660,10 @@ class ProcessAnalysisScreen extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            '${analysis.startTime} — ${analysis.endTime}',
+                            _formatDisplayRange(
+                              analysis.startTime,
+                              analysis.endTime,
+                            ),
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ),

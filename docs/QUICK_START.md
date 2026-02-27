@@ -13,6 +13,8 @@ pip install -e .
 
 ## Optional: model capability setup
 
+In app: `Settings -> Local models` (recommended).
+
 ```bash
 ./scripts/release/download_models.sh recommended
 ```

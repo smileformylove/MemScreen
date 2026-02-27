@@ -301,8 +301,9 @@ class ChatPresenter(BasePresenter):
         Returns:
             True if model was set successfully
         """
-        if model_name in self.available_models:
-            self.current_model = model_name
+        resolved = self._resolve_available_model_name(model_name)
+        if resolved:
+            self.current_model = resolved
             return True
         return False
 
@@ -606,6 +607,43 @@ class ChatPresenter(BasePresenter):
         recent_tokens = ["just now", "recent", "recently", "latest", "now"]
         return any(tok in q for tok in recent_tokens)
 
+    @staticmethod
+    def _split_model_ref(model_name: str) -> Tuple[str, Optional[str]]:
+        clean = (model_name or "").strip().lower()
+        if not clean:
+            return "", None
+        if ":" in clean:
+            base, tag = clean.rsplit(":", 1)
+            if base and tag and "/" not in tag:
+                return base, tag
+        return clean, None
+
+    def _resolve_available_model_name(self, model_name: str) -> Optional[str]:
+        """Resolve requested model name against available models, allowing :latest suffix compatibility."""
+        requested = (model_name or "").strip()
+        if not requested:
+            return None
+
+        for available in self.available_models:
+            if available.lower() == requested.lower():
+                return available
+
+        req_base, req_tag = self._split_model_ref(requested)
+        if not req_base:
+            return None
+
+        for available in self.available_models:
+            base, tag = self._split_model_ref(available)
+            if base != req_base:
+                continue
+            if req_tag is None:
+                return available
+            if tag == req_tag:
+                return available
+            if req_tag == "latest" and tag is None:
+                return available
+        return None
+
     def _is_embedding_model(self, model_name: str) -> bool:
         """Whether a model is embedding-only and unsuitable for chat generation."""
         name = model_name.lower()
@@ -666,18 +704,19 @@ class ChatPresenter(BasePresenter):
         """Ensure a model exists locally; optionally trigger `ollama pull` once."""
         if not model_name:
             return False
-        if model_name in self.available_models:
+        if self._resolve_available_model_name(model_name):
             return True
 
         self._load_available_models()
-        if model_name in self.available_models:
+        if self._resolve_available_model_name(model_name):
             return True
 
         if not allow_pull or not self.auto_pull_missing_models:
             return False
-        if model_name in self._model_pull_attempted:
+        attempt_key = model_name.strip().lower()
+        if attempt_key in self._model_pull_attempted:
             return False
-        self._model_pull_attempted.add(model_name)
+        self._model_pull_attempted.add(attempt_key)
 
         try:
             print(f"[Chat] Model {model_name} missing, trying `ollama pull`...")
@@ -688,7 +727,7 @@ class ChatPresenter(BasePresenter):
             if not ok_pull:
                 return False
             self._load_available_models()
-            ok = model_name in self.available_models
+            ok = self._resolve_available_model_name(model_name) is not None
             print(f"[Chat] ollama pull completed for {model_name}: available={ok}")
             return ok
         except Exception as pull_err:
@@ -3773,7 +3812,10 @@ class ChatPresenter(BasePresenter):
 
             # Set current model if available
             if self.available_models:
-                if self.current_model not in self.available_models or self._is_embedding_model(self.current_model):
+                resolved_current = self._resolve_available_model_name(self.current_model)
+                if resolved_current and not self._is_embedding_model(resolved_current):
+                    self.current_model = resolved_current
+                else:
                     self.current_model = self._pick_default_chat_model(self.available_models)
 
             print(f"[ChatPresenter] Loaded {len(self.available_models)} models")
@@ -4155,8 +4197,10 @@ class ChatPresenter(BasePresenter):
 
             # Load model
             model = data.get("model")
-            if model and model in self.available_models:
-                self.current_model = model
+            if model:
+                resolved = self._resolve_available_model_name(str(model))
+                if resolved:
+                    self.current_model = resolved
 
             # Notify view
             if self.view:

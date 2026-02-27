@@ -186,7 +186,7 @@ Packaging design:
 - backend process always prefers bundled `Resources/backend/src` (independent from local Python env)
 - first launch auto-installs lite runtime dependencies to `~/.memscreen/runtime/.venv`
 - recording endpoints are smoke-tested in CI before artifact upload (`/health`, `/recording/screens`, `/recording/status`)
-- models are downloaded on demand (optional)
+- models are downloaded on demand (optional, in app via `Settings -> Local models`)
 - macOS signing/notarization automation is documented in `docs/RELEASE_PACKAGING.md`
 
 ---
