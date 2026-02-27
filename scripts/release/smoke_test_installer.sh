@@ -134,9 +134,16 @@ if [[ -x "$RUNTIME_PY" ]]; then
 import importlib.util
 import os
 
-for mod in ("httpx", "imageio_ffmpeg", "pyaudio"):
+required = ("httpx", "imageio_ffmpeg")
+optional = ("pyaudio",)
+
+for mod in required:
     if importlib.util.find_spec(mod) is None:
         raise SystemExit(f"[smoke] missing runtime module: {mod}")
+
+for mod in optional:
+    if importlib.util.find_spec(mod) is None:
+        print(f"[smoke] optional runtime module missing: {mod} (audio input may be unavailable)")
 
 import imageio_ffmpeg  # noqa
 

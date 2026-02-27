@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.5
+
+- aligned release smoke test with runtime policy:
+  - `httpx` and `imageio-ffmpeg` remain required
+  - `pyaudio` is treated as optional (warn-only) for environments without wheel/toolchain support
+- unified project version to `0.6.5`
+
 ## v0.6.4
 
 - unified visual-memory enrichment path for both:
