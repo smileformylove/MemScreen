@@ -11,7 +11,7 @@
 [![Product Hunt](https://img.shields.io/badge/Product%20Hunt-Featured-orange?style=for-the-badge&logo=producthunt&logoColor=white)](https://www.producthunt.com/products/memscreen)
 [![ShipIt](https://img.shields.io/badge/ShipIt-Published-purple?style=for-the-badge)](https://www.shipit.buzz/products/memscreen)
 [![NXGenTools](https://img.shields.io/badge/NXGenTools-Published-blue?style=for-the-badge)](https://www.nxgntools.com/tools/memscreen)
-[![Version](https://img.shields.io/badge/version-v0.6.5-brightgreen?style=for-the-badge&labelColor=333)](https://github.com/smileformylove/MemScreen)
+[![Version](https://img.shields.io/badge/version-v0.6.6-brightgreen?style=for-the-badge&labelColor=333)](https://github.com/smileformylove/MemScreen)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 [![100% Local](https://img.shields.io/badge/Data-100%25%20Local-success?style=for-the-badge&labelColor=06D6A0)](https://github.com/smileformylove/MemScreen)
 [![No Cloud](https://img.shields.io/badge/Privacy-No%20Cloud-blue?style=for-the-badge&labelColor=457B9D)](https://github.com/smileformylove/MemScreen)

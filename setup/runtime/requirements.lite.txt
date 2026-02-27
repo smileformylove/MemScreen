@@ -14,7 +14,6 @@ numpy>=2.1.0
 Pillow>=10.4.0
 opencv-python>=4.10.0
 pynput>=1.7.7
-pyaudio>=0.2.14
 
 # macOS multi-screen + window APIs
 pyobjc-core>=10.3.2

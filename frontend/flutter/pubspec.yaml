@@ -1,6 +1,6 @@
 name: memscreen_flutter
 description: MemScreen Flutter desktop frontend. Connects to MemScreen HTTP API.
-version: 0.6.5
+version: 0.6.6
 publish_to: none
 
 environment:

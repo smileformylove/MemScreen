@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.6
+
+- fixed packaged no-model bootstrap reliability on GitHub macOS runner:
+  - removed hard `pyaudio` pin from `requirements.lite.txt`
+  - keep `pyaudio` as best-effort optional install in backend bootstrap
+- unified project version to `0.6.6`
+
 ## v0.6.5
 
 - aligned release smoke test with runtime policy:
