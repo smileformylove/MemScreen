@@ -521,56 +521,95 @@ class ChatPresenter(BasePresenter):
 
         return parsed_dt
 
+    @staticmethod
+    def _contains_any(text: str, keywords: List[str]) -> bool:
+        return any(k and (k in text) for k in keywords)
+
     def _is_memory_sensitive_query(self, query: str) -> bool:
         """
         Check if query should bypass response cache.
 
         Temporal/screen-memory questions should always hit memory search to avoid stale answers.
         """
-        q = query.lower()
+        q = str(query or "").lower()
         keywords = [
-            "when", "today", "yesterday", "recent", "just now",
+            "when", "today", "yesterday", "recent", "recently", "just now",
             "morning", "noon", "afternoon", "evening", "night",
-            "saw", "seen", "screen", "recording", "timeline",
-            "where", "location", "appear", "what did i watch",
-            "what was being viewed", "what was viewed",
-            "paper", "pdf", "arxiv",
+            "saw", "seen", "watch", "watched",
+            "screen", "recording", "video", "timeline", "history",
+            "where", "location", "appear", "appeared",
+            "what did i watch", "what was on screen", "what was being viewed",
+            "recorded content", "screen content",
+            "什么时候", "刚刚", "最近", "今天", "昨天", "早上", "上午", "中午", "下午", "晚上", "夜里",
+            "看到了什么", "看到什么", "录屏", "录制", "视频", "屏幕", "画面",
+            "时间线", "出现", "位置", "哪里", "在哪", "内容",
+            "论文", "文档", "pdf", "arxiv",
         ]
-        return any(k in q for k in keywords)
+        return self._contains_any(q, keywords)
+
+    def _is_screen_content_query(self, query: str) -> bool:
+        """Whether query asks what was visible on the screen recording."""
+        q = str(query or "").lower()
+        keys = [
+            "what was on screen",
+            "what's on screen",
+            "what is on screen",
+            "what did i see",
+            "what did i watch",
+            "what is in the video",
+            "what's in the video",
+            "screen content",
+            "recorded content",
+            "show me what was recorded",
+            "屏幕有什么",
+            "画面有什么",
+            "录屏有什么",
+            "录制了什么",
+            "视频里有什么",
+            "看到了什么",
+            "有什么内容",
+            "录制内容",
+        ]
+        return self._contains_any(q, keys)
 
     def _is_visual_detail_query(self, query: str) -> bool:
         """Whether query asks for concrete visual details from recordings."""
-        q = query.lower()
+        q = str(query or "").lower()
         keywords = [
-            "what was on screen", "what did i see", "details", "detailed", "detail",
             "what text appears", "which text", "which objects", "object", "frame", "summary",
-            "what is in the video", "this video", "this clip",
+            "this video", "this clip",
+            "details", "detailed", "detail", "visual detail",
             "paper", "pdf", "arxiv", "title", "abstract",
+            "文字", "对象", "元素", "细节", "这一帧", "这个视频", "这个片段",
+            "论文", "标题", "摘要", "窗口内容",
         ]
-        return any(k in q for k in keywords)
+        return self._is_screen_content_query(q) or self._contains_any(q, keywords)
 
     def _is_visual_location_query(self, query: str) -> bool:
         """Whether query asks where/when a text or object appeared."""
-        q = query.lower()
+        q = str(query or "").lower()
         keywords = [
             "where", "which place", "which location", "location", "coordinates", "appears at",
             "when it appears", "corresponding time", "corresponding location",
             "which frame", "which timestamp", "where did", "appeared",
+            "哪里", "在哪", "哪个位置", "什么位置", "坐标", "出现在哪",
+            "什么时候出现", "出现时间", "对应时间", "哪一帧", "几秒",
         ]
-        return any(k in q for k in keywords)
+        return self._contains_any(q, keywords)
 
     def _is_activity_summary_query(self, query: str) -> bool:
         """Whether query asks for retrospective summary/suggestions."""
-        q = query.lower()
+        q = str(query or "").lower()
         keywords = [
             "summary", "recap", "review", "retrospective",
             "past", "today", "what did i do", "suggestion", "suggestions",
+            "总结", "回顾", "复盘", "我做了什么", "建议",
         ]
-        return any(k in q for k in keywords)
+        return self._contains_any(q, keywords)
 
     def _extract_visual_target_phrase(self, query: str) -> str:
         """Extract a text/object target phrase from location queries."""
-        q = " ".join(query.strip().split())
+        q = " ".join(str(query or "").strip().split())
         quoted = re.search(r"[\"“'‘](.+?)[\"”'’]", q)
         if quoted:
             val = quoted.group(1).strip()
@@ -590,22 +629,37 @@ class ChatPresenter(BasePresenter):
             target = m.group(1).strip(" :,.?!")
             if target:
                 return target
+
+        q_cn = q.lower()
+        cn_patterns = [
+            r"(.+?)出现在(哪里|哪儿|哪|哪个位置|什么位置)",
+            r"(.+?)在(哪里|哪儿|哪|哪个位置|什么位置)",
+            r"(.+?)显示在(哪里|哪儿|哪|哪个位置|什么位置)",
+            r"(?:哪里|哪儿|哪|哪个位置|什么位置).*(?:出现|显示)了?(.+)",
+        ]
+        for pat in cn_patterns:
+            m = re.search(pat, q_cn, flags=re.IGNORECASE)
+            if not m:
+                continue
+            target = m.group(1).strip(" :,.?!，。！？、")
+            if target:
+                return target
         return ""
 
     def _is_identity_query(self, query: str) -> bool:
         """Whether user is asking assistant identity/capability."""
-        q = query.lower().strip()
+        q = str(query or "").lower().strip()
         keys = [
-            "who are you", "who are you", "what are you called", "what can you do", "introduce yourself",
-            "who are you", "what are you", "what can you do",
+            "who are you", "what are you called", "what can you do", "introduce yourself", "what are you",
+            "你是谁", "你能做什么", "介绍一下你自己",
         ]
-        return any(k in q for k in keys)
+        return self._contains_any(q, keys)
 
     def _is_recent_focus_query(self, query: str) -> bool:
         """Whether query clearly focuses on very recent screen content."""
-        q = query.lower()
-        recent_tokens = ["just now", "recent", "recently", "latest", "now"]
-        return any(tok in q for tok in recent_tokens)
+        q = str(query or "").lower()
+        recent_tokens = ["just now", "recent", "recently", "latest", "now", "刚刚", "最近", "刚才", "最新"]
+        return self._contains_any(q, recent_tokens)
 
     @staticmethod
     def _split_model_ref(model_name: str) -> Tuple[str, Optional[str]]:
@@ -877,15 +931,17 @@ class ChatPresenter(BasePresenter):
 
     def _infer_time_window(self, query: str) -> Optional[Tuple[int, int]]:
         """Infer hour window from natural language query."""
-        q = query.lower()
-        if "morning" in q or "morning" in q:
+        q = str(query or "").lower()
+        if self._contains_any(q, ["morning", "am", "早上", "上午", "清晨"]):
             return 6, 12
-        if "noon" in q or "noon" in q:
+        if self._contains_any(q, ["noon", "midday", "中午"]):
             return 11, 14
-        if "afternoon" in q or "afternoon" in q:
+        if self._contains_any(q, ["afternoon", "pm", "下午"]):
             return 12, 18
-        if "evening" in q or "night" in q or "evening" in q or "night" in q:
+        if self._contains_any(q, ["evening", "night", "tonight", "晚上", "今晚", "夜里"]):
             return 18, 24
+        if self._contains_any(q, ["凌晨", "深夜"]):
+            return 0, 6
         return None
 
     def _filter_recordings_by_time_window(
@@ -913,17 +969,17 @@ class ChatPresenter(BasePresenter):
         q = (query or "").lower()
         hints: List[str] = []
         rules = {
-            "coding": ["code", "coding", "vscode", "xcode", "python", "coding", "code"],
-            "terminal": ["terminal", "shell", "bash", "zsh", "command line"],
-            "debugging": ["error", "exception", "bug", "error", "exception", "error", "failure"],
-            "meeting": ["meeting", "zoom", "teams", "meeting", "tencent meeting", "feishu meeting"],
-            "research": ["research", "paper", "arxiv", "paper", "literature", "research"],
-            "document": ["doc", "document", "pdf", "document", "notes"],
-            "browser": ["browser", "chrome", "safari", "web page", "browser"],
-            "chat": ["chat", "message", "slack", "discord", "wechat", "messages", "communication"],
-            "design": ["design", "figma", "sketch", "photoshop", "design"],
-            "presentation": ["ppt", "slides", "keynote", "presentation", "report"],
-            "dashboard": ["dashboard", "grafana", "analytics", "dashboard", ""],
+            "coding": ["code", "coding", "vscode", "xcode", "python", "开发", "代码", "编程"],
+            "terminal": ["terminal", "shell", "bash", "zsh", "command line", "终端", "命令行"],
+            "debugging": ["error", "exception", "bug", "failure", "报错", "异常", "调试"],
+            "meeting": ["meeting", "zoom", "teams", "tencent meeting", "feishu meeting", "会议"],
+            "research": ["research", "paper", "arxiv", "literature", "论文", "研究"],
+            "document": ["doc", "document", "pdf", "notes", "文档", "笔记"],
+            "browser": ["browser", "chrome", "safari", "web page", "网页", "浏览器"],
+            "chat": ["chat", "message", "slack", "discord", "wechat", "messages", "communication", "聊天", "消息"],
+            "design": ["design", "figma", "sketch", "photoshop", "设计"],
+            "presentation": ["ppt", "slides", "keynote", "presentation", "report", "汇报", "演示"],
+            "dashboard": ["dashboard", "grafana", "analytics", "监控看板", "仪表盘"],
         }
         for tag, keywords in rules.items():
             if any(k in q for k in keywords):
@@ -1265,6 +1321,16 @@ class ChatPresenter(BasePresenter):
             return []
 
         tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9_./:-]{1,}|[\u4e00-\u9fff]{2,}", q)
+        known_terms = [
+            "录屏", "录制", "屏幕", "画面", "视频", "窗口", "应用", "app",
+            "文字", "对象", "内容", "出现", "位置", "时间",
+            "论文", "文档", "标题", "摘要", "浏览器", "网页", "终端", "代码", "报错", "错误",
+            "会议", "消息", "聊天", "设计", "看板", "图表",
+        ]
+        for term in known_terms:
+            if term in q:
+                tokens.append(term)
+
         stop_tokens = {
             "what",
             "when",
@@ -1300,6 +1366,29 @@ class ChatPresenter(BasePresenter):
             "shown",
             "display",
             "displayed",
+            "什么",
+            "哪个",
+            "哪些",
+            "怎么",
+            "是否",
+            "以及",
+            "一下",
+            "里面",
+            "这个",
+            "那个",
+            "我",
+            "的",
+            "了",
+            "在",
+            "和",
+            "有",
+            "有没有",
+            "内容",
+            "视频",
+            "录屏",
+            "录制",
+            "屏幕",
+            "画面",
         }
 
         deduped: List[str] = []
@@ -1312,12 +1401,46 @@ class ChatPresenter(BasePresenter):
                 continue
             if re.fullmatch(r"[0-9._-]+", clean):
                 continue
+            if (
+                re.fullmatch(r"[\u4e00-\u9fff]{8,}", clean)
+                and self._contains_any(clean, ["什么", "怎么", "吗", "是否", "哪里", "哪儿", "有没有"])
+            ):
+                # Skip long Chinese question stems; rely on extracted domain keywords instead.
+                continue
             if len(clean) < 2:
                 continue
             if clean not in seen:
                 seen.add(clean)
                 deduped.append(clean)
-        return deduped[:14]
+
+        phrase_aliases: Dict[str, List[str]] = {
+            "终端": ["terminal", "shell", "bash", "zsh"],
+            "命令行": ["terminal", "shell"],
+            "代码": ["code", "coding", "vscode", "python", "git"],
+            "开发": ["code", "coding", "vscode", "python"],
+            "报错": ["error", "exception", "bug"],
+            "错误": ["error", "exception"],
+            "论文": ["paper", "arxiv", "abstract", "title", "pdf"],
+            "文档": ["document", "pdf", "notes"],
+            "浏览器": ["browser", "chrome", "safari", "web"],
+            "网页": ["browser", "web", "chrome", "safari"],
+            "会议": ["meeting", "zoom", "teams"],
+            "聊天": ["chat", "message", "communication"],
+            "消息": ["message", "chat"],
+            "窗口": ["window", "app"],
+            "应用": ["app", "window"],
+            "视频": ["video", "recording"],
+            "录屏": ["screen", "recording", "video"],
+            "录制": ["recording", "video"],
+        }
+        for src, aliases in phrase_aliases.items():
+            if src in q:
+                for alias in aliases:
+                    if alias not in seen:
+                        seen.add(alias)
+                        deduped.append(alias)
+
+        return deduped[:20]
 
     def _extract_query_phrases(self, query: str) -> List[str]:
         """Extract quoted and adjacent token phrases for stronger exact matching."""
@@ -1337,6 +1460,10 @@ class ChatPresenter(BasePresenter):
             pair = f"{keywords[idx]} {keywords[idx + 1]}".strip()
             if len(pair) >= 5:
                 phrases.append(pair)
+        for item in re.findall(r"[\u4e00-\u9fff]{3,12}", q):
+            clean = item.strip()
+            if len(clean) >= 3:
+                phrases.append(clean)
 
         deduped: List[str] = []
         seen = set()
@@ -1359,8 +1486,8 @@ class ChatPresenter(BasePresenter):
 
         research_hints = [
             "abstract", "introduction", "method", "results", "conclusion",
-            "arxiv", "doi", "paper", "pdf", "paper", "title", "keywords",
-            "foxit", "editor", "search",
+            "arxiv", "doi", "paper", "pdf", "title", "keywords",
+            "foxit", "editor", "search", "论文", "摘要", "文档",
         ]
         ui_hints = [
             "file", "edit", "view", "help", "terminal", "bash", "zsh", "chrome", "safari",
@@ -1436,21 +1563,24 @@ class ChatPresenter(BasePresenter):
         """Build a concrete overall scene description from extracted evidence."""
         merged = " ".join(text_items).lower()
         if any(k in merged for k in ["arxiv", "abstract", "pdf", "paper", "foxit"]):
-            action = "Screen mainly shows paper/PDF reading"
-        elif any(k in merged for k in ["terminal", "bash", "zsh", "ps aux", "grep"]):
-            action = "Screen mainly shows terminal operations"
-        elif any(k in merged for k in ["vscode", "python", "git", "code"]):
-            action = "Screen mainly shows code editing and development"
-        elif any(k in merged for k in ["chrome", "safari", "firefox", "browser"]):
-            action = "Screen mainly shows browser usage"
+            action = "The screen mainly shows paper/PDF reading."
+        elif any(k in merged for k in ["terminal", "bash", "zsh", "ps aux", "grep", "终端", "命令"]):
+            action = "The screen mainly shows terminal operations."
+        elif any(k in merged for k in ["vscode", "python", "git", "code", "开发", "代码"]):
+            action = "The screen mainly shows code editing/development."
+        elif any(k in merged for k in ["chrome", "safari", "firefox", "browser", "网页", "浏览器"]):
+            action = "The screen mainly shows browser usage."
         else:
-            action = "Screen mainly shows desktop window operations"
+            action = "The screen mainly shows desktop window operations."
 
-        obj_part = "".join(objects[:5]) if objects else "windows, menu bar, toolbar"
+        obj_part = ", ".join(objects[:5]) if objects else "windows, menu bar, toolbar"
         text_count = len(text_items)
         if scene_summaries:
-            return f"{action}Visible elements include {obj_part}Detected {text_count} text clues{scene_summaries[0]}"
-        return f"{action}Visible elements include {obj_part}Detected {text_count} text clues"
+            return (
+                f"{action} Visible elements include {obj_part}. "
+                f"Detected {text_count} text cues. {scene_summaries[0]}"
+            )
+        return f"{action} Visible elements include {obj_part}. Detected {text_count} text cues."
 
     def _sample_video_frames(self, video_path: str, max_samples: int = 2) -> List[Tuple[float, Any]]:
         """Sample a few frames from video for vision analysis."""
@@ -1569,21 +1699,21 @@ class ChatPresenter(BasePresenter):
         """Infer UI objects from OCR snippets when vision object extraction is missing."""
         merged = " ".join(snippets).lower()
         mapping = [
-            (["pdf", "foxit", "foxit"], "PDF document window"),
+            (["pdf", "foxit", "论文", "文档"], "PDF/document window"),
             (["search", "find"], "search bar"),
-            (["terminal", "bash", "zsh", "shell", "ps aux", "grep"], "terminal window"),
-            (["vscode", "code"], "code editor"),
-            (["chrome", "safari", "firefox", "browser"], "browser window"),
-            (["wecom", "wecom"], "communication app window"),
+            (["terminal", "bash", "zsh", "shell", "ps aux", "grep", "终端", "命令"], "terminal window"),
+            (["vscode", "code", "代码", "python", "flutter"], "code editor"),
+            (["chrome", "safari", "firefox", "browser", "浏览器", "网页"], "browser window"),
+            (["wecom", "wechat", "slack", "discord", "聊天", "消息"], "communication app window"),
             (["desktop"], "desktop"),
             (["flutter", "memscreen"], "main app window"),
-            (["file", "edit", "view", "help", "", "", ""], "menu bar"),
-            (["tool", "toolbar", ""], "toolbar buttons"),
-            (["page", "", ""], "page view area"),
+            (["file", "edit", "view", "help"], "menu bar"),
+            (["tool", "toolbar"], "toolbar buttons"),
+            (["page", "document"], "page view area"),
         ]
         out: List[str] = []
         for keys, label in mapping:
-            if any(k in merged for k in keys):
+            if any((k and (k in merged)) for k in keys):
                 out.append(label)
             if len(out) >= 6:
                 break
@@ -2166,7 +2296,7 @@ class ChatPresenter(BasePresenter):
 
         specific_hint = self._extract_specific_recording_hint(query)
         target_phrase = self._extract_visual_target_phrase(query)
-        paper_like = any(k in query.lower() for k in ["paper", "paper", "pdf", "arxiv", "title", "abstract"])
+        paper_like = any(k in query.lower() for k in ["paper", "pdf", "arxiv", "title", "abstract", "论文", "文档"])
         location_query = self._is_visual_location_query(query)
         window = self._infer_time_window(query)
         candidate_rows = self._filter_recordings_by_time_window(rows, window) or rows
@@ -2191,13 +2321,14 @@ class ChatPresenter(BasePresenter):
                 candidate_rows = self._rank_recording_rows_for_query(candidate_rows, query)
 
         # Keep online latency bounded (API timeout=180s). Broad queries analyze fewer videos.
+        screen_content_query = self._is_screen_content_query(query)
         if specific_hint:
             max_videos = 1
         elif not location_query and not target_phrase:
-            max_videos = min(max_videos, 1)
+            max_videos = min(max_videos, 2 if screen_content_query else 1)
         candidate_rows = candidate_rows[:max_videos]
         stats["candidate_videos"] = len(candidate_rows)
-        prefer_fast_vision = not (specific_hint or location_query or target_phrase)
+        prefer_fast_vision = not (specific_hint or location_query or target_phrase or screen_content_query)
         vision_candidates = self._get_vision_model_candidates(prefer_fast=prefer_fast_vision)
         start_ts = time.time()
         max_elapsed = 120.0 if specific_hint else 75.0
@@ -2213,7 +2344,7 @@ class ChatPresenter(BasePresenter):
             dense = bool(specific_hint) or vidx == 0
             frame_samples = self._sample_video_frames_dense(
                 video_path,
-                max_samples=6 if specific_hint else (4 if (location_query or target_phrase) else 3),
+                max_samples=6 if specific_hint else (4 if (location_query or target_phrase or screen_content_query) else 3),
             )
             if not frame_samples:
                 continue
@@ -2223,7 +2354,7 @@ class ChatPresenter(BasePresenter):
             object_entries_pool: List[Dict[str, str]] = []
             text_pool: List[str] = []
             summary_pool: List[str] = []
-            vision_frame_budget = 3 if specific_hint else (2 if (location_query or target_phrase) else 0)
+            vision_frame_budget = 3 if specific_hint else (2 if (location_query or target_phrase or screen_content_query) else 1)
 
             for fidx, frame_info in enumerate(frame_samples):
                 if (time.time() - start_ts) > max_elapsed:
@@ -2248,7 +2379,7 @@ class ChatPresenter(BasePresenter):
                 object_names = [str(item.get("name", "")) for item in object_entries if str(item.get("name", ""))]
 
                 merged_text = self._dedupe_text_items(ocr_texts + vis_texts, limit=6)
-                text_line = "".join(merged_text[:3])
+                text_line = " | ".join(merged_text[:3])
                 frame_rows.append(
                     {
                         "frame_index": fidx,
@@ -2325,6 +2456,30 @@ class ChatPresenter(BasePresenter):
         stats["analyzed_videos"] = len(evidence_list)
         return evidence_list, stats
 
+    def _build_visual_content_brief(self, evidence_list: List[Dict[str, Any]], limit: int = 3) -> List[str]:
+        """Create concise, evidence-grounded content bullets for direct answers."""
+        briefs: List[str] = []
+        for ev in evidence_list[: max(limit, 1)]:
+            ts = str(ev.get("timestamp", "Unknown time"))
+            basename = str(ev.get("basename", "")).strip()
+            text_items = ev.get("ocr_snippets", []) or []
+            objects = ev.get("objects", []) or []
+            scene = str(ev.get("overall_description", "")).strip()
+
+            parts: List[str] = []
+            if text_items:
+                parts.append("text: " + "; ".join(str(x) for x in text_items[:3]))
+            if objects:
+                parts.append("elements: " + ", ".join(str(x) for x in objects[:4]))
+            if scene:
+                parts.append("scene: " + scene[:140])
+            if not parts:
+                parts.append("no stable visual clue was detected")
+
+            title = f"{ts} {basename}".strip()
+            briefs.append(f"{title} -> {' | '.join(parts)}")
+        return briefs
+
     def _format_visual_harness_response(
         self,
         query: str,
@@ -2339,7 +2494,10 @@ class ChatPresenter(BasePresenter):
             )
 
         target_phrase = self._extract_visual_target_phrase(query)
-        lines = ["I organized evidence through: video retrieval -> frame sampling -> OCR/visual cross-validation:"]
+        lines: List[str] = ["Most likely on-screen content (evidence-based):"]
+        for idx, brief in enumerate(self._build_visual_content_brief(evidence_list, limit=3), 1):
+            lines.append(f"{idx}. {brief}")
+        lines.append("\nEvidence pipeline: video retrieval -> frame sampling -> OCR/visual cross-validation.")
         main_rows: List[List[str]] = []
         for ev in evidence_list:
             text_items = ev.get("ocr_snippets", []) or []
@@ -2359,7 +2517,7 @@ class ChatPresenter(BasePresenter):
             hits = ev.get("target_hits", []) or []
             if target_phrase:
                 if hits:
-                    lines.append(f"   Matched positions (target: {target_phrase} ):")
+                    lines.append(f"Matched positions (target: {target_phrase}):")
                     hit_rows: List[List[str]] = []
                     for hit in hits[:8]:
                         hit_rows.append([
@@ -2368,9 +2526,9 @@ class ChatPresenter(BasePresenter):
                             str(hit.get('location', 'unknown')),
                             str(hit.get('evidence', ''))[:120],
                         ])
-                    lines.append(self._build_markdown_table(["Frame", "Offset", "location", "Evidence"], hit_rows))
+                    lines.append(self._build_markdown_table(["Frame", "Offset", "Location", "Evidence"], hit_rows))
                 else:
-                    lines.append(f"   Matched positions (target: {target_phrase}): no matches in this video")
+                    lines.append(f"Matched positions (target: {target_phrase}): no matches in this video.")
             else:
                 frame_rows = ev.get("frame_timeline_text", []) or []
                 if frame_rows:
@@ -2453,7 +2611,7 @@ class ChatPresenter(BasePresenter):
         window = self._infer_time_window(query)
         filtered = self._filter_recordings_by_time_window(rows, window)
         recent_focus = self._is_recent_focus_query(query)
-        paper_like = any(k in query.lower() for k in ["paper", "paper", "pdf", "arxiv", "title", "abstract"])
+        paper_like = any(k in query.lower() for k in ["paper", "pdf", "arxiv", "title", "abstract", "论文", "文档"])
 
         specific_hint = self._extract_specific_recording_hint(query)
         candidate_rows = filtered if filtered else rows
@@ -2691,7 +2849,11 @@ class ChatPresenter(BasePresenter):
         Produce detailed visual-memory answer using richer evidence and larger model.
         Returns: (answer_text, used_model)
         """
-        evidence_list, harness_stats = self._collect_visual_harness_evidence(query, max_videos=2)
+        broad_screen_query = self._is_screen_content_query(query)
+        evidence_list, harness_stats = self._collect_visual_harness_evidence(
+            query,
+            max_videos=3 if broad_screen_query else 2,
+        )
         if not evidence_list:
             return self._format_visual_detail_fallback(query, []), "visual-harness-fallback"
 
@@ -2720,7 +2882,8 @@ class ChatPresenter(BasePresenter):
 
         synthesis_prompt = (
             "You are the MemScreen visual-memory summarizer.\n"
-            "Output 3-5 concise English conclusions strictly from evidence.\n"
+            "Answer the user question first in one sentence, then output 3-5 concise English conclusions strictly from evidence.\n"
+            "Always mention concrete app/window/text clues from the evidence when available.\n"
             "If asked where/when something appeared, prioritize matched timestamps and locations.\n"
             "If evidence is insufficient, explicitly say so.\n"
             "Do not repeat the full timeline."
@@ -2750,15 +2913,15 @@ class ChatPresenter(BasePresenter):
     def _classify_activity_kind(self, text: str) -> str:
         """Classify rough activity type from OCR/timeline text."""
         t = " ".join(str(text).lower().split())
-        if any(k in t for k in ["paper", "pdf", "arxiv", "abstract", "paper", "foxit"]):
+        if any(k in t for k in ["paper", "pdf", "arxiv", "abstract", "foxit", "论文", "文档", "摘要"]):
             return "paper/document reading"
-        if any(k in t for k in ["terminal", "zsh", "bash", "python", "git", "error", "exception"]):
+        if any(k in t for k in ["terminal", "zsh", "bash", "python", "git", "error", "exception", "终端", "报错", "异常"]):
             return "terminal/development debugging"
-        if any(k in t for k in ["vscode", "code", ".py", ".ts", "flutter"]):
+        if any(k in t for k in ["vscode", "code", ".py", ".ts", "flutter", "开发", "代码"]):
             return "code editing"
-        if any(k in t for k in ["chrome", "safari", "firefox", "search", "browser"]):
+        if any(k in t for k in ["chrome", "safari", "firefox", "search", "browser", "网页", "浏览器"]):
             return "web browsing/search"
-        if any(k in t for k in ["wecom", "wecom", "chat", "message"]):
+        if any(k in t for k in ["wecom", "wechat", "chat", "message", "聊天", "消息"]):
             return "communication/message handling"
         return "general window operations"
 
@@ -2993,7 +3156,7 @@ class ChatPresenter(BasePresenter):
             evidence_lines.append(f"- {time_window_note}")
 
         query_keywords = self._extract_query_keywords(query)
-        paper_like = any(k in query.lower() for k in ["paper", "paper", "pdf", "arxiv"])
+        paper_like = any(k in query.lower() for k in ["paper", "pdf", "arxiv", "论文", "文档"])
         ocr_scan_rows = target_rows
         if paper_like:
             # For paper/doc queries prioritize longer recordings (more likely to contain readable document pages).
@@ -3058,11 +3221,12 @@ class ChatPresenter(BasePresenter):
 
         query_lower = query.lower()
         temporal_keywords = [
-            "when", "when", "today", "yesterday", "recent", "at that time", "saw", "saw",
-            "morning", "noon", "afternoon", "evening", "night", "what was being viewed", "what was viewed",
-            "paper", "paper", "pdf", "arxiv",
-            "when", "today", "yesterday", "recent", "saw", "seen",
-            "morning", "afternoon", "evening", "night",
+            "when", "today", "yesterday", "recent", "recently", "at that time", "saw", "seen",
+            "morning", "noon", "afternoon", "evening", "night",
+            "what was being viewed", "what was viewed", "what was on screen", "screen content",
+            "paper", "pdf", "arxiv", "title", "abstract",
+            "什么时候", "今天", "昨天", "最近", "刚刚", "看到了什么", "屏幕", "录屏", "视频", "时间线",
+            "早上", "中午", "下午", "晚上", "夜里", "论文", "文档",
         ]
         need_recording_fallback = any(k in query_lower for k in temporal_keywords)
 
@@ -3075,8 +3239,8 @@ class ChatPresenter(BasePresenter):
                     for row in db_rows:
                         context_parts.append(
                             f"- {row.get('timestamp', 'Unknown time')}: "
-                            f"Recording file {row.get('basename', '')}"
-                            f"{row.get('duration', 0.0):.1f}s, {row.get('frame_count', 0)} frames"
+                            f"Recording file {row.get('basename', '')} "
+                            f"({row.get('duration', 0.0):.1f}s, {row.get('frame_count', 0)} frames)"
                         )
                     stats["recording_count"] = len(db_rows)
                     stats["total_memories"] = len(db_rows)
@@ -3186,7 +3350,7 @@ class ChatPresenter(BasePresenter):
                 duration = row.get("duration", 0.0)
                 frame_count = row.get("frame_count", 0)
                 db_recording_timeline.append(
-                    f"- {when}: Recording file {basename}{duration:.1f}s, {frame_count} frames"
+                    f"- {when}: Recording file {basename} ({duration:.1f}s, {frame_count} frames)"
                 )
 
             if db_recording_timeline:
@@ -3472,6 +3636,31 @@ class ChatPresenter(BasePresenter):
         cleaned = "\n".join(line.rstrip() for line in cleaned.splitlines()).strip()
         return cleaned
 
+    def _is_vague_memory_answer(self, text: str) -> bool:
+        """Heuristic guard: detect vague answers lacking concrete recording evidence."""
+        t = " ".join(str(text or "").lower().split())
+        if not t:
+            return True
+
+        has_concrete_timestamp = bool(re.search(r"\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}", t))
+        has_recording_file = bool(re.search(r"recording_\d{8}_\d{6}\.mp4", t))
+        has_video_marker = ".mp4" in t or "recent recording evidence:" in t
+        if has_concrete_timestamp and (has_recording_file or has_video_marker):
+            return False
+
+        vague_tokens = [
+            "not sure",
+            "unclear",
+            "insufficient evidence",
+            "could not find",
+            "cannot find",
+            "no matching",
+            "please provide",
+            "need more context",
+            "i don't have enough",
+        ]
+        return self._contains_any(t, vague_tokens)
+
     def send_message_sync(
         self,
         user_message: str,
@@ -3496,12 +3685,9 @@ class ChatPresenter(BasePresenter):
 
                 if self._is_identity_query(user_message):
                     ai_text = (
-                        " MemScreen recording\n"
-                        "\n"
-                        "1. Timescreenappear\n"
-                        "2. recordingEvidenceTimeVideoOCR\n"
-                        "3. recent\n"
-                        "You can ask now: what text/objects appeared on my screen just now?"
+                        "I am MemScreen's local memory assistant.\n"
+                        "I can answer what appeared on your recorded screen using timestamped evidence.\n"
+                        "Try asking: \"What was on my screen in the latest recording?\""
                     )
                     self.conversation_history.append(ChatMessage("user", user_message))
                     self.conversation_history.append(ChatMessage("assistant", ai_text))
@@ -3517,6 +3703,7 @@ class ChatPresenter(BasePresenter):
 
                 visual_detail_query = (
                     self._is_visual_detail_query(user_message)
+                    or self._is_screen_content_query(user_message)
                     or self._is_visual_location_query(user_message)
                 )
                 activity_summary_query = self._is_activity_summary_query(user_message)
@@ -3593,9 +3780,9 @@ class ChatPresenter(BasePresenter):
                 if self._is_memory_sensitive_query(user_message) and context_stats.get("recording_count", 0) == 0:
                     recent_recordings = self._load_recent_recordings_from_db(limit=3)
                     if recent_recordings:
-                        # For "paper/paper" queries, do a quick OCR pass on matching time-window recordings.
+                        # For paper/doc-oriented queries, do a quick OCR pass on matching time-window recordings.
                         q_lower = user_message.lower()
-                        paper_like = any(k in q_lower for k in ["paper", "paper", "arxiv", "pdf"])
+                        paper_like = any(k in q_lower for k in ["paper", "arxiv", "pdf", "论文", "文档"])
                         ocr_hint = ""
                         if paper_like:
                             win = self._infer_time_window(user_message)
@@ -3607,7 +3794,7 @@ class ChatPresenter(BasePresenter):
                                 if hint:
                                     ocr_hint = (
                                         f"\nText cues recognized from recent recordings:\n"
-                                        f"- {row.get('timestamp', 'Unknown time')}{hint}"
+                                        f"- {row.get('timestamp', 'Unknown time')} | {hint}"
                                     )
                                     break
                         else:
@@ -3617,16 +3804,16 @@ class ChatPresenter(BasePresenter):
                                 if hint:
                                     ocr_hint = (
                                         f"\nVisual content recognized from recent recordings:\n"
-                                        f"- {row.get('timestamp', 'Unknown time')}{hint}"
+                                        f"- {row.get('timestamp', 'Unknown time')} | {hint}"
                                     )
                                     break
 
                         lines = []
                         for row in recent_recordings:
                             lines.append(
-                                f"- {row.get('timestamp', 'Unknown time')}"
-                                f"{row.get('basename', '')}"
-                                f"{row.get('duration', 0.0):.1f}s, {row.get('frame_count', 0)} Frame"
+                                f"- {row.get('timestamp', 'Unknown time')} | "
+                                f"{row.get('basename', '')} | "
+                                f"{row.get('duration', 0.0):.1f}s, {row.get('frame_count', 0)} frames"
                             )
                         ai_text = (
                             "No vector timeline was found, but recent recording logs show:\n"
@@ -3723,7 +3910,7 @@ class ChatPresenter(BasePresenter):
 
                 # Ensure timeline answers always include concrete recent recording evidence.
                 if self._is_memory_sensitive_query(user_message) and context_stats.get("recording_count", 0) > 0:
-                    paper_like = any(k in user_message.lower() for k in ["paper", "paper", "pdf", "arxiv"])
+                    paper_like = any(k in user_message.lower() for k in ["paper", "pdf", "arxiv", "论文", "文档"])
                     has_time = bool(re.search(r"\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}", ai_text))
                     has_file = ".mp4" in ai_text.lower()
                     need_append = (not (has_time and has_file)) or paper_like
@@ -3768,7 +3955,7 @@ class ChatPresenter(BasePresenter):
 
                 # If answer is still vague for visual-memory queries, append hybrid evidence directly.
                 if self._is_memory_sensitive_query(user_message):
-                    vague_answer = any(k in ai_text for k in ["find", "find", "", ""])
+                    vague_answer = self._is_vague_memory_answer(ai_text)
                     if (
                         vague_answer
                         and "Verifiable recording evidence:" not in ai_text
@@ -3802,8 +3989,8 @@ class ChatPresenter(BasePresenter):
                             if not snippets:
                                 continue
                             detail_lines.append(
-                                f"- {row.get('timestamp', 'Unknown time')} {row.get('basename', '')}"
-                                + "".join(snippets[:3])
+                                f"- {row.get('timestamp', 'Unknown time')} | {row.get('basename', '')} | "
+                                + " / ".join(snippets[:3])
                             )
                         if detail_lines:
                             ai_text = (

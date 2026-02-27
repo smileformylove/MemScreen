@@ -234,31 +234,272 @@ class _VideoScreenState extends State<VideoScreen> {
   }
 
   List<VideoItem> get _visibleVideos {
-    var filtered = _videos.where((v) {
+    final filteredByTag = _videos.where((v) {
       final tags = v.tags.toSet();
       return _selectedTags.every(tags.contains);
     }).toList();
 
-    final q = _searchQuery.trim().toLowerCase();
-    if (q.isEmpty) return filtered;
+    final q = _normalizeSearchText(_searchQuery);
+    if (q.isEmpty) return filteredByTag;
 
-    filtered = filtered.where((v) {
-      final parts = <String>[
-        v.filename,
-        v.timestamp,
-        v.recordingMode,
-        v.windowTitle ?? '',
-        v.appName ?? '',
-        v.contentSummary ?? '',
-        v.analysisStatus ?? '',
-        ...v.tags,
-        ...v.contentTags,
-        ...v.contentKeywords,
-      ];
-      final haystack = parts.join(' | ').toLowerCase();
-      return haystack.contains(q);
-    }).toList();
-    return filtered;
+    final tokens = _extractSearchTokens(q);
+    final phrases = _extractSearchPhrases(q, tokens);
+    final tagHints = _inferSearchTagHints(q);
+
+    final scored = <MapEntry<VideoItem, int>>[];
+    for (final video in filteredByTag) {
+      final score = _semanticSearchScore(
+        video,
+        q: q,
+        tokens: tokens,
+        phrases: phrases,
+        tagHints: tagHints,
+      );
+      if (score > 0) {
+        scored.add(MapEntry(video, score));
+      }
+    }
+
+    scored.sort((a, b) {
+      final scoreDiff = b.value.compareTo(a.value);
+      if (scoreDiff != 0) return scoreDiff;
+      final ad = _parseTimestamp(a.key.timestamp);
+      final bd = _parseTimestamp(b.key.timestamp);
+      if (ad == null && bd == null) {
+        return b.key.timestamp.compareTo(a.key.timestamp);
+      }
+      if (ad == null) return 1;
+      if (bd == null) return -1;
+      return bd.compareTo(ad);
+    });
+    return scored.map((e) => e.key).toList();
+  }
+
+  String _normalizeSearchText(String text) {
+    return text.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  List<String> _extractSearchTokens(String query) {
+    final tokenRegex =
+        RegExp(r'[A-Za-z][A-Za-z0-9_./:+-]{1,}|[\u4e00-\u9fff]{2,}');
+    const stopwords = {
+      'what',
+      'when',
+      'where',
+      'which',
+      'who',
+      'how',
+      'the',
+      'this',
+      'that',
+      'with',
+      'from',
+      'for',
+      'video',
+      'videos',
+      'recording',
+      'recordings',
+      'screen',
+      'content',
+      'show',
+      'shown',
+      'find',
+      'search',
+      'and',
+      'or',
+      'to',
+      'of',
+      'in',
+      'on',
+      '我',
+      '之前',
+      '这个',
+      '那个',
+      '内容',
+      '录屏',
+      '视频',
+      '检索',
+      '查找',
+      '搜索',
+    };
+
+    final out = <String>[];
+    final seen = <String>{};
+    for (final m in tokenRegex.allMatches(query)) {
+      final token = m.group(0)?.trim().toLowerCase() ?? '';
+      if (token.isEmpty || stopwords.contains(token) || token.length < 2) {
+        continue;
+      }
+      if (RegExp(r'^[0-9._-]+$').hasMatch(token)) {
+        continue;
+      }
+      if (seen.add(token)) {
+        out.add(token);
+      }
+    }
+    return out.take(14).toList();
+  }
+
+  List<String> _extractSearchPhrases(String query, List<String> tokens) {
+    final out = <String>[];
+    final seen = <String>{};
+    final quoteRegex = RegExp('["\\\']([^"\\\']{2,})["\\\']');
+    for (final m in quoteRegex.allMatches(query)) {
+      final phrase = _normalizeSearchText(m.group(1) ?? '');
+      if (phrase.isNotEmpty && seen.add(phrase)) {
+        out.add(phrase);
+      }
+    }
+    for (var i = 0; i < tokens.length - 1; i++) {
+      final phrase = '${tokens[i]} ${tokens[i + 1]}';
+      if (phrase.length >= 5 && seen.add(phrase)) {
+        out.add(phrase);
+      }
+    }
+    return out.take(10).toList();
+  }
+
+  List<String> _inferSearchTagHints(String query) {
+    final rules = <String, List<String>>{
+      'topic:coding': [
+        'code',
+        'coding',
+        'vscode',
+        'xcode',
+        'python',
+        'terminal',
+        'git',
+        'repo',
+        '开发',
+        '代码',
+        '调试',
+      ],
+      'topic:research': [
+        'paper',
+        'arxiv',
+        'research',
+        'literature',
+        '论文',
+        '研究'
+      ],
+      'topic:document': [
+        'doc',
+        'document',
+        'pdf',
+        'notion',
+        'notes',
+        '文档',
+        '笔记'
+      ],
+      'topic:browser': [
+        'browser',
+        'chrome',
+        'safari',
+        'firefox',
+        'web',
+        '浏览器',
+        '网页'
+      ],
+      'topic:meeting': ['meeting', 'zoom', 'teams', '会议'],
+      'topic:chat': ['chat', 'message', 'slack', 'discord', '消息', '沟通'],
+      'topic:design': ['figma', 'design', 'ui', '设计'],
+      'purpose:debugging': [
+        'error',
+        'exception',
+        'traceback',
+        'failed',
+        'bug',
+        '错误',
+        '报错'
+      ],
+      'intent:searching': ['search', 'find', 'lookup', 'query', '查找', '搜索'],
+      'intent:reading': ['read', 'reading', 'paper', 'pdf', '阅读', '查看'],
+      'task:todo': ['todo', 'task', 'plan', '待办', '计划'],
+      'app:vscode': ['vscode', 'visual studio code'],
+      'app:terminal': ['terminal', 'iterm', 'bash', 'zsh', 'shell'],
+      'app:chrome': ['chrome'],
+      'app:safari': ['safari'],
+      'app:notion': ['notion'],
+    };
+
+    final hints = <String>[];
+    for (final entry in rules.entries) {
+      if (entry.value.any((k) => query.contains(k))) {
+        hints.add(entry.key);
+      }
+    }
+    return hints;
+  }
+
+  int _semanticSearchScore(
+    VideoItem video, {
+    required String q,
+    required List<String> tokens,
+    required List<String> phrases,
+    required List<String> tagHints,
+  }) {
+    final summary = (video.contentSummary ?? '').toLowerCase();
+    final window = (video.windowTitle ?? '').toLowerCase();
+    final app = _extractAppName(video).toLowerCase();
+    final filename = video.filename.toLowerCase();
+    final basename = video.filename.split('/').last.toLowerCase();
+    final mode = video.recordingMode.toLowerCase();
+    final tags = <String>[
+      ...video.tags.map((e) => e.toLowerCase()),
+      ...video.contentTags.map((e) => e.toLowerCase()),
+    ];
+    final tagBlob = tags.join(' | ');
+    final keywords = video.contentKeywords.map((e) => e.toLowerCase()).toList();
+    final keywordBlob = keywords.join(' | ');
+    final fullText = [
+      summary,
+      window,
+      app,
+      basename,
+      filename,
+      mode,
+      tagBlob,
+      keywordBlob,
+    ].join(' | ');
+
+    var score = 0;
+    if (fullText.contains(q)) score += 30;
+
+    for (final phrase in phrases) {
+      if (phrase.isEmpty) continue;
+      if (keywordBlob.contains(phrase)) score += 24;
+      if (summary.contains(phrase)) score += 22;
+      if (window.contains(phrase) || app.contains(phrase)) score += 18;
+      if (tagBlob.contains(phrase)) score += 16;
+      if (basename.contains(phrase)) score += 12;
+    }
+
+    for (final token in tokens) {
+      if (token.isEmpty) continue;
+      if (keywords.contains(token)) {
+        score += 16;
+      } else if (keywordBlob.contains(token)) {
+        score += 11;
+      }
+      if (summary.contains(token)) score += 10;
+      if (window.contains(token) || app.contains(token)) score += 9;
+      if (tagBlob.contains(token)) score += 8;
+      if (basename.contains(token) || filename.contains(token)) score += 7;
+      if (mode.contains(token)) score += 4;
+    }
+
+    for (final hint in tagHints) {
+      if (tags.any((t) => t.startsWith(hint))) {
+        score += 14;
+      }
+    }
+
+    final status = (video.analysisStatus ?? '').toLowerCase();
+    if (score > 0 && status == 'ready') {
+      score += 2;
+    }
+
+    return score;
   }
 
   void _toggleTag(String tag) {
@@ -345,7 +586,9 @@ class _VideoScreenState extends State<VideoScreen> {
         tip = 'Tags: $tags';
       }
       if (keywords.isNotEmpty) {
-        tip = tags.isNotEmpty ? '$tip | Keywords: $keywords' : 'Keywords: $keywords';
+        tip = tags.isNotEmpty
+            ? '$tip | Keywords: $keywords'
+            : 'Keywords: $keywords';
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -481,7 +724,7 @@ class _VideoScreenState extends State<VideoScreen> {
         onChanged: (value) => setState(() => _searchQuery = value),
         decoration: InputDecoration(
           isDense: true,
-          hintText: 'Search by content, tags, app, or window',
+          hintText: 'Search by meaning: content, app, intent, keywords',
           prefixIcon: const Icon(Icons.search, size: 18),
           suffixIcon: _searchQuery.isEmpty
               ? null
