@@ -20,6 +20,19 @@ import 'services/floating_ball_service.dart';
 
 /// Global app state: config, client, connection, API facades.
 class AppState extends ChangeNotifier {
+  static const List<String> supportedVideoFormats = <String>[
+    'mp4',
+    'mov',
+    'mkv',
+    'avi',
+  ];
+  static const List<String> supportedAudioFormats = <String>[
+    'wav',
+    'm4a',
+    'mp3',
+    'aac',
+  ];
+
   AppState() {
     _connection = ConnectionService(config: _config);
     _client = ApiClient(config: _config);
@@ -74,6 +87,12 @@ class AppState extends ChangeNotifier {
 
   bool _autoTrackInputWithRecording = true;
   bool get autoTrackInputWithRecording => _autoTrackInputWithRecording;
+  String _recordingVideoFormat = 'mp4';
+  String get recordingVideoFormat => _recordingVideoFormat;
+  String _recordingAudioFormat = 'wav';
+  String get recordingAudioFormat => _recordingAudioFormat;
+  bool _recordingAudioDenoise = true;
+  bool get recordingAudioDenoise => _recordingAudioDenoise;
   bool _trackingStartedByRecording = false;
   bool _trackingBoundToRecording = false;
   bool _recordingExpectedActive = false;
@@ -184,6 +203,9 @@ class AppState extends ChangeNotifier {
       final microphoneAudioEnabled = map['record_microphone_audio_enabled'];
       final audioUserConfigured = map['recording_audio_user_configured'];
       final autoTrack = map['auto_track_input_with_recording'];
+      final videoFormat = map['recording_video_format'];
+      final audioFormat = map['recording_audio_format'];
+      final audioDenoise = map['recording_audio_denoise'];
       var loadedAudioSource = false;
       if (duration is int && duration > 0) {
         _recordingDurationSec = duration;
@@ -236,6 +258,17 @@ class AppState extends ChangeNotifier {
       }
       if (autoTrack is bool) {
         _autoTrackInputWithRecording = autoTrack;
+      }
+      if (videoFormat is String &&
+          supportedVideoFormats.contains(videoFormat.toLowerCase())) {
+        _recordingVideoFormat = videoFormat.toLowerCase();
+      }
+      if (audioFormat is String &&
+          supportedAudioFormats.contains(audioFormat.toLowerCase())) {
+        _recordingAudioFormat = audioFormat.toLowerCase();
+      }
+      if (audioDenoise is bool) {
+        _recordingAudioDenoise = audioDenoise;
       }
       notifyListeners();
     } catch (e) {
@@ -317,6 +350,31 @@ class AppState extends ChangeNotifier {
     await _persistRecordingSettings();
   }
 
+  Future<void> setRecordingVideoFormat(String format) async {
+    final normalized = format.trim().toLowerCase();
+    if (!supportedVideoFormats.contains(normalized)) return;
+    if (_recordingVideoFormat == normalized) return;
+    _recordingVideoFormat = normalized;
+    notifyListeners();
+    await _persistRecordingSettings();
+  }
+
+  Future<void> setRecordingAudioFormat(String format) async {
+    final normalized = format.trim().toLowerCase();
+    if (!supportedAudioFormats.contains(normalized)) return;
+    if (_recordingAudioFormat == normalized) return;
+    _recordingAudioFormat = normalized;
+    notifyListeners();
+    await _persistRecordingSettings();
+  }
+
+  Future<void> setRecordingAudioDenoise(bool enabled) async {
+    if (_recordingAudioDenoise == enabled) return;
+    _recordingAudioDenoise = enabled;
+    notifyListeners();
+    await _persistRecordingSettings();
+  }
+
   Future<void> _persistRecordingSettings() async {
     try {
       final file = File(_settingsFilePath);
@@ -330,6 +388,9 @@ class AppState extends ChangeNotifier {
           'record_microphone_audio_enabled': _recordMicrophoneAudio,
           'recording_audio_user_configured': _recordingAudioUserConfigured,
           'auto_track_input_with_recording': _autoTrackInputWithRecording,
+          'recording_video_format': _recordingVideoFormat,
+          'recording_audio_format': _recordingAudioFormat,
+          'recording_audio_denoise': _recordingAudioDenoise,
         }),
       );
     } catch (e) {
@@ -453,6 +514,9 @@ class AppState extends ChangeNotifier {
         screenDisplayId: screenDisplayId,
         windowTitle: windowTitle,
         audioSource: effectiveAudioSource,
+        videoFormat: _recordingVideoFormat,
+        audioFormat: _recordingAudioFormat,
+        audioDenoise: _recordingAudioDenoise,
       );
       // Confirm backend entered recording state; if not, surface immediate failure
       // so floating-ball selection flow can recover and allow instant retry.

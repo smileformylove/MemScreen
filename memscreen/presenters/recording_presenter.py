@@ -25,6 +25,9 @@ from memscreen.audio import AudioRecorder, AudioSource
 from memscreen.cv2_loader import get_cv2
 from memscreen.services.model_capability import RecordingModelCapabilityService
 
+SUPPORTED_VIDEO_FORMATS = ("mp4", "mov", "mkv", "avi")
+SUPPORTED_AUDIO_FORMATS = ("wav", "m4a", "mp3", "aac")
+
 
 class RecordingPresenter(BasePresenter):
     """
@@ -96,9 +99,14 @@ class RecordingPresenter(BasePresenter):
         self.duration = 60  # seconds per segment
         self.interval = 2.0  # seconds between screenshots
         self.output_dir = output_dir
+        self.video_format = "mp4"
+        self.audio_output_format = "wav"
+        self.audio_denoise = True
 
         # Audio recording
         self.audio_recorder = AudioRecorder(output_dir=audio_dir)
+        self.audio_recorder.set_output_format(self.audio_output_format)
+        self.audio_recorder.set_noise_reduction(self.audio_denoise)
         self.audio_source = AudioSource.NONE  # none, mixed, microphone, system_audio
         self._active_audio_source = AudioSource.NONE
 
@@ -291,6 +299,47 @@ class RecordingPresenter(BasePresenter):
         self.audio_source = source
         self.audio_recorder.set_audio_source(source)
         print(f"[RecordingPresenter] Audio source set to: {source.value}")
+
+    def set_video_format(self, video_format: str):
+        """
+        Set output video container format.
+
+        Args:
+            video_format: mp4, mov, mkv, avi
+        """
+        normalized = str(video_format or "").strip().lower()
+        if normalized not in SUPPORTED_VIDEO_FORMATS:
+            raise ValueError(
+                f"Unsupported video format: {video_format}. "
+                f"Supported: {', '.join(SUPPORTED_VIDEO_FORMATS)}"
+            )
+        self.video_format = normalized
+        print(f"[RecordingPresenter] Video format set to: {self.video_format}")
+
+    def set_audio_output_format(self, audio_format: str):
+        """
+        Set output audio format for recorded audio tracks.
+
+        Args:
+            audio_format: wav, m4a, mp3, aac
+        """
+        normalized = str(audio_format or "").strip().lower()
+        if normalized not in SUPPORTED_AUDIO_FORMATS:
+            raise ValueError(
+                f"Unsupported audio format: {audio_format}. "
+                f"Supported: {', '.join(SUPPORTED_AUDIO_FORMATS)}"
+            )
+        self.audio_output_format = normalized
+        self.audio_recorder.set_output_format(normalized)
+        print(f"[RecordingPresenter] Audio format set to: {self.audio_output_format}")
+
+    def set_audio_denoise(self, enabled: bool):
+        """
+        Enable/disable basic post-recording audio denoise.
+        """
+        self.audio_denoise = bool(enabled)
+        self.audio_recorder.set_noise_reduction(self.audio_denoise)
+        print(f"[RecordingPresenter] Audio denoise set to: {self.audio_denoise}")
 
     def get_audio_sources(self) -> list:
         """
@@ -1415,7 +1464,7 @@ Content Tags: {", ".join(content_tags)}
 
             # Generate filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = os.path.join(self.output_dir, f"segment_{timestamp}.mp4")
+            filename = self._build_video_output_path("segment", timestamp)
 
             # Save video
             fps = 1.0 / self.interval
@@ -1427,8 +1476,12 @@ Content Tags: {", ".join(content_tags)}
                         frame = cv2.resize(frame, (target_w, target_h))
                     normalized.append(frame)
                 frames = normalized
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out = cv2.VideoWriter(filename, fourcc, fps, (target_w, target_h))
+            out, filename, _used_ext = self._open_video_writer(
+                cv2,
+                filename,
+                fps,
+                (target_w, target_h),
+            )
 
             for frame in frames:
                 out.write(frame)
@@ -1483,7 +1536,7 @@ Content Tags: {", ".join(content_tags)}
 
             # Generate filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = os.path.join(self.output_dir, f"recording_{timestamp}.mp4")
+            filename = self._build_video_output_path("recording", timestamp)
 
             print(f"[RecordingPresenter] 📁 Saving to file: {filename}")
 
@@ -1497,8 +1550,12 @@ Content Tags: {", ".join(content_tags)}
                         frame = cv2.resize(frame, (target_w, target_h))
                     normalized.append(frame)
                 frames = normalized
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out = cv2.VideoWriter(filename, fourcc, fps, (target_w, target_h))
+            out, filename, _used_ext = self._open_video_writer(
+                cv2,
+                filename,
+                fps,
+                (target_w, target_h),
+            )
 
             for frame in frames:
                 out.write(frame)
@@ -1558,6 +1615,66 @@ Content Tags: {", ".join(content_tags)}
         target_h = max(2, int(height) - (int(height) % 2))
         return target_w, target_h
 
+    def _build_video_output_path(self, prefix: str, timestamp: str) -> str:
+        """Build output video path with currently selected container format."""
+        ext = self.video_format if self.video_format in SUPPORTED_VIDEO_FORMATS else "mp4"
+        return os.path.join(self.output_dir, f"{prefix}_{timestamp}.{ext}")
+
+    def _get_video_fourcc_candidates(self, ext: str) -> List[str]:
+        """Return preferred codec candidates for a target container extension."""
+        normalized = str(ext or "").strip().lower()
+        if normalized == "mov":
+            return ["avc1", "mp4v", "MJPG", "XVID"]
+        if normalized == "mkv":
+            return ["XVID", "MJPG", "mp4v", "avc1"]
+        if normalized == "avi":
+            return ["XVID", "MJPG", "mp4v"]
+        return ["mp4v", "avc1", "XVID", "MJPG"]
+
+    def _open_video_writer(
+        self,
+        cv2,
+        path: str,
+        fps: float,
+        size: Tuple[int, int],
+    ) -> Tuple[Any, str, str]:
+        """
+        Open a VideoWriter with codec/container fallback.
+
+        Returns:
+            (writer, output_path, used_ext)
+        """
+        target_ext = os.path.splitext(path)[1].lstrip(".").lower() or "mp4"
+        codec_candidates = self._get_video_fourcc_candidates(target_ext)
+        for codec in codec_candidates:
+            writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*codec), fps, size)
+            if writer is not None and writer.isOpened():
+                return writer, path, target_ext
+            if writer is not None:
+                writer.release()
+
+        # Container fallback: write MP4 if target format is unsupported on runtime.
+        fallback_path = os.path.splitext(path)[0] + ".mp4"
+        for codec in self._get_video_fourcc_candidates("mp4"):
+            writer = cv2.VideoWriter(
+                fallback_path,
+                cv2.VideoWriter_fourcc(*codec),
+                fps,
+                size,
+            )
+            if writer is not None and writer.isOpened():
+                print(
+                    "[RecordingPresenter] Video writer fallback to mp4 "
+                    f"(requested={target_ext}, codec={codec})"
+                )
+                return writer, fallback_path, "mp4"
+            if writer is not None:
+                writer.release()
+
+        raise RuntimeError(
+            f"Failed to initialize video writer for formats: {target_ext}, mp4"
+        )
+
     def _resolve_ffmpeg_binary(self) -> Optional[str]:
         """
         Resolve ffmpeg binary path for packaged/runtime environments.
@@ -1592,7 +1709,21 @@ Content Tags: {", ".join(content_tags)}
         # Generate output filename once and reuse across merge backends.
         base_dir = os.path.dirname(video_file)
         base_name = os.path.splitext(os.path.basename(video_file))[0]
-        output_file = os.path.join(base_dir, f"{base_name}_with_audio.mp4")
+        video_ext = os.path.splitext(video_file)[1].strip().lower() or ".mp4"
+        output_file = os.path.join(base_dir, f"{base_name}_with_audio{video_ext}")
+
+        moviepy_codec = "libx264"
+        moviepy_audio_codec = "aac"
+        ffmpeg_audio_codec = "aac"
+        ffmpeg_video_codec = "libx264"
+        if video_ext == ".avi":
+            moviepy_codec = "mpeg4"
+            moviepy_audio_codec = "libmp3lame"
+            ffmpeg_audio_codec = "libmp3lame"
+            ffmpeg_video_codec = "mpeg4"
+        elif video_ext == ".mkv":
+            moviepy_codec = "libx264"
+            moviepy_audio_codec = "aac"
 
         try:
             from moviepy.editor import VideoFileClip, AudioFileClip
@@ -1602,8 +1733,8 @@ Content Tags: {", ".join(content_tags)}
             video_with_audio = video.set_audio(audio)
             video_with_audio.write_videofile(
                 output_file,
-                codec='libx264',
-                audio_codec='aac',
+                codec=moviepy_codec,
+                audio_codec=moviepy_audio_codec,
                 verbose=False,
                 logger=None
             )
@@ -1628,7 +1759,7 @@ Content Tags: {", ".join(content_tags)}
             "-i", video_file,
             "-i", audio_file,
             "-c:v", "copy",
-            "-c:a", "aac",
+            "-c:a", ffmpeg_audio_codec,
             "-shortest",
             output_file,
         ]
@@ -1647,12 +1778,13 @@ Content Tags: {", ".join(content_tags)}
             ffmpeg_bin, "-y",
             "-i", video_file,
             "-i", audio_file,
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-c:a", "aac",
+            "-c:v", ffmpeg_video_codec,
+            "-c:a", ffmpeg_audio_codec,
             "-shortest",
-            output_file,
         ]
+        if ffmpeg_video_codec == "libx264":
+            ffmpeg_reencode_cmd.extend(["-pix_fmt", "yuv420p"])
+        ffmpeg_reencode_cmd.append(output_file)
         try:
             subprocess.run(ffmpeg_reencode_cmd, check=True, capture_output=True, text=True)
             os.remove(video_file)

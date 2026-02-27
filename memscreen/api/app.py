@@ -61,9 +61,16 @@ class RecordingStartBody(BaseModel):
     screen_display_id: Optional[int] = None
     window_title: Optional[str] = None
     audio_source: Optional[str] = None  # mixed, system_audio, microphone, none
+    video_format: Optional[str] = None  # mp4, mov, mkv, avi
+    audio_format: Optional[str] = None  # wav, m4a, mp3, aac
+    audio_denoise: Optional[bool] = None  # basic ffmpeg denoise filter
 
 
 class VideoReanalyzeBody(BaseModel):
+    filename: str
+
+
+class VideoPlayableBody(BaseModel):
     filename: str
 
 
@@ -719,6 +726,27 @@ async def recording_start(body: RecordingStartBody):
             raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to set audio source: {e}")
+    if body.video_format:
+        normalized_video_format = body.video_format.strip().lower()
+        if normalized_video_format not in {"mp4", "mov", "mkv", "avi"}:
+            raise HTTPException(status_code=400, detail=f"Invalid video_format: {body.video_format}")
+        try:
+            presenter.set_video_format(normalized_video_format)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to set video format: {e}")
+    if body.audio_format:
+        normalized_audio_format = body.audio_format.strip().lower()
+        if normalized_audio_format not in {"wav", "m4a", "mp3", "aac"}:
+            raise HTTPException(status_code=400, detail=f"Invalid audio_format: {body.audio_format}")
+        try:
+            presenter.set_audio_output_format(normalized_audio_format)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to set audio format: {e}")
+    if body.audio_denoise is not None:
+        try:
+            presenter.set_audio_denoise(bool(body.audio_denoise))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to set audio denoise: {e}")
     ok = await asyncio.get_event_loop().run_in_executor(
         _executor,
         lambda: presenter.start_recording(duration=body.duration, interval=body.interval),
@@ -813,6 +841,29 @@ async def video_reanalyze(body: VideoReanalyzeBody):
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "reanalysis failed"))
     return result
+
+
+@app.post("/video/playable")
+async def video_playable(body: VideoPlayableBody):
+    """Resolve a frontend-playable local file path (with compatibility fallback)."""
+    from . import deps
+    presenter = deps.get_video_presenter()
+    if not presenter:
+        raise HTTPException(status_code=503, detail="Video not available")
+    filename = str(body.filename or "").strip()
+    if not filename:
+        raise HTTPException(status_code=400, detail="filename is required")
+
+    try:
+        playable = await asyncio.get_event_loop().run_in_executor(
+            _executor,
+            lambda: presenter.resolve_playable_path(filename),
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to resolve playable path: {e}")
+    return {"filename": playable}
 
 
 # ---------- Config & Health ----------

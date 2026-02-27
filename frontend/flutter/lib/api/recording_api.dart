@@ -13,6 +13,9 @@ class RecordingApi {
     int? screenDisplayId,
     String? windowTitle,
     String? audioSource,
+    String? videoFormat,
+    String? audioFormat,
+    bool? audioDenoise,
   }) async {
     final body = <String, dynamic>{
       'duration': duration,
@@ -27,6 +30,15 @@ class RecordingApi {
     }
     if (audioSource != null && audioSource.isNotEmpty) {
       body['audio_source'] = audioSource;
+    }
+    if (videoFormat != null && videoFormat.isNotEmpty) {
+      body['video_format'] = videoFormat;
+    }
+    if (audioFormat != null && audioFormat.isNotEmpty) {
+      body['audio_format'] = audioFormat;
+    }
+    if (audioDenoise != null) {
+      body['audio_denoise'] = audioDenoise;
     }
     await client.post('/recording/start', body: body);
   }

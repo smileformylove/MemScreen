@@ -10,6 +10,9 @@ import os
 import sqlite3
 import threading
 import json
+import hashlib
+import shutil
+import subprocess
 from datetime import datetime
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
@@ -568,6 +571,104 @@ class VideoPresenter(BasePresenter):
         """
         return self._get_video_info(filename)
 
+    def resolve_playable_path(self, filename: str) -> str:
+        """
+        Return a local path that is playable by AVFoundation/video_player.
+
+        On macOS, `video_player` (AVFoundation backend) has poor support for
+        MKV/AVI containers. For those formats we lazily transcode once to an
+        MP4 cache file and reuse it for subsequent playback.
+        """
+        source = str(filename or "").strip()
+        if not source:
+            raise ValueError("filename is required")
+        if not os.path.exists(source):
+            raise FileNotFoundError(f"Video file not found: {source}")
+
+        ext = os.path.splitext(source)[1].lower()
+        if ext not in {".mkv", ".avi"}:
+            return source
+
+        ffmpeg_bin = self._resolve_ffmpeg_binary()
+        if not ffmpeg_bin:
+            print("[VideoPresenter] ffmpeg not found; fallback to original file for playback.")
+            return source
+
+        source_abs = os.path.abspath(source)
+        source_stat = os.stat(source_abs)
+        key_raw = f"{source_abs}|{int(source_stat.st_mtime_ns)}|{int(source_stat.st_size)}"
+        cache_key = hashlib.sha1(key_raw.encode("utf-8", "ignore")).hexdigest()[:16]
+
+        source_dir = os.path.dirname(source_abs)
+        source_name = os.path.splitext(os.path.basename(source_abs))[0]
+        cache_dir = os.path.join(source_dir, ".playable_cache")
+        os.makedirs(cache_dir, exist_ok=True)
+        playable_path = os.path.join(cache_dir, f"{source_name}_{cache_key}.mp4")
+        tmp_path = os.path.join(cache_dir, f"{source_name}_{cache_key}.tmp.mp4")
+
+        if os.path.exists(playable_path) and os.path.getsize(playable_path) > 0:
+            return playable_path
+
+        for stale in (tmp_path, playable_path):
+            try:
+                if os.path.exists(stale):
+                    os.remove(stale)
+            except Exception:
+                pass
+
+        transcode_cmd = [
+            ffmpeg_bin,
+            "-y",
+            "-i",
+            source_abs,
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-movflags",
+            "+faststart",
+            tmp_path,
+        ]
+        copy_video_cmd = [
+            ffmpeg_bin,
+            "-y",
+            "-i",
+            source_abs,
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-movflags",
+            "+faststart",
+            tmp_path,
+        ]
+
+        for cmd in (transcode_cmd, copy_video_cmd):
+            try:
+                subprocess.run(cmd, check=True, capture_output=True, text=True)
+                if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+                    os.replace(tmp_path, playable_path)
+                    print(
+                        "[VideoPresenter] Generated playable cache for "
+                        f"{os.path.basename(source_abs)} -> {os.path.basename(playable_path)}"
+                    )
+                    return playable_path
+            except Exception as e:
+                stderr = ""
+                if hasattr(e, "stderr") and e.stderr:
+                    stderr = str(e.stderr).strip().splitlines()[-1]
+                print(f"[VideoPresenter] playable transcode failed: {e} {stderr}")
+            finally:
+                try:
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+                except Exception:
+                    pass
+
+        return source
+
     # ==================== Private Methods ====================
 
     def _init_database(self):
@@ -599,6 +700,26 @@ class VideoPresenter(BasePresenter):
             if p:
                 out.append(p)
         return out
+
+    def _resolve_ffmpeg_binary(self) -> Optional[str]:
+        """
+        Resolve ffmpeg binary for packaged/runtime environments.
+        """
+        env_ffmpeg = os.environ.get("MEMSCREEN_FFMPEG_PATH")
+        if env_ffmpeg and os.path.exists(env_ffmpeg):
+            return env_ffmpeg
+        found = shutil.which("ffmpeg")
+        if found:
+            return found
+        try:
+            import imageio_ffmpeg  # type: ignore
+
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            if ffmpeg_exe and os.path.exists(ffmpeg_exe):
+                return ffmpeg_exe
+        except Exception:
+            pass
+        return None
 
     def _get_video_info(self, filename: str) -> Optional[VideoInfo]:
         """Get video info from database"""

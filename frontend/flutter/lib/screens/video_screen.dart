@@ -251,9 +251,14 @@ class _VideoScreenState extends State<VideoScreen> {
   Future<void> _playVideo(VideoItem v) async {
     _controller?.dispose();
 
-    final path = v.filename.startsWith('/')
+    var path = v.filename.startsWith('/')
         ? v.filename
         : '/Users/jixiangluo/.memscreen/videos/${v.filename}';
+    try {
+      path = await context.read<AppState>().videoApi.resolvePlayablePath(path);
+    } catch (_) {
+      // Fallback to original source file when playable-path resolution fails.
+    }
     final file = File(path);
 
     if (!await file.exists()) {

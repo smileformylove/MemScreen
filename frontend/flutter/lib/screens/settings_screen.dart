@@ -72,6 +72,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await context.read<AppState>().setRecordMicrophoneAudio(value);
   }
 
+  Future<void> _setVideoFormat(String value) async {
+    await context.read<AppState>().setRecordingVideoFormat(value);
+  }
+
+  Future<void> _setAudioFormat(String value) async {
+    await context.read<AppState>().setRecordingAudioFormat(value);
+  }
+
+  Future<void> _setAudioDenoise(bool value) async {
+    await context.read<AppState>().setRecordingAudioDenoise(value);
+  }
+
   Future<void> _loadModelCatalog({bool showError = false}) async {
     if (!mounted) return;
     setState(() => _loadingModelCatalog = true);
@@ -213,6 +225,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Key-Mouse tracking'),
             value: appState.autoTrackInputWithRecording,
             onChanged: _setAutoTrackWithRecording,
+          ),
+          SwitchListTile.adaptive(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Basic noise reduction'),
+            value: appState.recordingAudioDenoise,
+            onChanged: _setAudioDenoise,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: appState.recordingVideoFormat,
+                  decoration: const InputDecoration(labelText: 'Video format'),
+                  items: AppState.supportedVideoFormats
+                      .map(
+                        (f) => DropdownMenuItem<String>(
+                          value: f,
+                          child: Text(f.toUpperCase()),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    _setVideoFormat(value);
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: appState.recordingAudioFormat,
+                  decoration: const InputDecoration(labelText: 'Audio format'),
+                  items: AppState.supportedAudioFormats
+                      .map(
+                        (f) => DropdownMenuItem<String>(
+                          value: f,
+                          child: Text(f.toUpperCase()),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    _setAudioFormat(value);
+                  },
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Row(

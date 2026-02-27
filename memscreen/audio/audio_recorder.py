@@ -45,6 +45,9 @@ class AudioSource(Enum):
     NONE = "none"
 
 
+SUPPORTED_AUDIO_OUTPUT_FORMATS = ("wav", "m4a", "mp3", "aac")
+
+
 class AudioRecorder:
     """
     Unified audio recorder supporting microphone and system audio.
@@ -72,6 +75,8 @@ class AudioRecorder:
         self.current_file = None
         self.effective_audio_source = AudioSource.NONE
         self.last_error: Optional[str] = None
+        self.output_format = "wav"
+        self.noise_reduction_enabled = True
         self.auto_route_system_output = True
         self.system_audio_gain = float(os.environ.get("MEMSCREEN_SYSTEM_AUDIO_GAIN", "64.0"))
         self.monitor_audio_gain = float(
@@ -1063,6 +1068,29 @@ class AudioRecorder:
         self.audio_source = source
         print(f"[AudioRecorder] Audio source set to: {source.value}")
 
+    def set_output_format(self, audio_format: str):
+        """
+        Set output audio format for finalized recording files.
+
+        Args:
+            audio_format: wav, m4a, mp3, aac
+        """
+        normalized = str(audio_format or "").strip().lower()
+        if normalized not in SUPPORTED_AUDIO_OUTPUT_FORMATS:
+            raise ValueError(
+                f"Unsupported audio format: {audio_format}. "
+                f"Supported: {', '.join(SUPPORTED_AUDIO_OUTPUT_FORMATS)}"
+            )
+        self.output_format = normalized
+        print(f"[AudioRecorder] Output format set to: {self.output_format}")
+
+    def set_noise_reduction(self, enabled: bool):
+        """
+        Enable/disable basic environmental denoise post-processing.
+        """
+        self.noise_reduction_enabled = bool(enabled)
+        print(f"[AudioRecorder] Noise reduction set to: {self.noise_reduction_enabled}")
+
     def _prefer_pyaudio_backend(self, source: AudioSource) -> bool:
         """
         Decide whether to prefer PyAudio backend first.
@@ -1207,19 +1235,22 @@ class AudioRecorder:
                                 os.remove(mic_file)
                         except Exception:
                             pass
-                        print(f"[AudioRecorder] Stopped recording, saved to: {mixed_file}")
-                        return mixed_file
+                        finalized = self._finalize_audio_output(mixed_file)
+                        print(f"[AudioRecorder] Stopped recording, saved to: {finalized}")
+                        return finalized
                 final_file = system_file or mic_file
                 if final_file:
-                    print(f"[AudioRecorder] Stopped recording, saved to: {final_file}")
-                    return final_file
+                    finalized = self._finalize_audio_output(final_file)
+                    print(f"[AudioRecorder] Stopped recording, saved to: {finalized}")
+                    return finalized
                 return None
 
             if self._ffmpeg_process is not None:
                 filename = self._stop_ffmpeg_recording()
                 if filename:
-                    print(f"[AudioRecorder] Stopped recording, saved to: {filename}")
-                    return filename
+                    finalized = self._finalize_audio_output(filename)
+                    print(f"[AudioRecorder] Stopped recording, saved to: {finalized}")
+                    return finalized
                 return None
 
             # Wait for recording thread to finish
@@ -1231,8 +1262,9 @@ class AudioRecorder:
             if self.audio_frames:
                 filename = self._save_audio()
 
-                print(f"[AudioRecorder] Stopped recording, saved to: {filename}")
-                return filename
+                finalized = self._finalize_audio_output(filename)
+                print(f"[AudioRecorder] Stopped recording, saved to: {finalized}")
+                return finalized
 
         except Exception as e:
             print(f"[AudioRecorder] Failed to stop recording: {e}")
@@ -2267,6 +2299,104 @@ class AudioRecorder:
         # For now, return None - would need pyaudio with WASAPI support
         print("[AudioRecorder] Windows system audio requires WASAPI loopback support")
         return None, 0
+
+    def _audio_output_extension(self, audio_format: str) -> str:
+        normalized = str(audio_format or "").strip().lower()
+        if normalized in SUPPORTED_AUDIO_OUTPUT_FORMATS:
+            return normalized
+        return "wav"
+
+    def _audio_codec_for_format(self, audio_format: str) -> str:
+        normalized = self._audio_output_extension(audio_format)
+        if normalized == "mp3":
+            return "libmp3lame"
+        if normalized in {"m4a", "aac"}:
+            return "aac"
+        return "pcm_s16le"
+
+    def _finalize_audio_output(self, source_file: Optional[str]) -> Optional[str]:
+        """
+        Convert and denoise recorded audio if requested.
+
+        Falls back to original file on any conversion/filter failure.
+        """
+        if not source_file or not os.path.exists(source_file):
+            return source_file
+        target_ext = self._audio_output_extension(self.output_format)
+        source_ext = os.path.splitext(source_file)[1].lstrip(".").lower()
+        need_convert = source_ext != target_ext
+        need_denoise = bool(self.noise_reduction_enabled)
+        if not need_convert and not need_denoise:
+            return source_file
+
+        ffmpeg_bin = self._resolve_ffmpeg_binary()
+        if not ffmpeg_bin:
+            print("[AudioRecorder] ffmpeg unavailable; skip audio post-processing.")
+            return source_file
+
+        from datetime import datetime
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        processed_file = os.path.join(
+            self.output_dir,
+            f"audio_final_{timestamp}.{target_ext}",
+        )
+        if os.path.abspath(processed_file) == os.path.abspath(source_file):
+            processed_file = os.path.join(
+                self.output_dir,
+                f"audio_final_{timestamp}_1.{target_ext}",
+            )
+
+        codec = self._audio_codec_for_format(target_ext)
+        cmd = [
+            ffmpeg_bin,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            source_file,
+        ]
+
+        if need_denoise:
+            # Basic denoise tuned for screen recording speech/music.
+            cmd += ["-af", "highpass=f=80,lowpass=f=12000,afftdn=nf=-25"]
+
+        cmd += ["-ac", "1", "-ar", str(int(self._active_sample_rate or self.rate or 48000))]
+
+        if target_ext == "mp3":
+            cmd += ["-c:a", codec, "-q:a", "2"]
+        elif target_ext in {"m4a", "aac"}:
+            cmd += ["-c:a", codec, "-b:a", "192k"]
+        else:
+            cmd += ["-c:a", codec]
+
+        if target_ext == "aac":
+            cmd += ["-f", "adts"]
+
+        cmd.append(processed_file)
+
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            if not os.path.exists(processed_file) or os.path.getsize(processed_file) <= 0:
+                return source_file
+            try:
+                if os.path.abspath(source_file) != os.path.abspath(processed_file):
+                    os.remove(source_file)
+            except Exception:
+                pass
+            return processed_file
+        except Exception as e:
+            stderr = ""
+            if hasattr(e, "stderr") and e.stderr:
+                stderr = str(e.stderr).strip().splitlines()[-1]
+            print(f"[AudioRecorder] Audio post-processing failed: {e} {stderr}")
+            try:
+                if os.path.exists(processed_file):
+                    os.remove(processed_file)
+            except Exception:
+                pass
+            return source_file
 
     def _save_audio(self) -> str:
         """

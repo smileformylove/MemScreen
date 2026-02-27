@@ -16,6 +16,16 @@ class VideoApi {
     return client.post('/video/reanalyze', body: {'filename': filename});
   }
 
+  Future<String> resolvePlayablePath(String filename) async {
+    final m =
+        await client.post('/video/playable', body: {'filename': filename});
+    final resolved = m['filename'] as String?;
+    if (resolved != null && resolved.trim().isNotEmpty) {
+      return resolved.trim();
+    }
+    return filename;
+  }
+
   static VideoItem _itemFromMap(Map<String, dynamic> m) {
     return VideoItem(
       filename: m['filename'] as String? ?? '',
