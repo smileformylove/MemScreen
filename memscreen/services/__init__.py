@@ -8,6 +8,8 @@ from .model_capability import RecordingModelCapabilityService, NoopRecordingMode
 from .session_analysis import (
     categorize_activities,
     analyze_patterns,
+    build_session_memory_payload,
+    build_session_overlap_stats,
     save_session,
     load_sessions,
     get_session_events,
@@ -25,6 +27,8 @@ __all__ = [
     'NoopRecordingModelCapabilityService',
     'categorize_activities',
     'analyze_patterns',
+    'build_session_memory_payload',
+    'build_session_overlap_stats',
     'save_session',
     'load_sessions',
     'get_session_events',

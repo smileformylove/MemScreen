@@ -13,6 +13,7 @@ import re
 import sqlite3
 import hashlib
 import threading
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Callable, Tuple
 import asyncio
@@ -48,7 +49,8 @@ class ChatMessage:
     def to_dict(self) -> Dict[str, str]:
         return {
             "role": self.role,
-            "content": self.content
+            "content": self.content,
+            "timestamp": self.timestamp,
         }
 
 
@@ -93,6 +95,10 @@ class ChatPresenter(BasePresenter):
 
         # Chat state
         self.conversation_history: List[ChatMessage] = []
+        self._chat_threads: Dict[str, List[ChatMessage]] = {}
+        self._chat_thread_meta: Dict[str, Dict[str, Any]] = {}
+        self._active_thread_id: str = ""
+        self._chat_threads_store_path = self._get_chat_threads_store_path()
         self.current_model = "qwen3:1.7b"
         self.available_models = []
 
@@ -141,6 +147,8 @@ class ChatPresenter(BasePresenter):
         self._model_pull_attempted = set()
         self.auto_pull_missing_models = True
         self.max_auto_pull_seconds = 240
+
+        self._load_chat_threads()
 
         # Initialize agents if available
         if AGENT_AVAILABLE:
@@ -261,13 +269,15 @@ class ChatPresenter(BasePresenter):
     def _get_cached_response(self, query: str) -> Optional[str]:
         """Get cached response if available"""
         import hashlib
-        query_hash = hashlib.md5(query.encode()).hexdigest()
+        scope = f"{self._active_thread_id}::{query}"
+        query_hash = hashlib.md5(scope.encode()).hexdigest()
         return self._response_cache.get(query_hash)
 
     def _cache_response(self, query: str, response: str):
         """Cache a response"""
         import hashlib
-        query_hash = hashlib.md5(query.encode()).hexdigest()
+        scope = f"{self._active_thread_id}::{query}"
+        query_hash = hashlib.md5(scope.encode()).hexdigest()
 
         # Simple cache eviction if full
         if len(self._response_cache) >= self._cache_max_size:
@@ -277,11 +287,335 @@ class ChatPresenter(BasePresenter):
 
         self._response_cache[query_hash] = response
 
+    def _default_thread_title(self) -> str:
+        return "New Chat"
+
+    def _get_chat_threads_store_path(self) -> str:
+        """Resolve persistent thread storage path."""
+        try:
+            from memscreen.config import get_config
+
+            path = get_config().db_dir / "chat_threads.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            return str(path)
+        except Exception:
+            home = os.path.expanduser("~")
+            fallback = os.path.join(home, ".memscreen", "chat_threads.json")
+            os.makedirs(os.path.dirname(fallback), exist_ok=True)
+            return fallback
+
+    def _new_thread_id(self) -> str:
+        return f"thread_{uuid.uuid4().hex[:12]}"
+
+    @staticmethod
+    def _summarize_thread_text(text: str, limit: int = 48) -> str:
+        clean = " ".join(str(text or "").split()).strip()
+        if len(clean) <= limit:
+            return clean
+        return clean[: max(0, limit - 3)].rstrip() + "..."
+
+    def _sync_active_conversation(self) -> None:
+        if not self._chat_threads:
+            thread_id = self._create_thread_internal(switch=True, persist=False)
+            self._active_thread_id = thread_id
+        if self._active_thread_id not in self._chat_threads:
+            self._active_thread_id = next(iter(self._chat_threads))
+        self.conversation_history = self._chat_threads[self._active_thread_id]
+
+    def _update_thread_meta(self, thread_id: Optional[str] = None, touch_updated: bool = True) -> None:
+        target_id = thread_id or self._active_thread_id
+        if not target_id or target_id not in self._chat_threads:
+            return
+
+        messages = self._chat_threads[target_id]
+        now = datetime.now().isoformat()
+        meta = self._chat_thread_meta.setdefault(
+            target_id,
+            {
+                "id": target_id,
+                "title": self._default_thread_title(),
+                "preview": "",
+                "created_at": now,
+                "updated_at": now,
+                "message_count": 0,
+                "auto_title": True,
+            },
+        )
+        meta["id"] = target_id
+        meta["message_count"] = len(messages)
+        if touch_updated or not meta.get("updated_at"):
+            meta["updated_at"] = now
+        if not meta.get("created_at"):
+            meta["created_at"] = now
+
+        preview = ""
+        for msg in reversed(messages):
+            if msg.content.strip():
+                preview = self._summarize_thread_text(msg.content, limit=88)
+                break
+        meta["preview"] = preview
+
+        if meta.get("auto_title", True):
+            title = self._default_thread_title()
+            for msg in messages:
+                if msg.role != "user":
+                    continue
+                candidate = self._summarize_thread_text(msg.content.splitlines()[0], limit=36)
+                if candidate:
+                    title = candidate
+                    break
+            meta["title"] = title
+        else:
+            current_title = self._summarize_thread_text(str(meta.get("title", "")), limit=36)
+            meta["title"] = current_title or self._default_thread_title()
+
+    def _persist_chat_threads(self) -> None:
+        """Persist threads to disk so thread history survives restarts."""
+        try:
+            self._sync_active_conversation()
+            payload = {
+                "active_thread_id": self._active_thread_id,
+                "threads": [],
+            }
+            for thread_id, messages in self._chat_threads.items():
+                self._update_thread_meta(thread_id=thread_id, touch_updated=False)
+                payload["threads"].append(
+                    {
+                        "id": thread_id,
+                        "meta": self._chat_thread_meta.get(thread_id, {}).copy(),
+                        "messages": [msg.to_dict() for msg in messages],
+                    }
+                )
+            payload["threads"].sort(
+                key=lambda item: str((item.get("meta") or {}).get("updated_at", "")),
+                reverse=True,
+            )
+
+            tmp_path = self._chat_threads_store_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
+            os.replace(tmp_path, self._chat_threads_store_path)
+        except Exception as e:
+            print(f"[Chat] failed to persist chat threads: {e}")
+
+    def _create_thread_internal(
+        self,
+        title: str = "",
+        *,
+        switch: bool = True,
+        persist: bool = True,
+    ) -> str:
+        thread_id = self._new_thread_id()
+        now = datetime.now().isoformat()
+        clean_title = self._summarize_thread_text(title, limit=36)
+        auto_title = not bool(clean_title)
+        self._chat_threads[thread_id] = []
+        self._chat_thread_meta[thread_id] = {
+            "id": thread_id,
+            "title": clean_title or self._default_thread_title(),
+            "preview": "",
+            "created_at": now,
+            "updated_at": now,
+            "message_count": 0,
+            "auto_title": auto_title,
+        }
+        if switch:
+            self._active_thread_id = thread_id
+            self.conversation_history = self._chat_threads[thread_id]
+        if persist:
+            self._persist_chat_threads()
+        return thread_id
+
+    def _load_chat_threads(self) -> None:
+        """Load persisted threads from disk."""
+        self._chat_threads = {}
+        self._chat_thread_meta = {}
+        self._active_thread_id = ""
+
+        try:
+            if os.path.exists(self._chat_threads_store_path):
+                with open(self._chat_threads_store_path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                if isinstance(raw, dict):
+                    for item in raw.get("threads", []) or []:
+                        if not isinstance(item, dict):
+                            continue
+                        thread_id = str(item.get("id", "")).strip() or self._new_thread_id()
+                        meta = item.get("meta", {}) or {}
+                        messages_raw = item.get("messages", []) or []
+                        messages: List[ChatMessage] = []
+                        for msg_data in messages_raw:
+                            if not isinstance(msg_data, dict):
+                                continue
+                            role = str(msg_data.get("role", "assistant"))
+                            content = str(msg_data.get("content", ""))
+                            timestamp = str(msg_data.get("timestamp", ""))
+                            messages.append(ChatMessage(role, content, timestamp))
+                        self._chat_threads[thread_id] = messages
+                        self._chat_thread_meta[thread_id] = {
+                            "id": thread_id,
+                            "title": self._summarize_thread_text(str(meta.get("title", "")), limit=36)
+                            or self._default_thread_title(),
+                            "preview": self._summarize_thread_text(str(meta.get("preview", "")), limit=88),
+                            "created_at": str(meta.get("created_at", "")) or datetime.now().isoformat(),
+                            "updated_at": str(meta.get("updated_at", "")) or datetime.now().isoformat(),
+                            "message_count": int(meta.get("message_count", len(messages)) or len(messages)),
+                            "auto_title": bool(meta.get("auto_title", False)),
+                        }
+                    requested_active = str(raw.get("active_thread_id", "")).strip()
+                    if requested_active in self._chat_threads:
+                        self._active_thread_id = requested_active
+        except Exception as e:
+            print(f"[Chat] failed to load chat threads: {e}")
+            self._chat_threads = {}
+            self._chat_thread_meta = {}
+            self._active_thread_id = ""
+
+        if not self._chat_threads:
+            self._create_thread_internal(switch=True, persist=False)
+
+        self._sync_active_conversation()
+        for thread_id in list(self._chat_threads.keys()):
+            self._update_thread_meta(thread_id=thread_id, touch_updated=False)
+        self._persist_chat_threads()
+
+    def _append_history_message(self, role: str, content: str, timestamp: str = "") -> ChatMessage:
+        """Append one message to the active thread and persist thread metadata."""
+        self._sync_active_conversation()
+        msg = ChatMessage(role, content, timestamp)
+        self.conversation_history.append(msg)
+        self._update_thread_meta()
+        self._persist_chat_threads()
+        return msg
+
+    def _mark_active_thread_changed(self, touch_updated: bool = True) -> None:
+        self._sync_active_conversation()
+        self._update_thread_meta(touch_updated=touch_updated)
+        self._persist_chat_threads()
+
+    def _thread_has_messages(self, thread_id: str) -> bool:
+        return bool(self._chat_threads.get(thread_id, []))
+
+    def _find_reusable_empty_thread_id(self) -> str:
+        """Find an existing empty thread so 'New Chat' does not create endless blanks."""
+        empty_ids = [
+            tid for tid, messages in self._chat_threads.items()
+            if not messages
+        ]
+        if not empty_ids:
+            return ""
+        empty_ids.sort(
+            key=lambda tid: str(self._chat_thread_meta.get(tid, {}).get("updated_at", "")),
+            reverse=True,
+        )
+        return empty_ids[0]
+
+    def _is_thread_scoped_chat_memory(self, metadata: Dict[str, Any]) -> bool:
+        mem_type = str(metadata.get("type", "") or "").lower()
+        return mem_type in {"chat", "ai_chat"}
+
+    def _memory_belongs_to_active_thread(self, metadata: Dict[str, Any]) -> bool:
+        """Ensure chat memories do not bleed across threads."""
+        if not self._is_thread_scoped_chat_memory(metadata):
+            return True
+        active_thread_id = str(self._active_thread_id or "").strip()
+        memory_thread_id = str(metadata.get("thread_id", "") or "").strip()
+        if memory_thread_id:
+            return memory_thread_id == active_thread_id
+        # Legacy chat memories had no thread id; only allow them when threading has not split yet.
+        return len(self._chat_threads) <= 1
+
+    def _filter_memories_for_active_thread(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            metadata = item.get("metadata", {}) or {}
+            if self._memory_belongs_to_active_thread(metadata):
+                out.append(item)
+        return out
+
     # ==================== Public API for View ====================
 
     def get_conversation_history(self) -> List[ChatMessage]:
         """Get current conversation history"""
+        self._sync_active_conversation()
         return self.conversation_history.copy()
+
+    def get_thread_history(self, thread_id: Optional[str] = None) -> List[ChatMessage]:
+        """Get history for a specific thread without changing active selection."""
+        target_id = str(thread_id or "").strip()
+        if target_id and target_id in self._chat_threads:
+            return self._chat_threads[target_id].copy()
+        return self.get_conversation_history()
+
+    def list_chat_threads(self) -> List[Dict[str, Any]]:
+        """List conversation threads sorted by recent activity."""
+        self._sync_active_conversation()
+        for thread_id in list(self._chat_threads.keys()):
+            self._update_thread_meta(thread_id=thread_id, touch_updated=False)
+        ordered_ids = sorted(
+            self._chat_threads.keys(),
+            key=lambda tid: str(self._chat_thread_meta.get(tid, {}).get("updated_at", "")),
+            reverse=True,
+        )
+        out: List[Dict[str, Any]] = []
+        for tid in ordered_ids:
+            meta = self._chat_thread_meta.get(tid, {})
+            out.append(
+                {
+                    "id": tid,
+                    "title": str(meta.get("title", self._default_thread_title())),
+                    "preview": str(meta.get("preview", "")),
+                    "created_at": str(meta.get("created_at", "")),
+                    "updated_at": str(meta.get("updated_at", "")),
+                    "message_count": int(meta.get("message_count", len(self._chat_threads.get(tid, [])))),
+                    "is_active": tid == self._active_thread_id,
+                }
+            )
+        return out
+
+    def get_active_thread_id(self) -> str:
+        self._sync_active_conversation()
+        return self._active_thread_id
+
+    def create_chat_thread(self, title: str = "") -> Dict[str, Any]:
+        self._sync_active_conversation()
+
+        # Reuse the current empty thread instead of creating endless blank threads.
+        if not self._thread_has_messages(self._active_thread_id):
+            self._update_thread_meta(touch_updated=False)
+            self._persist_chat_threads()
+            thread_id = self._active_thread_id
+        else:
+            reusable_id = self._find_reusable_empty_thread_id()
+            if reusable_id:
+                self.switch_chat_thread(reusable_id)
+                thread_id = reusable_id
+            else:
+                thread_id = self._create_thread_internal(title=title, switch=True, persist=True)
+        return next(
+            (item for item in self.list_chat_threads() if item.get("id") == thread_id),
+            {
+                "id": thread_id,
+                "title": self._default_thread_title(),
+                "preview": "",
+                "created_at": "",
+                "updated_at": "",
+                "message_count": 0,
+                "is_active": True,
+            },
+        )
+
+    def switch_chat_thread(self, thread_id: str) -> bool:
+        target_id = str(thread_id or "").strip()
+        if not target_id or target_id not in self._chat_threads:
+            return False
+        self._active_thread_id = target_id
+        self._sync_active_conversation()
+        self._update_thread_meta(touch_updated=False)
+        self._persist_chat_threads()
+        return True
 
     def get_available_models(self) -> List[str]:
         """Get list of available models"""
@@ -415,8 +749,7 @@ class ChatPresenter(BasePresenter):
 
         try:
             # Add user message to history
-            user_msg = ChatMessage("user", user_message)
-            self.conversation_history.append(user_msg)
+            self._append_history_message("user", user_message)
 
             # Notify view
             if self.view:
@@ -525,6 +858,39 @@ class ChatPresenter(BasePresenter):
     def _contains_any(text: str, keywords: List[str]) -> bool:
         return any(k and (k in text) for k in keywords)
 
+    @staticmethod
+    def _contains_cjk(text: str) -> bool:
+        return bool(re.search(r"[\u4e00-\u9fff]", str(text or "")))
+
+    def _preferred_response_language(self, text: str) -> str:
+        """Infer reply language from the user's latest message."""
+        q = str(text or "").lower()
+        if self._contains_any(q, ["reply in english", "answer in english", "用英文", "英文回答"]):
+            return "en"
+        if self._contains_any(q, ["reply in chinese", "answer in chinese", "用中文", "中文回答"]):
+            return "zh"
+        if self._contains_cjk(text):
+            return "zh"
+        return "en"
+
+    def _tr(self, query: str, en_text: str, zh_text: str) -> str:
+        """Return localized copy for deterministic reply templates."""
+        return zh_text if self._preferred_response_language(query) == "zh" else en_text
+
+    def _table_headers(self, query: str, en_headers: List[str], zh_headers: List[str]) -> List[str]:
+        return zh_headers if self._preferred_response_language(query) == "zh" else en_headers
+
+    def _localized_scope_label(self, query: str, scope_label: str) -> str:
+        if self._preferred_response_language(query) != "zh":
+            return scope_label
+        mapping = {
+            "Today": "今天，",
+            "Yesterday": "昨天，",
+            "Recently": "最近，",
+            "Earlier": "之前，",
+        }
+        return mapping.get(str(scope_label), str(scope_label))
+
     def _is_memory_sensitive_query(self, query: str) -> bool:
         """
         Check if query should bypass response cache.
@@ -534,13 +900,15 @@ class ChatPresenter(BasePresenter):
         q = str(query or "").lower()
         keywords = [
             "when", "today", "yesterday", "recent", "recently", "just now",
+            "before", "earlier", "previously", "latest", "last time",
             "morning", "noon", "afternoon", "evening", "night",
             "saw", "seen", "watch", "watched",
             "screen", "recording", "video", "timeline", "history",
             "where", "location", "appear", "appeared",
             "what did i watch", "what was on screen", "what was being viewed",
             "recorded content", "screen content",
-            "什么时候", "刚刚", "最近", "今天", "昨天", "早上", "上午", "中午", "下午", "晚上", "夜里",
+            "什么时候", "刚刚", "刚才", "最近", "今天", "昨天", "之前", "先前", "此前", "上次",
+            "早上", "上午", "中午", "下午", "晚上", "夜里",
             "看到了什么", "看到什么", "录屏", "录制", "视频", "屏幕", "画面",
             "时间线", "出现", "位置", "哪里", "在哪", "内容",
             "论文", "文档", "pdf", "arxiv",
@@ -556,6 +924,9 @@ class ChatPresenter(BasePresenter):
             "what is on screen",
             "what did i see",
             "what did i watch",
+            "what did i look at",
+            "what was i looking at",
+            "what was i viewing",
             "what is in the video",
             "what's in the video",
             "screen content",
@@ -569,8 +940,55 @@ class ChatPresenter(BasePresenter):
             "看到了什么",
             "有什么内容",
             "录制内容",
+            "昨天看了什么",
+            "今天看了什么",
+            "最近看了什么",
         ]
-        return self._contains_any(q, keys)
+        if self._contains_any(q, keys):
+            return True
+
+        screen_refs = [
+            "screen", "recording", "video", "clip",
+            "屏幕", "录屏", "录制", "视频", "画面",
+        ]
+        content_prompts = [
+            "what", "which", "show", "shown", "visible", "see", "saw", "watch", "watched",
+            "open", "opened", "content", "details",
+            "什么", "哪些", "看了什么", "看到什么", "显示了什么", "打开了什么", "内容", "有什么", "有哪些",
+        ]
+        temporal_refs = [
+            "before", "earlier", "previously", "just now", "recent", "latest",
+            "today", "yesterday", "tonight",
+            "之前", "刚才", "刚刚", "最近", "上次", "此前", "今天", "昨天", "今晚", "今日",
+        ]
+
+        has_screen_ref = self._contains_any(q, screen_refs)
+        has_content_prompt = self._contains_any(q, content_prompts)
+        if has_screen_ref and has_content_prompt:
+            return True
+
+        # Broad retrospective questions like "what did I look at before"
+        # should still use visual evidence even if the message omits "recording".
+        if self._contains_any(q, temporal_refs) and self._contains_any(
+            q,
+            [
+                "what did i see",
+                "what did i watch",
+                "what did i look at",
+                "what was i looking at",
+                "what was i viewing",
+                "what did i open",
+                "看了什么",
+                "看到了什么",
+                "在看什么",
+                "看过什么",
+                "打开了什么",
+                "浏览了什么",
+            ],
+        ):
+            return True
+
+        return False
 
     def _is_visual_detail_query(self, query: str) -> bool:
         """Whether query asks for concrete visual details from recordings."""
@@ -606,6 +1024,33 @@ class ChatPresenter(BasePresenter):
             "总结", "回顾", "复盘", "我做了什么", "建议",
         ]
         return self._contains_any(q, keywords)
+
+    def _is_planning_query(self, query: str) -> bool:
+        """Whether query asks for a forward-looking plan based on prior memory."""
+        q = str(query or "").lower()
+        explicit_patterns = [
+            "what should i do tomorrow",
+            "plan my tomorrow",
+            "plan for tomorrow",
+            "tomorrow plan",
+            "schedule for tomorrow",
+            "give me a plan for tomorrow",
+            "给我规划一下明天的安排",
+            "规划一下明天的安排",
+            "安排一下明天",
+            "明天做什么",
+        ]
+        if self._contains_any(q, explicit_patterns):
+            return True
+
+        future_refs = [
+            "tomorrow", "next day", "tomorrow's", "明天", "明日",
+        ]
+        planning_refs = [
+            "plan", "schedule", "arrange", "organize", "agenda", "priorities", "priority", "todo", "to-do",
+            "计划", "安排", "规划", "优先级", "待办", "任务",
+        ]
+        return self._contains_any(q, future_refs) and self._contains_any(q, planning_refs)
 
     def _extract_visual_target_phrase(self, query: str) -> str:
         """Extract a text/object target phrase from location queries."""
@@ -658,7 +1103,7 @@ class ChatPresenter(BasePresenter):
     def _is_recent_focus_query(self, query: str) -> bool:
         """Whether query clearly focuses on very recent screen content."""
         q = str(query or "").lower()
-        recent_tokens = ["just now", "recent", "recently", "latest", "now", "刚刚", "最近", "刚才", "最新"]
+        recent_tokens = ["just now", "recent", "recently", "latest", "now", "刚刚", "最近", "刚才", "最新", "之前", "刚刚"]
         return self._contains_any(q, recent_tokens)
 
     @staticmethod
@@ -929,6 +1374,106 @@ class ChatPresenter(BasePresenter):
             print(f"[Chat] Recording DB fallback load failed: {db_err}")
             return []
 
+    def _get_process_db_path(self) -> str:
+        """Resolve process-mining DB path from app config."""
+        try:
+            from memscreen.config import get_config
+
+            return str(get_config().db_dir / "process_mining.db")
+        except Exception:
+            return "./db/process_mining.db"
+
+    def _load_recent_process_sessions_from_db(
+        self,
+        limit: int = 20,
+        include_events: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Load recent process sessions from the process-mining DB."""
+        db_path = self._get_process_db_path()
+        if not os.path.exists(db_path):
+            return []
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            columns = "id, start_time, end_time, event_count, keystrokes, clicks"
+            if include_events:
+                columns += ", events_json"
+            cursor.execute(
+                f"""
+                SELECT {columns}
+                FROM sessions
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            rows = cursor.fetchall()
+            conn.close()
+            out: List[Dict[str, Any]] = []
+            for row in rows:
+                out.append(
+                    {
+                        "session_id": int(row[0]),
+                        "start_time": str(row[1] or ""),
+                        "end_time": str(row[2] or ""),
+                        "event_count": int(row[3] or 0),
+                        "keystrokes": int(row[4] or 0),
+                        "clicks": int(row[5] or 0),
+                    }
+                )
+                if include_events:
+                    events_raw = row[6] if len(row) > 6 else "[]"
+                    try:
+                        out[-1]["events"] = json.loads(str(events_raw or "[]"))
+                    except Exception:
+                        out[-1]["events"] = []
+            return out
+        except Exception as e:
+            print(f"[Chat] Process DB fallback load failed: {e}")
+            return []
+
+    def _find_process_summaries_for_recording(
+        self,
+        timestamp: str,
+        duration: float,
+        limit: int = 2,
+    ) -> List[Dict[str, Any]]:
+        """Find process sessions overlapping with one recording window."""
+        from memscreen.services import session_analysis
+
+        start_dt = self._parse_memory_timestamp({"timestamp": timestamp})
+        if start_dt is None:
+            return []
+        end_dt = start_dt + timedelta(seconds=max(float(duration or 0.0), 0.0))
+
+        matches: List[Dict[str, Any]] = []
+        sessions = self._load_recent_process_sessions_from_db(limit=40, include_events=True)
+        for row in sessions:
+            overlap = session_analysis.build_session_overlap_stats(
+                session_id=int(row.get("session_id", 0) or 0),
+                events=row.get("events", []) or [],
+                start_time=row.get("start_time", ""),
+                end_time=row.get("end_time", ""),
+                window_start=start_dt,
+                window_end=end_dt,
+            )
+            if not overlap:
+                continue
+            overlap["start_time"] = str(row.get("start_time", "") or "")
+            overlap["end_time"] = str(row.get("end_time", "") or "")
+            matches.append(overlap)
+
+        matches.sort(
+            key=lambda item: (
+                float(item.get("overlap_seconds", 0.0) or 0.0),
+                float(item.get("window_coverage_ratio", 0.0) or 0.0),
+                int(item.get("event_count", 0) or 0),
+                str(item.get("overlap_end", "")),
+            ),
+            reverse=True,
+        )
+        return matches[:limit]
+
     def _infer_time_window(self, query: str) -> Optional[Tuple[int, int]]:
         """Infer hour window from natural language query."""
         q = str(query or "").lower()
@@ -943,6 +1488,53 @@ class ChatPresenter(BasePresenter):
         if self._contains_any(q, ["凌晨", "深夜"]):
             return 0, 6
         return None
+
+    def _infer_relative_date_scope(
+        self,
+        query: str,
+    ) -> Optional[Tuple[datetime, datetime, str]]:
+        """Infer a coarse date scope (today/yesterday/recent) from natural language."""
+        q = str(query or "").lower()
+        now = datetime.now()
+        today_start = datetime(now.year, now.month, now.day)
+
+        if self._contains_any(q, ["yesterday", "昨天", "昨日"]):
+            start = today_start - timedelta(days=1)
+            return start, today_start, "Yesterday"
+        if self._contains_any(q, ["today", "今天", "今日", "tonight", "今晚"]):
+            return today_start, today_start + timedelta(days=1), "Today"
+        if self._contains_any(q, ["recent", "recently", "latest", "最近", "刚刚", "刚才", "最新"]):
+            start = now - timedelta(days=3)
+            return start, now + timedelta(seconds=1), "Recently"
+        return None
+
+    def _filter_recordings_by_date_scope(
+        self,
+        rows: List[Dict[str, Any]],
+        scope: Optional[Tuple[datetime, datetime, str]],
+    ) -> List[Dict[str, Any]]:
+        """Filter recording rows by inferred date scope."""
+        if not scope:
+            return rows
+        start_dt, end_dt, _ = scope
+        filtered: List[Dict[str, Any]] = []
+        for row in rows:
+            ts = self._parse_memory_timestamp({"timestamp": row.get("timestamp", "")})
+            if ts is None:
+                continue
+            if start_dt <= ts < end_dt:
+                filtered.append(row)
+        return filtered
+
+    def _describe_query_time_scope(self, query: str) -> str:
+        """Return a readable label for query time scope."""
+        scope = self._infer_relative_date_scope(query)
+        if scope:
+            return scope[2]
+        q = str(query or "").lower()
+        if self._contains_any(q, ["before", "earlier", "previously", "之前", "此前", "上次"]):
+            return "Earlier"
+        return ""
 
     def _filter_recordings_by_time_window(
         self, rows: List[Dict[str, Any]], window: Optional[Tuple[int, int]]
@@ -2289,7 +2881,8 @@ class ChatPresenter(BasePresenter):
         """Run a multi-stage harness chain and return structured visual evidence."""
         import time
 
-        rows = self._load_recent_recordings_from_db(limit=10)
+        date_scope = self._infer_relative_date_scope(query)
+        rows = self._load_recent_recordings_from_db(limit=24 if date_scope else 10)
         stats = {"candidate_videos": 0, "analyzed_videos": 0, "analyzed_frames": 0}
         if not rows:
             return [], stats
@@ -2299,7 +2892,10 @@ class ChatPresenter(BasePresenter):
         paper_like = any(k in query.lower() for k in ["paper", "pdf", "arxiv", "title", "abstract", "论文", "文档"])
         location_query = self._is_visual_location_query(query)
         window = self._infer_time_window(query)
-        candidate_rows = self._filter_recordings_by_time_window(rows, window) or rows
+        candidate_rows = self._filter_recordings_by_date_scope(rows, date_scope) if date_scope else rows
+        if not candidate_rows:
+            candidate_rows = rows
+        candidate_rows = self._filter_recordings_by_time_window(candidate_rows, window) or candidate_rows
         candidate_rows = self._rank_recording_rows_for_query(candidate_rows, query)
 
         if specific_hint:
@@ -2488,16 +3084,64 @@ class ChatPresenter(BasePresenter):
     ) -> str:
         """Render harness evidence into deterministic, evidence-first answer."""
         if not evidence_list:
-            return (
-                "No usable recordings were found for this visual question.\n"
-                "Suggestion: record the target screen first, then ask again."
+            return self._tr(
+                query,
+                (
+                    "No usable recordings were found for this visual question.\n"
+                    "Suggestion: record the target screen first, then ask again."
+                ),
+                (
+                    "没有找到可用于回答这个视觉问题的录屏。\n"
+                    "建议：先录下目标屏幕，再重新提问。"
+                ),
             )
 
         target_phrase = self._extract_visual_target_phrase(query)
-        lines: List[str] = ["Most likely on-screen content (evidence-based):"]
-        for idx, brief in enumerate(self._build_visual_content_brief(evidence_list, limit=3), 1):
-            lines.append(f"{idx}. {brief}")
-        lines.append("\nEvidence pipeline: video retrieval -> frame sampling -> OCR/visual cross-validation.")
+        direct_answer = self._build_harness_visual_direct_answer(query, evidence_list)
+        lines: List[str] = [self._tr(query, "Direct answer:", "直接回答：")]
+        if direct_answer.get("summary"):
+            lines.append(str(direct_answer["summary"]))
+            lines.append(
+                self._tr(
+                    query,
+                    f"Confidence: {direct_answer.get('confidence', 'Low')}",
+                    f"置信度：{self._localized_confidence_label(query, str(direct_answer.get('confidence', 'Low')))}",
+                )
+            )
+        else:
+            lines.append(
+                self._tr(
+                    query,
+                    "I found recordings, but the frame-level signals are still too weak to summarize them confidently.",
+                    "我找到了录屏，但当前的帧级信号还不足以稳定总结出可靠内容。",
+                )
+            )
+
+        support_rows = direct_answer.get("rows", []) or []
+        if support_rows:
+            compact_rows: List[List[str]] = []
+            for row in support_rows:
+                compact_rows.append([
+                    str(row.get("timestamp", "")),
+                    str(row.get("basename", "")),
+                    str(row.get("evidence", "")) or self._tr(query, "Frame-level evidence available", "已有帧级证据"),
+                ])
+            lines.append("\n" + self._tr(query, "Frame-checked summary:", "帧级核验摘要："))
+            lines.append(
+                self._build_markdown_table(
+                    self._table_headers(query, ["Time", "Video", "Why this matches"], ["时间", "视频", "匹配原因"]),
+                    compact_rows,
+                )
+            )
+
+        lines.append(
+            "\n"
+            + self._tr(
+                query,
+                "Evidence pipeline: video retrieval -> frame sampling -> OCR/visual cross-validation.",
+                "证据链路：视频检索 -> 抽帧 -> OCR/视觉交叉校验。",
+            )
+        )
         main_rows: List[List[str]] = []
         for ev in evidence_list:
             text_items = ev.get("ocr_snippets", []) or []
@@ -2507,17 +3151,32 @@ class ChatPresenter(BasePresenter):
                 str(ev.get("timestamp", "")),
                 str(ev.get("basename", "")),
                 f"{float(ev.get('duration', 0.0)):.1f}s",
-                "; ".join(text_items[:6]) if text_items else "No clear text detected",
+                "; ".join(text_items[:6]) if text_items else self._tr(query, "No clear text detected", "没有检测到清晰文字"),
                 ", ".join(objects[:6]) if objects else "",
                 overall[:140],
             ])
-        lines.append(self._build_markdown_table(["Time", "Video", "Duration", "Visible text", "Main elements", "Summary"], main_rows))
+        lines.append(
+            self._build_markdown_table(
+                self._table_headers(
+                    query,
+                    ["Time", "Video", "Duration", "Visible text", "Main elements", "Summary"],
+                    ["时间", "视频", "时长", "可见文字", "主要元素", "摘要"],
+                ),
+                main_rows,
+            )
+        )
 
         for ev in evidence_list:
             hits = ev.get("target_hits", []) or []
             if target_phrase:
                 if hits:
-                    lines.append(f"Matched positions (target: {target_phrase}):")
+                    lines.append(
+                        self._tr(
+                            query,
+                            f"Matched positions (target: {target_phrase}):",
+                            f"命中位置（目标：{target_phrase}）：",
+                        )
+                    )
                     hit_rows: List[List[str]] = []
                     for hit in hits[:8]:
                         hit_rows.append([
@@ -2526,9 +3185,20 @@ class ChatPresenter(BasePresenter):
                             str(hit.get('location', 'unknown')),
                             str(hit.get('evidence', ''))[:120],
                         ])
-                    lines.append(self._build_markdown_table(["Frame", "Offset", "Location", "Evidence"], hit_rows))
+                    lines.append(
+                        self._build_markdown_table(
+                            self._table_headers(query, ["Frame", "Offset", "Location", "Evidence"], ["帧", "偏移", "位置", "证据"]),
+                            hit_rows,
+                        )
+                    )
                 else:
-                    lines.append(f"Matched positions (target: {target_phrase}): no matches in this video.")
+                    lines.append(
+                        self._tr(
+                            query,
+                            f"Matched positions (target: {target_phrase}): no matches in this video.",
+                            f"命中位置（目标：{target_phrase}）：该视频中没有匹配结果。",
+                        )
+                    )
             else:
                 frame_rows = ev.get("frame_timeline_text", []) or []
                 if frame_rows:
@@ -2539,22 +3209,51 @@ class ChatPresenter(BasePresenter):
                             f"+{float(row.get('time_offset', 0.0)):.1f}s",
                             str(row.get('text', ''))[:140],
                         ])
-                    lines.append(self._build_markdown_table(["Frame", "Offset", "Evidence text"], fr_rows))
+                    lines.append(
+                        self._build_markdown_table(
+                            self._table_headers(query, ["Frame", "Offset", "Evidence text"], ["帧", "偏移", "证据文本"]),
+                            fr_rows,
+                        )
+                    )
 
         memory_lines = self._extract_memory_evidence_lines(memory_context, limit=6)
         if not memory_lines:
             memory_lines = self._collect_memory_recording_evidence(query, limit=4)
         if memory_lines:
-            lines.append("\nMemory evidence:")
-            lines.append(self._build_memory_evidence_table(memory_lines[:6]))
+            lines.append("\n" + self._tr(query, "Memory evidence:", "记忆证据："))
+            lines.append(self._build_memory_evidence_table(memory_lines[:6], query=query))
 
-        lines.append("\nSuggestions:")
+        lines.append("\n" + self._tr(query, "Suggestions:", "建议："))
         if target_phrase:
-            lines.append("1. Open the videos above and verify whether the text/object appears continuously at matched timestamps.")
-            lines.append("2. For higher precision, provide complete keywords (full title, button name, or error text).")
+            lines.append(
+                self._tr(
+                    query,
+                    "1. Open the videos above and verify whether the text/object appears continuously at matched timestamps.",
+                    "1. 打开上面的录屏，确认该文字或对象是否在命中的时间点持续出现。",
+                )
+            )
+            lines.append(
+                self._tr(
+                    query,
+                    "2. For higher precision, provide complete keywords (full title, button name, or error text).",
+                    "2. 如果想要更高精度，请提供更完整的关键词（完整标题、按钮名或报错文本）。",
+                )
+            )
         else:
-            lines.append("1. Open the same video and re-check by the listed frame timestamps.")
-            lines.append("2. Ask which frame a word/object appears in, and I will return precise location evidence.")
+            lines.append(
+                self._tr(
+                    query,
+                    "1. Open the same video and re-check by the listed frame timestamps.",
+                    "1. 打开同一个视频，按上面列出的时间点重新核对。",
+                )
+            )
+            lines.append(
+                self._tr(
+                    query,
+                    "2. Ask which frame a word/object appears in, and I will return precise location evidence.",
+                    "2. 继续追问某个文字或对象出现在哪一帧，我会返回更精确的位置证据。",
+                )
+            )
         return "\n".join(lines)
 
     def _build_markdown_table(self, headers: List[str], rows: List[List[str]]) -> str:
@@ -2573,7 +3272,7 @@ class ChatPresenter(BasePresenter):
             body_lines.append("| " + " | ".join([""] * len(headers)) + " |")
         return "\n".join([header_line, separator_line] + body_lines)
 
-    def _build_memory_evidence_table(self, memory_lines: List[str]) -> str:
+    def _build_memory_evidence_table(self, memory_lines: List[str], query: str = "") -> str:
         """Convert compact memory evidence lines to markdown table for readability."""
         rows: List[List[str]] = []
         for line in memory_lines:
@@ -2600,7 +3299,86 @@ class ChatPresenter(BasePresenter):
             except ValueError:
                 pass
             rows.append([when, file_name, evidence])
-        return self._build_markdown_table(["Time", "Recording File", "Evidence Summary"], rows)
+        headers = self._table_headers(
+            query,
+            ["Time", "Recording File", "Evidence Summary"],
+            ["时间", "记录文件", "证据摘要"],
+        )
+        return self._build_markdown_table(headers, rows)
+
+    def _build_memory_snapshot(
+        self,
+        query: str,
+        working_items: List[Tuple[Optional[datetime], Dict[str, Any], str]],
+        short_term_items: List[Tuple[Optional[datetime], Dict[str, Any], str]],
+        long_term_items: List[Tuple[Optional[datetime], Dict[str, Any], str]],
+    ) -> List[str]:
+        """Build a compact high-signal memory digest before the full tiered context."""
+        ordered = list(working_items) + list(short_term_items) + list(long_term_items)
+        ordered.sort(key=lambda item: item[0] or datetime.min, reverse=True)
+        if not ordered:
+            return []
+
+        latest_recording = ""
+        latest_chat = ""
+        latest_other = ""
+        type_counts: Dict[str, int] = {}
+
+        for ts, mem, content in ordered:
+            metadata = mem.get("metadata", {}) or {}
+            mem_type = str(metadata.get("type", metadata.get("category", "memory")) or "memory")
+            type_counts[mem_type] = type_counts.get(mem_type, 0) + 1
+            when = ts.strftime("%Y-%m-%d %H:%M") if ts else str(metadata.get("timestamp", "Unknown time"))
+            snippet = self._normalize_visual_answer_text(content, max_len=160)
+            if not snippet:
+                continue
+            entry = f"{when} | {snippet}"
+            if mem_type == "screen_recording" and not latest_recording:
+                latest_recording = entry
+            elif mem_type in {"ai_chat", "chat"} and not latest_chat:
+                latest_chat = entry
+            elif not latest_other:
+                latest_other = entry
+
+        if not any([latest_recording, latest_chat, latest_other]):
+            return []
+
+        lines: List[str] = [self._tr(query, "[Memory Snapshot]", "[记忆快照]")]
+        if type_counts:
+            ordered_counts = sorted(type_counts.items(), key=lambda item: item[1], reverse=True)
+            count_text = ", ".join(f"{name}={count}" for name, count in ordered_counts[:4])
+            lines.append(
+                self._tr(
+                    query,
+                    f"- Memory mix: {count_text}",
+                    f"- 当前记忆分布：{count_text}",
+                )
+            )
+        if latest_recording:
+            lines.append(
+                self._tr(
+                    query,
+                    f"- Latest screen evidence: {latest_recording}",
+                    f"- 最新屏幕证据：{latest_recording}",
+                )
+            )
+        if latest_chat:
+            lines.append(
+                self._tr(
+                    query,
+                    f"- Current thread context: {latest_chat}",
+                    f"- 当前对话上下文：{latest_chat}",
+                )
+            )
+        if latest_other:
+            lines.append(
+                self._tr(
+                    query,
+                    f"- Other relevant memory: {latest_other}",
+                    f"- 其他相关记忆：{latest_other}",
+                )
+            )
+        return lines
 
     def _collect_visual_detail_evidence(self, query: str, max_videos: int = 2) -> List[Dict[str, Any]]:
         """Collect rich visual evidence from recent recordings."""
@@ -2840,6 +3618,405 @@ class ChatPresenter(BasePresenter):
             print(f"[Chat] memory recording evidence failed: {e}")
             return []
 
+    def _should_use_fast_visual_path(self, query: str) -> bool:
+        """Use OCR-first fast path for broad visual questions where exact localization is not required."""
+        target_phrase = self._extract_visual_target_phrase(query)
+        if target_phrase:
+            return False
+        if self._is_visual_location_query(query):
+            return False
+        q = str(query or "").lower()
+        precision_tokens = [
+            "where",
+            "location",
+            "which frame",
+            "which timestamp",
+            "frame",
+            "timestamp",
+            "offset",
+            "哪里",
+            "位置",
+            "哪一帧",
+            "几秒",
+        ]
+        if self._contains_any(q, precision_tokens):
+            return False
+        return self._is_screen_content_query(query)
+
+    def _normalize_visual_answer_text(self, text: Any, max_len: int = 180) -> str:
+        """Normalize text snippets used in direct visual answers."""
+        clean = " ".join(str(text or "").split()).strip(" ,;|")
+        if not clean:
+            return ""
+        if len(clean) > max_len:
+            clean = clean[:max_len].rstrip(" ,;:.") + "..."
+        return clean
+
+    def _visual_answer_confidence_label(self, score: int) -> str:
+        """Map a heuristic score to a readable confidence label."""
+        if score >= 7:
+            return "High"
+        if score >= 4:
+            return "Medium"
+        return "Low"
+
+    def _localized_confidence_label(self, query: str, label: str) -> str:
+        if self._preferred_response_language(query) != "zh":
+            return label
+        mapping = {
+            "High": "高",
+            "Medium": "中",
+            "Low": "低",
+        }
+        return mapping.get(str(label), str(label))
+
+    def _build_hybrid_visual_direct_answer(self, query: str, hybrid_stats: Dict[str, Any]) -> Dict[str, Any]:
+        """Build a direct, deterministic answer from DB metadata + OCR signals."""
+        top_rows = hybrid_stats.get("top_rows", []) or []
+        ocr_details = hybrid_stats.get("ocr_details", []) or []
+        if not top_rows and not ocr_details:
+            return {"summary": "", "score": 0, "confidence": "Low", "rows": []}
+
+        technical_tags = {
+            "screen_recording",
+            "timeline_ready",
+            "ocr_enriched",
+            "harness_v2",
+            "ready",
+        }
+        ocr_map: Dict[Tuple[str, str], List[str]] = {}
+        for detail in ocr_details:
+            key = (str(detail.get("timestamp", "")), str(detail.get("basename", "")))
+            snippets = [
+                self._normalize_visual_answer_text(item, max_len=96)
+                for item in (detail.get("snippets", []) or [])
+            ]
+            snippets = [item for item in snippets if item]
+            if snippets:
+                ocr_map[key] = snippets
+
+        cards: List[Dict[str, Any]] = []
+        for row in top_rows[:3]:
+            timestamp = str(row.get("timestamp", ""))
+            basename = str(row.get("basename", ""))
+            window_title = self._normalize_visual_answer_text(row.get("window_title", ""), max_len=72)
+            content_summary = self._normalize_visual_answer_text(row.get("content_summary", ""), max_len=180)
+            content_keywords = [
+                self._normalize_visual_answer_text(item, max_len=40)
+                for item in (row.get("content_keywords", []) or [])
+            ]
+            content_keywords = [item for item in content_keywords if item]
+            content_tags = [
+                self._normalize_visual_answer_text(item, max_len=32)
+                for item in (row.get("content_tags", []) or [])
+            ]
+            content_tags = [
+                item for item in content_tags
+                if item and item not in technical_tags and not item.startswith("kw:")
+            ]
+            linked_process_rows = row.get("linked_process_summaries", []) or []
+            linked_process: List[str] = []
+            active_linked_process = False
+            for item in linked_process_rows:
+                if isinstance(item, dict):
+                    label = self._normalize_visual_answer_text(item.get("summary", ""), max_len=120)
+                    if int(item.get("event_count", 0) or 0) > 0:
+                        active_linked_process = True
+                else:
+                    label = self._normalize_visual_answer_text(item, max_len=120)
+                if label:
+                    linked_process.append(label)
+            snippets = ocr_map.get((timestamp, basename), [])
+
+            primary = ""
+            if content_summary:
+                primary = content_summary
+            elif window_title:
+                primary = self._tr(query, f'the "{window_title}" window', f'"{window_title}" 窗口')
+            elif snippets:
+                primary = self._tr(query, f'text such as "{snippets[0]}"', f'例如“{snippets[0]}”这样的文字')
+            elif content_keywords:
+                primary = self._tr(query, "content related to " + ", ".join(content_keywords[:4]), "与以下内容相关：" + "、".join(content_keywords[:4]))
+            elif content_tags:
+                primary = self._tr(query, "activity related to " + ", ".join(content_tags[:4]), "与以下活动相关：" + "、".join(content_tags[:4]))
+            if not primary:
+                continue
+
+            score = 0
+            if content_summary:
+                score += 4
+            if window_title:
+                score += 2
+            if content_keywords:
+                score += min(len(content_keywords), 2)
+            if content_tags:
+                score += 1
+            if snippets:
+                score += 2
+            if hybrid_stats.get("keyword_matches", 0) > 0 and snippets:
+                score += 1
+            if linked_process:
+                score += 1
+            if active_linked_process:
+                score += 1
+
+            evidence_parts: List[str] = []
+            if window_title:
+                evidence_parts.append(self._tr(query, f'window: "{window_title}"', f'窗口：“{window_title}”'))
+            if snippets:
+                evidence_parts.append(self._tr(query, "visible text: " + "; ".join(snippets[:2]), "可见文字：" + "；".join(snippets[:2])))
+            elif content_keywords:
+                evidence_parts.append(self._tr(query, "keywords: " + ", ".join(content_keywords[:4]), "关键词：" + "、".join(content_keywords[:4])))
+            elif content_tags:
+                evidence_parts.append(self._tr(query, "tags: " + ", ".join(content_tags[:4]), "标签：" + "、".join(content_tags[:4])))
+            if linked_process:
+                evidence_parts.append(
+                    self._tr(
+                        query,
+                        "linked input: " + "; ".join(linked_process[:2]),
+                        "关联键鼠："
+                        + "；".join(linked_process[:2]),
+                    )
+                )
+
+            cards.append(
+                {
+                    "timestamp": timestamp,
+                    "basename": basename,
+                    "primary": primary.rstrip("."),
+                    "score": score,
+                    "evidence": " | ".join(evidence_parts),
+                }
+            )
+
+        if not cards and ocr_details:
+            fallback_parts = [
+                self._normalize_visual_answer_text(item, max_len=110)
+                for item in (ocr_details[0].get("snippets", []) or [])
+            ]
+            fallback_parts = [item for item in fallback_parts if item]
+            if fallback_parts:
+                cards.append(
+                    {
+                        "timestamp": str(ocr_details[0].get("timestamp", "")),
+                        "basename": str(ocr_details[0].get("basename", "")),
+                        "primary": self._tr(query, f'text such as "{fallback_parts[0]}"', f'例如“{fallback_parts[0]}”这样的文字'),
+                        "score": 3,
+                        "evidence": self._tr(query, "visible text: " + "; ".join(fallback_parts[:2]), "可见文字：" + "；".join(fallback_parts[:2])),
+                    }
+                )
+
+        if not cards:
+            return {"summary": "", "score": 0, "confidence": "Low", "rows": []}
+
+        cards.sort(key=lambda item: (int(item.get("score", 0)), str(item.get("timestamp", ""))), reverse=True)
+        best = cards[0]
+        scope_label = self._describe_query_time_scope(query)
+        lang = self._preferred_response_language(query)
+        if scope_label:
+            if lang == "zh":
+                summary_parts = [f"{self._localized_scope_label(query, scope_label)}你最可能看到的是：{best['primary']}。"]
+            else:
+                summary_parts = [f"{scope_label}, you most likely looked at {best['primary']}."]
+        else:
+            summary_parts = [
+                self._tr(
+                    query,
+                    f"The most likely screen content was {best['primary']}.",
+                    f"最可能的屏幕内容是：{best['primary']}。",
+                )
+            ]
+        alternate_items = []
+        for row in cards[1:3]:
+            alt = str(row.get("primary", "")).strip()
+            if alt and alt.lower() != str(best["primary"]).lower():
+                alternate_items.append(alt)
+        if alternate_items:
+            if lang == "zh":
+                summary_parts.append("附近的其他录屏也显示：" + "；".join(alternate_items[:2]) + "。")
+            else:
+                summary_parts.append(
+                    "Other nearby recordings also suggest "
+                    + "; ".join(alternate_items[:2])
+                    + "."
+                )
+        if hybrid_stats.get("keyword_matches", 0) > 0:
+            summary_parts.append(
+                self._tr(query, "The OCR clues align with the query.", "OCR 线索与当前问题一致。")
+            )
+
+        final_score = int(best.get("score", 0)) + min(int(hybrid_stats.get("keyword_matches", 0)), 2)
+        return {
+            "summary": " ".join(summary_parts).strip(),
+            "score": final_score,
+            "confidence": self._visual_answer_confidence_label(final_score),
+            "rows": cards[:3],
+        }
+
+    def _build_harness_visual_direct_answer(self, query: str, evidence_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Build a direct answer from slower frame-level evidence."""
+        if not evidence_list:
+            return {"summary": "", "score": 0, "confidence": "Low", "rows": []}
+
+        cards: List[Dict[str, Any]] = []
+        for ev in evidence_list[:3]:
+            timestamp = str(ev.get("timestamp", ""))
+            basename = str(ev.get("basename", ""))
+            scene = self._normalize_visual_answer_text(ev.get("overall_description", ""), max_len=180)
+            text_items = [
+                self._normalize_visual_answer_text(item, max_len=96)
+                for item in (ev.get("ocr_snippets", []) or [])
+            ]
+            text_items = [item for item in text_items if item]
+            objects = [
+                self._normalize_visual_answer_text(item, max_len=32)
+                for item in (ev.get("objects", []) or [])
+            ]
+            objects = [item for item in objects if item]
+
+            primary = ""
+            if scene:
+                primary = scene
+            elif text_items:
+                primary = self._tr(query, f'text such as "{text_items[0]}"', f'例如“{text_items[0]}”这样的文字')
+            elif objects:
+                primary = self._tr(query, "a screen containing " + ", ".join(objects[:4]), "包含以下元素的画面：" + "、".join(objects[:4]))
+            if not primary:
+                continue
+
+            score = 0
+            if scene:
+                score += 4
+            if text_items:
+                score += 3
+            if objects:
+                score += min(len(objects), 2)
+
+            evidence_parts: List[str] = []
+            if text_items:
+                evidence_parts.append(self._tr(query, "visible text: " + "; ".join(text_items[:2]), "可见文字：" + "；".join(text_items[:2])))
+            if objects:
+                evidence_parts.append(self._tr(query, "elements: " + ", ".join(objects[:4]), "元素：" + "、".join(objects[:4])))
+
+            cards.append(
+                {
+                    "timestamp": timestamp,
+                    "basename": basename,
+                    "primary": primary.rstrip("."),
+                    "score": score,
+                    "evidence": " | ".join(evidence_parts),
+                }
+            )
+
+        if not cards:
+            return {"summary": "", "score": 0, "confidence": "Low", "rows": []}
+
+        cards.sort(key=lambda item: (int(item.get("score", 0)), str(item.get("timestamp", ""))), reverse=True)
+        best = cards[0]
+        scope_label = self._describe_query_time_scope(query)
+        lang = self._preferred_response_language(query)
+        if scope_label:
+            if lang == "zh":
+                summary_parts = [f"{self._localized_scope_label(query, scope_label)}你最可能看到的是：{best['primary']}。"]
+            else:
+                summary_parts = [f"{scope_label}, you most likely looked at {best['primary']}."]
+        else:
+            summary_parts = [
+                self._tr(
+                    query,
+                    f"The most likely screen content was {best['primary']}.",
+                    f"最可能的屏幕内容是：{best['primary']}。",
+                )
+            ]
+        alternate_items = []
+        for row in cards[1:3]:
+            alt = str(row.get("primary", "")).strip()
+            if alt and alt.lower() != str(best["primary"]).lower():
+                alternate_items.append(alt)
+        if alternate_items:
+            if lang == "zh":
+                summary_parts.append("经过帧级核验的其他候选还显示：" + "；".join(alternate_items[:2]) + "。")
+            else:
+                summary_parts.append(
+                    "Frame-checked alternatives also show "
+                    + "; ".join(alternate_items[:2])
+                    + "."
+                )
+
+        final_score = int(best.get("score", 0))
+        return {
+            "summary": " ".join(summary_parts).strip(),
+            "score": final_score,
+            "confidence": self._visual_answer_confidence_label(final_score),
+            "rows": cards[:3],
+        }
+
+    def _format_fast_visual_response(
+        self,
+        query: str,
+        hybrid_text: str,
+        hybrid_stats: Dict[str, Any],
+        memory_context: str = "",
+        direct_answer: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Render a fast OCR-first visual answer for broad screen-content questions."""
+        direct_answer = direct_answer or self._build_hybrid_visual_direct_answer(query, hybrid_stats)
+        lines: List[str] = [self._tr(query, "Direct answer:", "直接回答：")]
+        if direct_answer.get("summary"):
+            lines.append(str(direct_answer["summary"]))
+            lines.append(
+                self._tr(
+                    query,
+                    f"Confidence: {direct_answer.get('confidence', 'Low')}",
+                    f"置信度：{self._localized_confidence_label(query, str(direct_answer.get('confidence', 'Low')))}",
+                )
+            )
+        else:
+            lines.append(
+                self._tr(
+                    query,
+                    "I could not extract a reliable screen-content summary from the latest recordings yet.",
+                    "我暂时还无法从最近录屏中提取出足够可靠的屏幕内容摘要。",
+                )
+            )
+
+        support_rows = direct_answer.get("rows", []) or []
+        if support_rows:
+            lines.append("\n" + self._tr(query, "Fast evidence (recording metadata + OCR):", "快速证据（录屏元数据 + OCR）："))
+            evidence_rows: List[List[str]] = []
+            for row in support_rows:
+                evidence_rows.append(
+                    [
+                        str(row.get("timestamp", "")),
+                        str(row.get("basename", "")),
+                        str(row.get("evidence", "")) or self._tr(query, "Recent recording signal", "最近录屏信号"),
+                    ]
+                )
+            lines.append(
+                self._build_markdown_table(
+                    self._table_headers(query, ["Time", "Video", "Why this matches"], ["时间", "视频", "匹配原因"]),
+                    evidence_rows,
+                )
+            )
+        elif hybrid_text:
+            lines.append("\n" + self._tr(query, "Fast evidence:", "快速证据："))
+            lines.append(hybrid_text)
+
+        memory_lines = self._extract_memory_evidence_lines(memory_context, limit=4)
+        if memory_lines:
+            lines.append("\n" + self._tr(query, "Related chat/video memory:", "相关聊天/视频记忆："))
+            lines.append(self._build_memory_evidence_table(memory_lines, query=query))
+
+        lines.append("\n" + self._tr(query, "Need more precision?", "需要更精确的结果？"))
+        lines.append(
+            self._tr(
+                query,
+                "Ask for a specific text, object, app, or position if you want the slower frame-level visual pass.",
+                "如果你想要更慢但更精确的帧级分析，可以继续问具体的文字、对象、应用名或位置。",
+            )
+        )
+        return "\n".join(lines)
+
     def _build_visual_detail_response(
         self,
         query: str,
@@ -2850,11 +4027,45 @@ class ChatPresenter(BasePresenter):
         Returns: (answer_text, used_model)
         """
         broad_screen_query = self._is_screen_content_query(query)
+        fast_path_allowed = self._should_use_fast_visual_path(query)
+        hybrid_text = ""
+        hybrid_stats: Dict[str, Any] = {}
+        hybrid_direct_answer: Dict[str, Any] = {}
+        if fast_path_allowed or broad_screen_query:
+            hybrid_text, hybrid_stats = self._build_hybrid_visual_evidence(
+                query,
+                db_limit=5,
+                ocr_limit=2,
+            )
+            hybrid_direct_answer = self._build_hybrid_visual_direct_answer(query, hybrid_stats)
+            if fast_path_allowed and hybrid_direct_answer.get("summary") and int(hybrid_direct_answer.get("score", 0)) >= 4:
+                return (
+                    self._format_fast_visual_response(
+                        query=query,
+                        hybrid_text=hybrid_text,
+                        hybrid_stats=hybrid_stats,
+                        memory_context=memory_context,
+                        direct_answer=hybrid_direct_answer,
+                    ),
+                    "hybrid-ocr-fastpath",
+                )
+
         evidence_list, harness_stats = self._collect_visual_harness_evidence(
             query,
             max_videos=3 if broad_screen_query else 2,
         )
         if not evidence_list:
+            if hybrid_direct_answer.get("summary"):
+                return (
+                    self._format_fast_visual_response(
+                        query=query,
+                        hybrid_text=hybrid_text,
+                        hybrid_stats=hybrid_stats,
+                        memory_context=memory_context,
+                        direct_answer=hybrid_direct_answer,
+                    ),
+                    "hybrid-ocr-fallback",
+                )
             return self._format_visual_detail_fallback(query, []), "visual-harness-fallback"
 
         evidence_text = self._format_visual_harness_response(
@@ -2862,6 +4073,9 @@ class ChatPresenter(BasePresenter):
             evidence_list=evidence_list,
             memory_context=memory_context,
         )
+
+        if broad_screen_query:
+            return evidence_text, "visual-harness"
 
         model_name = self._select_large_text_model()
         if self._is_vision_model(model_name):
@@ -2882,7 +4096,8 @@ class ChatPresenter(BasePresenter):
 
         synthesis_prompt = (
             "You are the MemScreen visual-memory summarizer.\n"
-            "Answer the user question first in one sentence, then output 3-5 concise English conclusions strictly from evidence.\n"
+            "Answer the user question first in one sentence, then output 3-5 concise conclusions strictly from evidence.\n"
+            "Use the same language as the user unless the user explicitly asks for another language.\n"
             "Always mention concrete app/window/text clues from the evidence when available.\n"
             "If asked where/when something appeared, prioritize matched timestamps and locations.\n"
             "If evidence is insufficient, explicitly say so.\n"
@@ -2923,6 +4138,25 @@ class ChatPresenter(BasePresenter):
             return "web browsing/search"
         if any(k in t for k in ["wecom", "wechat", "chat", "message", "聊天", "消息"]):
             return "communication/message handling"
+        return "general window operations"
+
+    def _map_process_activity_kind(self, raw: str) -> str:
+        """Map stored process-session primary activity into chat-friendly activity buckets."""
+        val = " ".join(str(raw or "").lower().split())
+        if not val:
+            return "general window operations"
+        if "program" in val:
+            return "code editing"
+        if "document" in val:
+            return "paper/document reading"
+        if "commun" in val:
+            return "communication/message handling"
+        if "brows" in val:
+            return "web browsing/search"
+        if "design" in val:
+            return "design work"
+        if "typing" in val:
+            return "typing-heavy work"
         return "general window operations"
 
     def _collect_activity_timeline_entries(
@@ -2976,6 +4210,56 @@ class ChatPresenter(BasePresenter):
             except Exception as e:
                 print(f"[Chat] collect activity entries from memory failed: {e}")
 
+            try:
+                process_result = self.memory_system.search(
+                    query=query or "recent keyboard mouse workflow",
+                    user_id="default_user",
+                    filters={"type": "process_session"},
+                    limit=max(limit, 12),
+                    threshold=0.0,
+                )
+                process_rows = process_result.get("results", []) if isinstance(process_result, dict) else (process_result or [])
+                process_rows = self._filter_memories_for_active_thread(process_rows)
+                for row in process_rows:
+                    if not isinstance(row, dict):
+                        continue
+                    meta = row.get("metadata", {}) or {}
+                    ts = str(meta.get("end_time") or meta.get("timestamp") or meta.get("seen_at") or "")
+                    session_id = str(meta.get("session_id", "") or "")
+                    key = (ts, f"process:{session_id}")
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
+                    detail = (
+                        meta.get("activity_summary")
+                        or meta.get("common_actions")
+                        or self._extract_memory_content(row)
+                    )
+                    linked_recordings = self._parse_serialized_tag_list(
+                        meta.get("linked_recordings_json") or meta.get("linked_recordings")
+                    )
+                    if linked_recordings:
+                        detail = (
+                            str(detail).rstrip(".")
+                            + ". Linked recordings: "
+                            + "; ".join(linked_recordings[:2])
+                        )
+                    detail = " ".join(str(detail).split())[:350]
+                    kind = self._map_process_activity_kind(meta.get("primary_activity"))
+                    entries.append(
+                        {
+                            "timestamp": ts or "Unknown time",
+                            "basename": f"process_session_{session_id}" if session_id else "process_session",
+                            "detail": detail,
+                            "kind": kind,
+                        }
+                    )
+                    if len(entries) >= limit:
+                        break
+            except Exception as e:
+                print(f"[Chat] collect process activity entries from memory failed: {e}")
+
         # DB fallback for missing entries.
         if len(entries) < min(4, limit):
             db_rows = self._load_recent_recordings_from_db(limit=limit)
@@ -3018,8 +4302,11 @@ class ChatPresenter(BasePresenter):
         entries = self._collect_activity_timeline_entries(query, limit=10)
         if not entries:
             return (
-                "I could not find a usable recording timeline for summary.\n"
-                "Suggestion: record key actions first, then ask for a daily summary.",
+                self._tr(
+                    query,
+                    "I could not find a usable recording timeline for summary.\nSuggestion: record key actions first, then ask for a daily summary.",
+                    "我没有找到可用于总结的录屏时间线。\n建议：先记录关键操作，再来让我做总结。",
+                ),
                 "activity-fallback",
             )
 
@@ -3030,7 +4317,10 @@ class ChatPresenter(BasePresenter):
         top_kinds = sorted(kind_counts.items(), key=lambda x: x[1], reverse=True)
         focus = ", ".join([f"{k} ({v})" for k, v in top_kinds[:3]]) if top_kinds else "general window operations"
 
-        lines = ["I summarized your recent activities by recording timeline:", "Timeline evidence:"]
+        lines = [
+            self._tr(query, "I summarized your recent activities by recording timeline:", "我基于录屏时间线总结了你最近的活动："),
+            self._tr(query, "Timeline evidence:", "时间线证据："),
+        ]
         timeline_rows: List[List[str]] = []
         for item in entries[:6]:
             timeline_rows.append([
@@ -3039,23 +4329,64 @@ class ChatPresenter(BasePresenter):
                 str(item.get('kind', '')),
                 str(item.get('detail', ''))[:180],
             ])
-        lines.append(self._build_markdown_table(["Time", "Video", "Activity type", "evidence summary"], timeline_rows))
-        lines.append(f"Primary activity types:{focus}")
+        lines.append(
+            self._build_markdown_table(
+                self._table_headers(query, ["Time", "Video", "Activity type", "Evidence summary"], ["时间", "视频", "活动类型", "证据摘要"]),
+                timeline_rows,
+            )
+        )
+        lines.append(self._tr(query, f"Primary activity types: {focus}", f"主要活动类型：{focus}"))
 
         # Deterministic suggestion baseline.
         suggestions = []
         if any("terminal/development debugging" in k for k, _ in top_kinds):
-            suggestions.append("Record error keywords and fixes as a checklist to avoid repeated debugging.")
+            suggestions.append(
+                self._tr(
+                    query,
+                    "Record error keywords and fixes as a checklist to avoid repeated debugging.",
+                    "把错误关键词和修复方式整理成清单，避免重复排查。",
+                )
+            )
         if any("paper/document reading" in k for k, _ in top_kinds):
-            suggestions.append("Use a three-column note format for papers: title, conclusion, and points to verify.")
+            suggestions.append(
+                self._tr(
+                    query,
+                    "Use a three-column note format for papers: title, conclusion, and points to verify.",
+                    "看文档或论文时，可以用“三列笔记”：标题、结论、待验证点。",
+                )
+            )
         if any("communication/message handling" in k for k, _ in top_kinds):
-            suggestions.append("Convert message todos into explicit tasks with deadlines.")
+            suggestions.append(
+                self._tr(
+                    query,
+                    "Convert message todos into explicit tasks with deadlines.",
+                    "把消息里的待办转成明确任务，并加上截止时间。",
+                )
+            )
         if not suggestions:
-            suggestions.append("Review key windows along the timeline and confirm the next top-priority action.")
+            suggestions.append(
+                self._tr(
+                    query,
+                    "Review key windows along the timeline and confirm the next top-priority action.",
+                    "沿着时间线回看关键窗口，并确认下一步最优先的动作。",
+                )
+            )
         if len(suggestions) < 2:
-            suggestions.append("Tag key recording clips (paper/error/code) to improve later retrieval speed and precision.")
+            suggestions.append(
+                self._tr(
+                    query,
+                    "Tag key recording clips (paper/error/code) to improve later retrieval speed and precision.",
+                    "给关键录屏打上标签（论文/报错/代码），提升后续检索速度和准确度。",
+                )
+            )
         if len(suggestions) < 3:
-            suggestions.append("Do a 1-minute daily review: completed work, blockers, and first step tomorrow.")
+            suggestions.append(
+                self._tr(
+                    query,
+                    "Do a 1-minute daily review: completed work, blockers, and first step tomorrow.",
+                    "每天做一次 1 分钟复盘：完成了什么、卡点是什么、明天第一步做什么。",
+                )
+            )
 
         model_name = self._select_large_text_model()
         if not self._is_vision_model(model_name):
@@ -3064,6 +4395,7 @@ class ChatPresenter(BasePresenter):
                 "Based only on evidence, output:\n"
                 "1) What the user has been doing recently (2-3 lines)\n"
                 "2) Specific next-step suggestions (2-3 items)\n"
+                "Use the same language as the user unless the user explicitly asks for another language.\n"
                 "No fabrication."
             )
             ai_summary = self._ollama_generate_once(
@@ -3085,13 +4417,177 @@ class ChatPresenter(BasePresenter):
             )
             ai_summary = self._sanitize_ai_text(ai_summary)
             if ai_summary and len(ai_summary) >= 20:
-                lines.append("\nReview summary:")
+                lines.append("\n" + self._tr(query, "Review summary:", "复盘总结："))
                 lines.append(ai_summary)
 
-        lines.append("\nSuggestions:")
+        lines.append("\n" + self._tr(query, "Suggestions:", "建议："))
         for idx, item in enumerate(suggestions[:3], 1):
             lines.append(f"{idx}. {item}")
         return "\n".join(lines), model_name
+
+    def _build_plan_step_from_activity(self, query: str, kind: str, detail: str) -> str:
+        """Convert a recent activity pattern into one actionable plan step."""
+        hint = self._normalize_visual_answer_text(detail, max_len=110)
+        if kind == "terminal/development debugging":
+            base = self._tr(
+                query,
+                "Resume the active debugging thread first and clear the latest build/runtime blocker.",
+                "先继续当前的调试链路，优先清掉最新的构建或运行阻塞。",
+            )
+        elif kind == "code editing":
+            base = self._tr(
+                query,
+                "Continue the current implementation and push it to a clean testable checkpoint.",
+                "继续当前实现，并推进到一个可稳定测试的阶段性节点。",
+            )
+        elif kind == "paper/document reading":
+            base = self._tr(
+                query,
+                "Finish extracting decisions, notes, or action items from the document you were reviewing.",
+                "把你刚才阅读的文档中的结论、笔记或行动项整理出来。",
+            )
+        elif kind == "design work":
+            base = self._tr(
+                query,
+                "Continue the active design iteration and convert the current draft into a reviewable revision.",
+                "继续当前设计迭代，把现有草稿推进成可评审的版本。",
+            )
+        elif kind == "typing-heavy work":
+            base = self._tr(
+                query,
+                "Group the text-heavy work into one focused block and turn it into a structured note or deliverable.",
+                "把文字输入密集的工作集中处理，并整理成结构化笔记或可交付结果。",
+            )
+        elif kind == "communication/message handling":
+            base = self._tr(
+                query,
+                "Review pending messages and convert any requests into explicit tasks with owners or deadlines.",
+                "回看待处理消息，把其中的请求转成明确任务，并补上负责人或截止时间。",
+            )
+        elif kind == "web browsing/search":
+            base = self._tr(
+                query,
+                "Turn the current browsing/research work into one concrete decision or execution task.",
+                "把当前浏览或检索得到的信息收束成一个明确决策或执行任务。",
+            )
+        else:
+            base = self._tr(
+                query,
+                "Review the latest work context and define one concrete deliverable before starting new work.",
+                "先回看最近的工作上下文，再定义一个明确可交付结果后再开启新任务。",
+            )
+        if hint:
+            return self._tr(query, f"{base} Evidence: {hint}", f"{base} 依据：{hint}")
+        return base
+
+    def _build_next_day_plan_response(
+        self,
+        query: str,
+        memory_context: str = "",
+    ) -> Tuple[str, str]:
+        """Build a memory-grounded plan for tomorrow from recent activity history."""
+        entries = self._collect_activity_timeline_entries("recent work summary", limit=10)
+        memory_lines = self._extract_memory_evidence_lines(memory_context, limit=4)
+
+        if not entries and not memory_lines:
+            return (
+                self._tr(
+                    query,
+                    "I could not find enough recent memory to build tomorrow's plan.\nSuggestion: record or analyze recent work first, then ask again.",
+                    "我暂时没有找到足够的近期记忆来安排明天。\n建议：先记录或分析最近的工作，再来让我规划。",
+                ),
+                "planning-fallback",
+            )
+
+        kind_counts: Dict[str, int] = {}
+        for item in entries:
+            kind = str(item.get("kind", "general window operations"))
+            kind_counts[kind] = kind_counts.get(kind, 0) + 1
+        top_kinds = sorted(kind_counts.items(), key=lambda x: x[1], reverse=True)
+        dominant_focus = ", ".join([f"{k} ({v})" for k, v in top_kinds[:3]]) if top_kinds else "general work"
+
+        lead_entries: List[Dict[str, Any]] = []
+        seen_kind = set()
+        for item in entries:
+            kind = str(item.get("kind", "general window operations"))
+            if kind in seen_kind:
+                continue
+            seen_kind.add(kind)
+            lead_entries.append(item)
+            if len(lead_entries) >= 3:
+                break
+        if not lead_entries and entries:
+            lead_entries = entries[: min(3, len(entries))]
+
+        slot_labels = [
+            self._tr(query, "Morning focus", "上午重点"),
+            self._tr(query, "Midday follow-up", "中午跟进"),
+            self._tr(query, "Afternoon focus", "下午重点"),
+        ]
+        plan_steps: List[str] = []
+        for idx, item in enumerate(lead_entries):
+            slot = slot_labels[idx] if idx < len(slot_labels) else self._tr(query, f"Priority block {idx + 1}", f"优先时段 {idx + 1}")
+            step = self._build_plan_step_from_activity(
+                query,
+                str(item.get("kind", "general window operations")),
+                str(item.get("detail", "")),
+            )
+            plan_steps.append(f"{slot}: {step}")
+
+        while len(plan_steps) < 3:
+            filler = [
+                self._tr(query, "Morning focus: Re-open the highest-value ongoing work and finish the next concrete milestone.", "上午重点：重新进入当前价值最高的任务，完成下一个明确里程碑。"),
+                self._tr(query, "Midday follow-up: Clear blockers, unanswered messages, or unresolved decisions before context switching.", "中午跟进：在切换上下文前，先清掉阻塞、未回复消息和未决事项。"),
+                self._tr(query, "Afternoon focus: Consolidate outputs into a stable deliverable, note, or checkpoint.", "下午重点：把产出沉淀成稳定的交付物、记录或阶段性节点。"),
+            ][len(plan_steps)]
+            plan_steps.append(filler)
+
+        plan_steps.append(
+            self._tr(
+                query,
+                "End-of-day wrap-up: Review what changed, capture unresolved blockers, and leave one explicit first step for the following session.",
+                "收尾复盘：回顾今天有什么变化，记录未解决的阻塞，并给下次工作留下一个明确的起手动作。",
+            )
+        )
+
+        lines = [
+            self._tr(query, "Plan for tomorrow (based on recent memory):", "明日安排（基于近期记忆）："),
+            self._tr(query, f"Recent work pattern: {dominant_focus}", f"近期工作模式：{dominant_focus}"),
+            self._tr(query, "Grounding evidence:", "依据证据："),
+        ]
+
+        evidence_rows: List[List[str]] = []
+        for item in entries[:4]:
+            evidence_rows.append([
+                str(item.get("timestamp", "Unknown time")),
+                str(item.get("kind", "")),
+                str(item.get("detail", ""))[:160],
+            ])
+        if evidence_rows:
+            lines.append(
+                self._build_markdown_table(
+                    self._table_headers(query, ["Time", "Activity type", "Recent evidence"], ["时间", "活动类型", "近期证据"]),
+                    evidence_rows,
+                )
+            )
+
+        if memory_lines:
+            lines.append("\n" + self._tr(query, "Additional memory context:", "额外记忆上下文："))
+            lines.append(self._build_memory_evidence_table(memory_lines, query=query))
+
+        lines.append("\n" + self._tr(query, "Suggested schedule:", "建议安排："))
+        for idx, step in enumerate(plan_steps, 1):
+            lines.append(f"{idx}. {step}")
+
+        lines.append("\n" + self._tr(query, "Planning rule:", "规划原则："))
+        lines.append(
+            self._tr(
+                query,
+                "Keep the first half of the day on the same dominant workstream before switching to coordination or review.",
+                "上午尽量保持在同一条主工作流上推进，再切换到沟通或复盘类任务。",
+            )
+        )
+        return "\n".join(lines), "planning-memory"
 
     def _build_hybrid_visual_evidence(
         self,
@@ -3113,18 +4609,30 @@ class ChatPresenter(BasePresenter):
             "db_lines": [],
             "ocr_lines": [],
             "ocr_details": [],
+            "top_rows": [],
         }
-        rows = self._load_recent_recordings_from_db(limit=db_limit)
+        date_scope = self._infer_relative_date_scope(query)
+        load_limit = max(db_limit, 24) if date_scope else db_limit
+        rows = self._load_recent_recordings_from_db(limit=load_limit)
         if not rows:
             return "", stats
+        original_rows = list(rows)
+        if date_scope:
+            dated_rows = self._filter_recordings_by_date_scope(rows, date_scope)
+            if dated_rows:
+                rows = dated_rows
         rows = self._rank_recording_rows_for_query(rows, query)
 
         stats["db_rows"] = len(rows)
         window = self._infer_time_window(query)
         target_rows = self._filter_recordings_by_time_window(rows, window)
-        time_window_note = ""
+        filter_notes: List[str] = []
+        if date_scope and not self._filter_recordings_by_date_scope(original_rows, date_scope):
+            filter_notes.append(
+                f"{date_scope[2]} filter note: no recordings found in that date range. Showing the latest available recordings instead."
+            )
         if window and not target_rows:
-            time_window_note = (
+            filter_notes.append(
                 f"Time-window filter note: no recordings found for {window[0]:02d}:00-{window[1]:02d}:00 "
                 "Showing the latest available recordings instead."
             )
@@ -3149,11 +4657,27 @@ class ChatPresenter(BasePresenter):
                 f"{float(row.get('duration', 0.0)):.1f}s",
                 str(row.get('frame_count', 0)),
             ])
+            stats["top_rows"].append(
+                {
+                    "timestamp": str(row.get("timestamp", "Unknown time")),
+                    "basename": str(row.get("basename", "")),
+                    "window_title": str(row.get("window_title", "")),
+                    "recording_mode": str(row.get("recording_mode", "")),
+                    "content_summary": self._normalize_visual_answer_text(row.get("content_summary", ""), max_len=220),
+                    "content_tags": self._parse_serialized_tag_list(row.get("content_tags")),
+                    "content_keywords": self._parse_serialized_tag_list(row.get("content_keywords")),
+                    "linked_process_summaries": self._find_process_summaries_for_recording(
+                        str(row.get("timestamp", "Unknown time")),
+                        float(row.get("duration", 0.0) or 0.0),
+                        limit=2,
+                    ),
+                }
+            )
         evidence_lines.append(self._build_markdown_table(["Time", "Video", "Duration", "Frame count"], db_rows_md))
         stats["db_lines"] = [f"- {r[0]}: {r[1]} ({r[2]}, {r[3]} frames)" for r in db_rows_md]
 
-        if time_window_note:
-            evidence_lines.append(f"- {time_window_note}")
+        for note in filter_notes:
+            evidence_lines.append(f"- {note}")
 
         query_keywords = self._extract_query_keywords(query)
         paper_like = any(k in query.lower() for k in ["paper", "pdf", "arxiv", "论文", "文档"])
@@ -3170,6 +4694,8 @@ class ChatPresenter(BasePresenter):
             )
             ocr_scan_rows = self._rank_recording_rows_for_query(ocr_scan_rows, query)
             ocr_limit = max(ocr_limit, 2)
+        elif date_scope and self._is_screen_content_query(query):
+            ocr_limit = max(ocr_limit, 3)
 
         ocr_lines: List[str] = []
         for row in ocr_scan_rows[:ocr_limit]:
@@ -3229,6 +4755,16 @@ class ChatPresenter(BasePresenter):
             "早上", "中午", "下午", "晚上", "夜里", "论文", "文档",
         ]
         need_recording_fallback = any(k in query_lower for k in temporal_keywords)
+        process_keywords = [
+            "keyboard", "mouse", "keypress", "click", "workflow", "activity", "activities",
+            "tomorrow", "plan", "schedule", "next step",
+            "键盘", "鼠标", "按键", "点击", "流程", "活动", "安排", "计划", "明天",
+        ]
+        need_process_fallback = (
+            self._is_planning_query(query)
+            or self._is_activity_summary_query(query)
+            or any(k in query_lower for k in process_keywords)
+        )
 
         # Memory system might be unavailable; still provide timeline from recordings DB.
         if not self.memory_system:
@@ -3271,6 +4807,7 @@ class ChatPresenter(BasePresenter):
                 memories = result.get("results", []) or []
             elif isinstance(result, list):
                 memories = result
+            memories = self._filter_memories_for_active_thread(memories)
         except Exception as mem_err:
             print(f"[Chat] Tiered memory search failed: {mem_err}")
             memories = []
@@ -3290,6 +4827,7 @@ class ChatPresenter(BasePresenter):
                     extra_memories = recording_result.get("results", []) or []
                 elif isinstance(recording_result, list):
                     extra_memories = recording_result
+                extra_memories = self._filter_memories_for_active_thread(extra_memories)
 
                 if extra_memories:
                     seen_ids = {str(m.get("id")) for m in memories if isinstance(m, dict)}
@@ -3300,6 +4838,32 @@ class ChatPresenter(BasePresenter):
                         memories.append(mem)
             except Exception as rec_err:
                 print(f"[Chat] Recording fallback search failed: {rec_err}")
+
+        if need_process_fallback:
+            try:
+                process_result = self.memory_system.search(
+                    query="keyboard mouse workflow recent activity planning",
+                    user_id="default_user",
+                    filters={"type": "process_session"},
+                    limit=8,
+                    threshold=0.0,
+                )
+                extra_process_memories = []
+                if isinstance(process_result, dict):
+                    extra_process_memories = process_result.get("results", []) or []
+                elif isinstance(process_result, list):
+                    extra_process_memories = process_result
+                extra_process_memories = self._filter_memories_for_active_thread(extra_process_memories)
+
+                if extra_process_memories:
+                    seen_ids = {str(m.get("id")) for m in memories if isinstance(m, dict)}
+                    for mem in extra_process_memories:
+                        mem_id = str(mem.get("id")) if isinstance(mem, dict) else ""
+                        if mem_id and mem_id in seen_ids:
+                            continue
+                        memories.append(mem)
+            except Exception as proc_err:
+                print(f"[Chat] Process fallback search failed: {proc_err}")
 
         now = datetime.now()
         working_cutoff = now - timedelta(hours=self.working_memory_hours)
@@ -3380,6 +4944,15 @@ class ChatPresenter(BasePresenter):
             return f"- [{when}] ({mem_type}) {content}"
 
         context_parts: List[str] = []
+        snapshot_lines = self._build_memory_snapshot(
+            query,
+            working_items,
+            short_term_items,
+            long_term_items,
+        )
+        if snapshot_lines:
+            context_parts.extend(snapshot_lines)
+
         if working_items:
             context_parts.append(f"[Layer: Working Memory <= {self.working_memory_hours}h]")
             for row in working_items[: self.max_tier_items["working"]]:
@@ -3591,6 +5164,27 @@ class ChatPresenter(BasePresenter):
         """Persist chat conversation in a background thread to avoid blocking the user response."""
         if not self.memory_system:
             return
+        active_thread_id = str(self._active_thread_id or "").strip()
+        active_thread_title = str(
+            (self._chat_thread_meta.get(active_thread_id, {}) or {}).get("title", self._default_thread_title())
+        )
+        response_language = self._preferred_response_language(user_message)
+        if self._is_planning_query(user_message):
+            query_intent = "planning"
+        elif self._is_visual_location_query(user_message):
+            query_intent = "visual_location"
+        elif self._is_screen_content_query(user_message) or self._is_visual_detail_query(user_message):
+            query_intent = "visual_summary"
+        elif self._is_activity_summary_query(user_message):
+            query_intent = "activity_summary"
+        elif self._is_memory_sensitive_query(user_message):
+            query_intent = "memory_query"
+        else:
+            query_intent = "general_chat"
+        combined_content = (
+            f"User: {user_message.strip()}\n"
+            f"Assistant: {ai_text.strip()}"
+        ).strip()
 
         def _save():
             try:
@@ -3606,6 +5200,13 @@ class ChatPresenter(BasePresenter):
                         "type": "ai_chat",
                         "timestamp": datetime.now().isoformat(),
                         "model": selected_model,
+                        "language": response_language,
+                        "query_intent": query_intent,
+                        "thread_id": active_thread_id,
+                        "thread_title": active_thread_title,
+                        "query_text": user_message[:600],
+                        "answer_preview": ai_text[:1200],
+                        "content": combined_content[:2000],
                         "memory_count": context_stats.get("total_memories", 0),
                         "used_context": used_context,
                         "working_count": context_stats.get("working_count", 0),
@@ -3684,13 +5285,21 @@ class ChatPresenter(BasePresenter):
                     return
 
                 if self._is_identity_query(user_message):
-                    ai_text = (
-                        "I am MemScreen's local memory assistant.\n"
-                        "I can answer what appeared on your recorded screen using timestamped evidence.\n"
-                        "Try asking: \"What was on my screen in the latest recording?\""
+                    ai_text = self._tr(
+                        user_message,
+                        (
+                            "I am MemScreen's local memory assistant.\n"
+                            "I can answer what appeared on your recorded screen using timestamped evidence.\n"
+                            "Try asking: \"What was on my screen in the latest recording?\""
+                        ),
+                        (
+                            "我是 MemScreen 的本地记忆助手。\n"
+                            "我可以基于带时间戳的证据回答你录屏里出现了什么。\n"
+                            "你可以试着问：\"我最新一次录屏里屏幕上有什么？\""
+                        ),
                     )
-                    self.conversation_history.append(ChatMessage("user", user_message))
-                    self.conversation_history.append(ChatMessage("assistant", ai_text))
+                    self._append_history_message("user", user_message)
+                    self._append_history_message("assistant", ai_text)
                     on_done(ai_text, None)
                     self._persist_chat_memory_async(
                         user_message=user_message,
@@ -3707,18 +5316,20 @@ class ChatPresenter(BasePresenter):
                     or self._is_visual_location_query(user_message)
                 )
                 activity_summary_query = self._is_activity_summary_query(user_message)
+                planning_query = self._is_planning_query(user_message)
 
                 # Fast cache hit path
                 skip_cache = (
                     self._is_memory_sensitive_query(user_message)
                     or activity_summary_query
                     or visual_detail_query
+                    or planning_query
                 )
                 if not skip_cache:
                     cached_response = self._get_cached_response(user_message)
                     if cached_response:
-                        self.conversation_history.append(ChatMessage("user", user_message))
-                        self.conversation_history.append(ChatMessage("assistant", cached_response))
+                        self._append_history_message("user", user_message)
+                        self._append_history_message("assistant", cached_response)
                         on_done(cached_response, None)
                         return
 
@@ -3738,7 +5349,10 @@ class ChatPresenter(BasePresenter):
                         context_stats["recording_count"] = len(mem_lines)
                         context_stats["total_memories"] = len(mem_lines)
                 else:
-                    context, context_stats = self._build_tiered_memory_context(user_message)
+                    context_query = user_message
+                    if planning_query:
+                        context_query = f"{user_message} recent work summary next step priorities"
+                    context, context_stats = self._build_tiered_memory_context(context_query)
 
                 # For visual-detail questions, use dedicated richer pipeline first.
                 if visual_detail_query:
@@ -3746,8 +5360,8 @@ class ChatPresenter(BasePresenter):
                         user_message,
                         memory_context=context,
                     )
-                    self.conversation_history.append(ChatMessage("user", user_message))
-                    self.conversation_history.append(ChatMessage("assistant", ai_text))
+                    self._append_history_message("user", user_message)
+                    self._append_history_message("assistant", ai_text)
                     on_done(ai_text, None)
                     self._persist_chat_memory_async(
                         user_message=user_message,
@@ -3764,13 +5378,31 @@ class ChatPresenter(BasePresenter):
                         user_message,
                         memory_context=context,
                     )
-                    self.conversation_history.append(ChatMessage("user", user_message))
-                    self.conversation_history.append(ChatMessage("assistant", ai_text))
+                    self._append_history_message("user", user_message)
+                    self._append_history_message("assistant", ai_text)
                     on_done(ai_text, None)
                     self._persist_chat_memory_async(
                         user_message=user_message,
                         ai_text=ai_text,
                         selected_model=summary_model,
+                        context_stats=context_stats,
+                        used_context=bool(context),
+                    )
+                    return
+
+                # For planning queries, build tomorrow's schedule from recent activity and thread memory.
+                if planning_query:
+                    ai_text, planning_model = self._build_next_day_plan_response(
+                        user_message,
+                        memory_context=context,
+                    )
+                    self._append_history_message("user", user_message)
+                    self._append_history_message("assistant", ai_text)
+                    on_done(ai_text, None)
+                    self._persist_chat_memory_async(
+                        user_message=user_message,
+                        ai_text=ai_text,
+                        selected_model=planning_model,
                         context_stats=context_stats,
                         used_context=bool(context),
                     )
@@ -3793,7 +5425,9 @@ class ChatPresenter(BasePresenter):
                                 hint = self._quick_extract_video_text(row.get("filename", ""))
                                 if hint:
                                     ocr_hint = (
-                                        f"\nText cues recognized from recent recordings:\n"
+                                        "\n"
+                                        + self._tr(user_message, "Text cues recognized from recent recordings:", "最近录屏中识别到的文本线索：")
+                                        + "\n"
                                         f"- {row.get('timestamp', 'Unknown time')} | {hint}"
                                     )
                                     break
@@ -3803,7 +5437,9 @@ class ChatPresenter(BasePresenter):
                                 hint = self._quick_extract_video_text(row.get("filename", ""))
                                 if hint:
                                     ocr_hint = (
-                                        f"\nVisual content recognized from recent recordings:\n"
+                                        "\n"
+                                        + self._tr(user_message, "Visual content recognized from recent recordings:", "最近录屏中识别到的画面内容：")
+                                        + "\n"
                                         f"- {row.get('timestamp', 'Unknown time')} | {hint}"
                                     )
                                     break
@@ -3816,15 +5452,18 @@ class ChatPresenter(BasePresenter):
                                 f"{row.get('duration', 0.0):.1f}s, {row.get('frame_count', 0)} frames"
                             )
                         ai_text = (
-                            "No vector timeline was found, but recent recording logs show:\n"
+                            self._tr(user_message, "No vector timeline was found, but recent recording logs show:\n", "没有找到向量化时间线，但最近的录屏记录显示：\n")
                             + "\n".join(lines)
                             + ocr_hint
-                            + "\nSuggestions:\n"
-                            + "1. Open the most recent recording and verify the visual content.\n"
-                            + "2. Ask again with keywords (e.g., terminal/browser/error terms) for a more accurate timeline."
+                            + "\n"
+                            + self._tr(user_message, "Suggestions:", "建议：")
+                            + "\n"
+                            + self._tr(user_message, "1. Open the most recent recording and verify the visual content.", "1. 打开最新录屏，直接核对其中的画面内容。")
+                            + "\n"
+                            + self._tr(user_message, "2. Ask again with keywords (e.g., terminal/browser/error terms) for a more accurate timeline.", "2. 带上关键词再问一次（例如终端/浏览器/报错词），我可以给出更准确的时间线。")
                         )
-                        self.conversation_history.append(ChatMessage("user", user_message))
-                        self.conversation_history.append(ChatMessage("assistant", ai_text))
+                        self._append_history_message("user", user_message)
+                        self._append_history_message("assistant", ai_text)
                         on_done(ai_text, None)
                         self._persist_chat_memory_async(
                             user_message=user_message,
@@ -3836,13 +5475,13 @@ class ChatPresenter(BasePresenter):
                         return
 
                     ai_text = (
-                        "I could not find matching recording timeline evidence in memory.\n"
-                        "Suggestions:\n"
-                        "1. Start recording and reproduce the key action once.\n"
-                        "2. Ask again with more specific keywords (e.g., app name/error term)."
+                        self._tr(user_message, "I could not find matching recording timeline evidence in memory.\n", "我在记忆里没有找到匹配的录屏时间线证据。\n")
+                        + self._tr(user_message, "Suggestions:\n", "建议：\n")
+                        + self._tr(user_message, "1. Start recording and reproduce the key action once.\n", "1. 先开始录制，并重现一次关键操作。\n")
+                        + self._tr(user_message, "2. Ask again with more specific keywords (e.g., app name/error term).", "2. 用更具体的关键词再问一次（例如应用名或报错词）。")
                     )
-                    self.conversation_history.append(ChatMessage("user", user_message))
-                    self.conversation_history.append(ChatMessage("assistant", ai_text))
+                    self._append_history_message("user", user_message)
+                    self._append_history_message("assistant", ai_text)
                     on_done(ai_text, None)
                     self._persist_chat_memory_async(
                         user_message=user_message,
@@ -3891,7 +5530,8 @@ class ChatPresenter(BasePresenter):
                     + "1. Answer only from the provided memory context. No fabrication.\n"
                     + "2. Prioritize specific timestamps and recording filenames as evidence.\n"
                     + "3. If evidence is insufficient, clearly state not found and give next-step suggestions.\n"
-                    + "4. Respond in English and do not output <think> or reasoning traces."
+                    + "4. Reply in the same language as the user's latest message unless the user explicitly asks for another language.\n"
+                    + "5. Do not output <think> or reasoning traces."
                 )
 
                 messages: List[Dict[str, str]] = []
@@ -4001,8 +5641,8 @@ class ChatPresenter(BasePresenter):
 
                 if not skip_cache:
                     self._cache_response(user_message, ai_text)
-                self.conversation_history.append(ChatMessage("user", user_message))
-                self.conversation_history.append(ChatMessage("assistant", ai_text))
+                self._append_history_message("user", user_message)
+                self._append_history_message("assistant", ai_text)
 
                 # Return to UI/API first for better perceived latency.
                 on_done(ai_text, None)
@@ -4055,7 +5695,7 @@ class ChatPresenter(BasePresenter):
 
                 # Add to history
                 assistant_msg = ChatMessage("assistant", cached_response)
-                self.conversation_history.append(assistant_msg)
+                self._append_history_message(assistant_msg.role, assistant_msg.content, assistant_msg.timestamp)
 
                 # Notify view (Kivy + API stream/SSE)
                 if self.view:
@@ -4087,7 +5727,7 @@ class ChatPresenter(BasePresenter):
 
             # Add assistant message to history
             assistant_msg = ChatMessage("assistant", response_text)
-            self.conversation_history.append(assistant_msg)
+            self._append_history_message(assistant_msg.role, assistant_msg.content, assistant_msg.timestamp)
 
             # Notify view (both for Kivy and for API stream/SSE)
             if self.view:
@@ -4204,7 +5844,7 @@ class ChatPresenter(BasePresenter):
 
                 # Add to history
                 assistant_msg = ChatMessage("assistant", full_response)
-                self.conversation_history.append(assistant_msg)
+                self._append_history_message(assistant_msg.role, assistant_msg.content, assistant_msg.timestamp)
 
                 return True
             else:
@@ -4218,7 +5858,11 @@ class ChatPresenter(BasePresenter):
 
                 # Add error to history
                 error_msg_obj = ChatMessage("assistant", full_error)
-                self.conversation_history.append(error_msg_obj)
+                self._append_history_message(
+                    error_msg_obj.role,
+                    error_msg_obj.content,
+                    error_msg_obj.timestamp,
+                )
 
                 return False
 
@@ -4238,13 +5882,18 @@ class ChatPresenter(BasePresenter):
 
             # Add error to history
             error_msg_obj = ChatMessage("assistant", full_error)
-            self.conversation_history.append(error_msg_obj)
+            self._append_history_message(
+                error_msg_obj.role,
+                error_msg_obj.content,
+                error_msg_obj.timestamp,
+            )
 
             return False
 
     def clear_history(self):
         """Clear conversation history"""
         self.conversation_history.clear()
+        self._mark_active_thread_changed()
 
         if self.view:
             self.view.on_history_cleared()
@@ -4342,6 +5991,8 @@ class ChatPresenter(BasePresenter):
                 print(f"[ChatPresenter] ⚠️  Unexpected results format: {type(results)}")
                 return ""
 
+            memories = self._filter_memories_for_active_thread(memories)
+
             if not memories:
                 print(f"[ChatPresenter] ⚠️  Empty results list - no memories found for query")
                 return ""
@@ -4377,42 +6028,76 @@ class ChatPresenter(BasePresenter):
                 if 'metadata' in r and r['metadata'].get('type') in {'chat', 'ai_chat'}
             ]
 
+            process_memories = [
+                r for r in memories
+                if 'metadata' in r and r['metadata'].get('type') == 'process_session'
+            ]
+
             print(f"[ChatPresenter] - Screen recordings: {len(recording_memories)}")
             print(f"[ChatPresenter] - OCR memories: {len(ocr_memories)}")
             print(f"[ChatPresenter] - Chat memories: {len(chat_memories)}")
+            print(f"[ChatPresenter] - Process sessions: {len(process_memories)}")
 
             # Build rich context
             context_parts = []
 
             # Add screen recording context
             if recording_memories:
-                context_parts.append("[Video] **Screen Recording Context:**")
+                context_parts.append(
+                    self._tr(query, "[Video] **Screen Recording Context:**", "[视频] **录屏上下文：**")
+                )
                 for i, mem in enumerate(recording_memories[:3], 1):  # Top 3 recordings
                     metadata = mem.get('metadata', {})
                     timestamp = metadata.get('timestamp', 'Unknown time')
                     duration = metadata.get('duration', 0)
 
-                    context_parts.append(f"\n{i}. Recording from {timestamp}")
-                    context_parts.append(f"   - Duration: {duration:.1f} seconds")
-                    context_parts.append(f"   - File: {metadata.get('filename', 'Unknown')}")
+                    context_parts.append(
+                        self._tr(query, f"\n{i}. Recording from {timestamp}", f"\n{i}. 录制时间：{timestamp}")
+                    )
+                    context_parts.append(
+                        self._tr(query, f"   - Duration: {duration:.1f} seconds", f"   - 时长：{duration:.1f} 秒")
+                    )
+                    context_parts.append(
+                        self._tr(query, f"   - File: {metadata.get('filename', 'Unknown')}", f"   - 文件：{metadata.get('filename', 'Unknown')}")
+                    )
 
                     if 'content_description' in metadata:
-                        context_parts.append(f"   - Summary: {metadata['content_description']}")
+                        context_parts.append(
+                            self._tr(query, f"   - Summary: {metadata['content_description']}", f"   - 摘要：{metadata['content_description']}")
+                        )
 
                     sem_tags = self._extract_recording_tags_from_meta(metadata)
                     if sem_tags:
-                        context_parts.append(f"   - Tags: {', '.join(sem_tags[:6])}")
+                        context_parts.append(
+                            self._tr(query, f"   - Tags: {', '.join(sem_tags[:6])}", f"   - 标签：{', '.join(sem_tags[:6])}")
+                        )
+
+                    content_keywords = self._parse_serialized_tag_list(
+                        metadata.get("content_keywords_json") or metadata.get("content_keywords")
+                    )
+                    if content_keywords:
+                        context_parts.append(
+                            self._tr(
+                                query,
+                                f"   - Keywords: {', '.join(content_keywords[:6])}",
+                                f"   - 关键词：{', '.join(content_keywords[:6])}",
+                            )
+                        )
 
                     if 'ocr_text' in metadata and metadata['ocr_text']:
                         # Include OCR text preview (first 200 chars)
                         ocr_preview = metadata['ocr_text'][:200]
                         if len(metadata['ocr_text']) > 200:
                             ocr_preview += "..."
-                        context_parts.append(f"   - Text on screen: \"{ocr_preview}\"")
+                        context_parts.append(
+                            self._tr(query, f"   - Text on screen: \"{ocr_preview}\"", f"   - 屏幕文字：\"{ocr_preview}\"")
+                        )
 
             # Add OCR context if available
             if ocr_memories:
-                context_parts.append("\n[Doc] **Related Text Content:**")
+                context_parts.append(
+                    self._tr(query, "\n[Doc] **Related Text Content:**", "\n[文档] **相关文本内容：**")
+                )
                 for i, mem in enumerate(ocr_memories[:2], 1):  # Top 2 OCR results
                     metadata = mem.get('metadata', {})
                     if 'ocr_text' in metadata and metadata['ocr_text']:
@@ -4423,15 +6108,95 @@ class ChatPresenter(BasePresenter):
 
             # Add chat context if relevant
             if chat_memories:
-                context_parts.append("\n[Chat] **Previous Conversations:**")
+                context_parts.append(
+                    self._tr(query, "\n[Chat] **Previous Conversations:**", "\n[聊天] **历史对话：**")
+                )
                 for i, mem in enumerate(chat_memories[:2], 1):  # Top 2 chats
                     metadata = mem.get('metadata', {})
                     timestamp = metadata.get('timestamp', 'Unknown time')
-                    content = metadata.get('content', '')[:200]
-                    if len(metadata.get('content', '')) > 200:
+                    thread_title = str(metadata.get("thread_title", "") or "").strip()
+                    query_intent = str(metadata.get("query_intent", "") or "").strip()
+                    preview_raw = str(metadata.get('answer_preview') or metadata.get('content', '') or "")
+                    content = preview_raw[:240]
+                    if len(preview_raw) > 240:
                         content += "..."
-                    context_parts.append(f"\n{i}. From {timestamp}:")
+                    if thread_title:
+                        context_parts.append(
+                            self._tr(query, f"\n{i}. From {timestamp} ({thread_title}):", f"\n{i}. 来自 {timestamp}（{thread_title}）：")
+                        )
+                    else:
+                        context_parts.append(
+                            self._tr(query, f"\n{i}. From {timestamp}:", f"\n{i}. 来自 {timestamp}：")
+                        )
+                    if query_intent:
+                        context_parts.append(
+                            self._tr(query, f"   - Intent: {query_intent}", f"   - 意图：{query_intent}")
+                        )
                     context_parts.append(f"   {content}")
+
+            if process_memories:
+                context_parts.append(
+                    self._tr(query, "\n[Process] **Keyboard/Mouse Sessions:**", "\n[过程] **键鼠会话：**")
+                )
+                for i, mem in enumerate(process_memories[:3], 1):
+                    metadata = mem.get("metadata", {})
+                    start_time = str(metadata.get("start_time", "") or metadata.get("timestamp", "Unknown time"))
+                    end_time = str(metadata.get("end_time", "") or "")
+                    primary = str(metadata.get("primary_activity", "") or "").strip()
+                    summary = str(
+                        metadata.get("activity_summary")
+                        or metadata.get("common_actions")
+                        or self._extract_memory_content(mem)
+                    ).strip()
+                    summary = " ".join(summary.split())
+                    if len(summary) > 220:
+                        summary = summary[:220] + "..."
+                    if end_time:
+                        context_parts.append(
+                            self._tr(query, f"\n{i}. {start_time} -> {end_time}", f"\n{i}. {start_time} -> {end_time}")
+                        )
+                    else:
+                        context_parts.append(f"\n{i}. {start_time}")
+                    if primary:
+                        context_parts.append(
+                            self._tr(query, f"   - Primary activity: {primary}", f"   - 主要活动：{primary}")
+                        )
+                    if metadata.get("event_count") is not None:
+                        event_count = int(metadata.get("event_count", 0) or 0)
+                        keystrokes = int(metadata.get("keystrokes", 0) or 0)
+                        clicks = int(metadata.get("clicks", 0) or 0)
+                        context_parts.append(
+                            self._tr(
+                                query,
+                                f"   - Events: {event_count} ({keystrokes} keys, {clicks} clicks)",
+                                f"   - 事件：{event_count}（{keystrokes} 次按键，{clicks} 次点击）",
+                            )
+                        )
+                    linked_recordings = []
+                    raw_linked = metadata.get("linked_recordings_json")
+                    if isinstance(raw_linked, str) and raw_linked.strip():
+                        try:
+                            parsed = json.loads(raw_linked)
+                            if isinstance(parsed, list):
+                                for item in parsed:
+                                    if isinstance(item, dict):
+                                        linked_recordings.append(
+                                            f"{item.get('basename', '')} ({item.get('timestamp', '')})"
+                                        )
+                                    else:
+                                        linked_recordings.append(str(item))
+                        except Exception:
+                            pass
+                    if linked_recordings:
+                        context_parts.append(
+                            self._tr(
+                                query,
+                                f"   - Linked recordings: {'; '.join(linked_recordings[:2])}",
+                                f"   - 关联录屏：{'；'.join(linked_recordings[:2])}",
+                            )
+                        )
+                    if summary:
+                        context_parts.append(f"   {summary}")
 
             return "\n".join(context_parts)
 
@@ -4600,7 +6365,7 @@ class ChatPresenter(BasePresenter):
         # Add assistant message to history
         if full_response:
             assistant_msg = ChatMessage("assistant", full_response)
-            self.conversation_history.append(assistant_msg)
+            self._append_history_message(assistant_msg.role, assistant_msg.content, assistant_msg.timestamp)
 
         # Notify view of completion
         if self.view:
@@ -4655,8 +6420,13 @@ class ChatPresenter(BasePresenter):
             # Load messages
             self.conversation_history.clear()
             for msg_data in data.get("messages", []):
-                msg = ChatMessage(msg_data["role"], msg_data["content"])
+                msg = ChatMessage(
+                    msg_data["role"],
+                    msg_data["content"],
+                    str(msg_data.get("timestamp", "")),
+                )
                 self.conversation_history.append(msg)
+            self._mark_active_thread_changed()
 
             # Load model
             model = data.get("model")

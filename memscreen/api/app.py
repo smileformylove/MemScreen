@@ -8,6 +8,7 @@ import json
 import queue
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from typing import Optional, Any, List
 
 from fastapi import FastAPI, HTTPException, Query
@@ -30,11 +31,20 @@ _executor = ThreadPoolExecutor(max_workers=2)
 
 class ChatMessageBody(BaseModel):
     message: str
+    thread_id: Optional[str] = None
 
 
 class ChatReplyResponse(BaseModel):
     reply: Optional[str] = None
     error: Optional[str] = None
+
+
+class ChatThreadCreateBody(BaseModel):
+    title: str = ""
+
+
+class ChatThreadSwitchBody(BaseModel):
+    thread_id: str
 
 
 class SetModelBody(BaseModel):
@@ -74,6 +84,280 @@ class VideoPlayableBody(BaseModel):
     filename: str
 
 
+def _memory_result_rows(result: Any) -> List[dict]:
+    """Normalize memory.get_all/search responses into a list of rows."""
+    if isinstance(result, dict):
+        rows = result.get("results", []) or []
+        return [row for row in rows if isinstance(row, dict)]
+    if isinstance(result, list):
+        return [row for row in result if isinstance(row, dict)]
+    return []
+
+
+def _parse_local_datetime(value: Any) -> Optional[datetime]:
+    """Parse local naive datetime from common timestamp strings."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            try:
+                return value.astimezone().replace(tzinfo=None)
+            except Exception:
+                return value.replace(tzinfo=None)
+        return value
+    raw = str(value).strip().replace("Z", "+00:00")
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.replace(" ", "T"))
+        if dt.tzinfo is not None:
+            return dt.astimezone().replace(tzinfo=None)
+        return dt
+    except Exception:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except Exception:
+            continue
+    return None
+
+
+def _find_linked_recordings_for_range(
+    *,
+    session_id: int,
+    events: List[dict],
+    start_time: str,
+    end_time: str,
+    limit: int = 4,
+) -> List[dict]:
+    """Find recordings whose time span overlaps with the given process session."""
+    from memscreen.config import get_config
+    from memscreen.services import session_analysis
+    import os
+    import sqlite3
+
+    start_dt = _parse_local_datetime(start_time)
+    end_dt = _parse_local_datetime(end_time)
+    if start_dt is None or end_dt is None or end_dt < start_dt:
+        return []
+
+    db_path = str(get_config().db_path)
+    if not os.path.exists(db_path):
+        return []
+
+    linked_candidates: List[dict] = []
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT filename, timestamp, duration, recording_mode, window_title
+            FROM recordings
+            ORDER BY rowid DESC
+            LIMIT 80
+            """
+        )
+        rows = cursor.fetchall()
+        conn.close()
+    except Exception:
+        return []
+
+    for row in rows:
+        filename = str(row[0] or "")
+        ts = str(row[1] or "")
+        duration = float(row[2] or 0.0)
+        rec_start = _parse_local_datetime(ts)
+        if rec_start is None:
+            continue
+        rec_end = rec_start + timedelta(seconds=max(duration, 0.0))
+        overlap = session_analysis.build_session_overlap_stats(
+            session_id=int(session_id),
+            events=events or [],
+            start_time=start_time,
+            end_time=end_time,
+            window_start=rec_start,
+            window_end=rec_end,
+        )
+        if not overlap:
+            continue
+        linked_candidates.append(
+            {
+                "timestamp": ts,
+                "basename": os.path.basename(filename) if filename else "",
+                "duration": round(duration, 2),
+                "recording_mode": str(row[3] or ""),
+                "window_title": str(row[4] or ""),
+                "overlap_seconds": float(overlap.get("overlap_seconds", 0.0) or 0.0),
+                "window_coverage_ratio": float(overlap.get("window_coverage_ratio", 0.0) or 0.0),
+                "session_coverage_ratio": float(overlap.get("session_coverage_ratio", 0.0) or 0.0),
+                "overlap_event_count": int(overlap.get("event_count", 0) or 0),
+                "overlap_keystrokes": int(overlap.get("keystrokes", 0) or 0),
+                "overlap_clicks": int(overlap.get("clicks", 0) or 0),
+                "primary_activity": str(overlap.get("primary_activity", "") or ""),
+                "overlap_summary": str(overlap.get("summary", "") or ""),
+            }
+        )
+
+    linked_candidates.sort(
+        key=lambda item: (
+            float(item.get("overlap_seconds", 0.0) or 0.0),
+            float(item.get("window_coverage_ratio", 0.0) or 0.0),
+            int(item.get("overlap_event_count", 0) or 0),
+            str(item.get("timestamp", "")),
+        ),
+        reverse=True,
+    )
+    return linked_candidates[:limit]
+
+
+def _persist_process_session_memory(
+    *,
+    session_id: int,
+    events: List[dict],
+    start_time: str,
+    end_time: str,
+) -> bool:
+    """Persist one process session into vector memory for later chat retrieval."""
+    from . import deps
+    from memscreen.services import session_analysis
+
+    memory = deps.get_memory()
+    if not memory:
+        return False
+
+    try:
+        event_count = len(events)
+        keystrokes = sum(1 for e in events if e.get("type") == "keypress")
+        clicks = sum(1 for e in events if e.get("type") == "click")
+        payload = session_analysis.build_session_memory_payload(
+            session_id=session_id,
+            events=events,
+            start_time=start_time,
+            end_time=end_time,
+            event_count=event_count,
+            keystrokes=keystrokes,
+            clicks=clicks,
+        )
+        linked_recordings = _find_linked_recordings_for_range(
+            session_id=session_id,
+            events=events,
+            start_time=start_time,
+            end_time=end_time,
+            limit=4,
+        )
+        if linked_recordings:
+            payload["metadata"]["linked_recording_count"] = len(linked_recordings)
+            payload["metadata"]["linked_recordings_json"] = json.dumps(linked_recordings, ensure_ascii=False)
+            payload["metadata"]["linked_recordings"] = " | ".join(
+                f"{item.get('timestamp', '')} {item.get('basename', '')} "
+                f"{float(item.get('overlap_seconds', 0.0) or 0.0):.1f}s "
+                f"{int(item.get('overlap_keystrokes', 0) or 0)}K/{int(item.get('overlap_clicks', 0) or 0)}M"
+                for item in linked_recordings
+            )
+            linked_text = "; ".join(
+                f"{item.get('basename', '')} "
+                f"({float(item.get('overlap_seconds', 0.0) or 0.0):.1f}s overlap, "
+                f"{int(item.get('overlap_keystrokes', 0) or 0)}K/"
+                f"{int(item.get('overlap_clicks', 0) or 0)}M)"
+                for item in linked_recordings
+            )
+            payload["memory_text"] = (
+                payload["memory_text"].rstrip(".")
+                + f". Linked recordings: {linked_text}."
+            )
+
+        existing_rows: List[dict] = []
+        if hasattr(memory, "get_all"):
+            existing_rows = _memory_result_rows(
+                memory.get_all(
+                    user_id="default_user",
+                    filters={"type": "process_session", "session_id": int(session_id)},
+                    limit=10,
+                )
+            )
+        for row in existing_rows:
+            memory_id = str(row.get("id", "") or "").strip()
+            if memory_id:
+                try:
+                    memory.delete(memory_id)
+                except Exception:
+                    pass
+
+        memory.add(
+            [{"role": "user", "content": payload["memory_text"]}],
+            user_id="default_user",
+            metadata=payload["metadata"],
+            infer=False,
+        )
+        return True
+    except Exception as e:
+        print(f"[API] failed to persist process session memory: {e}")
+        return False
+
+
+def _delete_process_session_memory(session_id: int) -> int:
+    """Delete vector memories associated with one process session."""
+    from . import deps
+
+    memory = deps.get_memory()
+    if not memory or not hasattr(memory, "get_all"):
+        return 0
+
+    deleted = 0
+    try:
+        rows = _memory_result_rows(
+            memory.get_all(
+                user_id="default_user",
+                filters={"type": "process_session", "session_id": int(session_id)},
+                limit=20,
+            )
+        )
+        for row in rows:
+            memory_id = str(row.get("id", "") or "").strip()
+            if not memory_id:
+                continue
+            try:
+                memory.delete(memory_id)
+                deleted += 1
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"[API] failed to delete process session memory: {e}")
+    return deleted
+
+
+def _delete_all_process_session_memories() -> int:
+    """Delete all vector memories associated with process sessions."""
+    from . import deps
+
+    memory = deps.get_memory()
+    if not memory or not hasattr(memory, "get_all"):
+        return 0
+
+    deleted = 0
+    try:
+        rows = _memory_result_rows(
+            memory.get_all(
+                user_id="default_user",
+                filters={"type": "process_session"},
+                limit=500,
+            )
+        )
+        for row in rows:
+            memory_id = str(row.get("id", "") or "").strip()
+            if not memory_id:
+                continue
+            try:
+                memory.delete(memory_id)
+                deleted += 1
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"[API] failed to delete all process session memories: {e}")
+    return deleted
+
+
 # ---------- Chat ----------
 
 @app.post("/chat", response_model=ChatReplyResponse)
@@ -83,6 +367,9 @@ async def chat_post(body: ChatMessageBody):
     presenter = deps.get_chat_presenter()
     if not presenter:
         raise HTTPException(status_code=503, detail="Chat not available")
+    if body.thread_id:
+        if not presenter.switch_chat_thread(body.thread_id):
+            raise HTTPException(status_code=404, detail=f"Chat thread not found: {body.thread_id}")
     loop = asyncio.get_event_loop()
     result = [None, None]  # [ai_text, error_text]
     done = threading.Event()
@@ -108,6 +395,9 @@ async def chat_stream(body: ChatMessageBody):
     presenter = deps.get_chat_presenter()
     if not presenter:
         raise HTTPException(status_code=503, detail="Chat not available")
+    if body.thread_id:
+        if not presenter.switch_chat_thread(body.thread_id):
+            raise HTTPException(status_code=404, detail=f"Chat thread not found: {body.thread_id}")
 
     chunk_queue: queue.Queue = queue.Queue()
     full_response = [None]
@@ -202,6 +492,47 @@ async def chat_set_model(body: SetModelBody):
     if not ok:
         raise HTTPException(status_code=400, detail=f"Model not available: {body.model}")
     return {"model": presenter.get_current_model()}
+
+
+@app.get("/chat/threads")
+async def chat_get_threads():
+    """List chat threads and active selection."""
+    from . import deps
+    presenter = deps.get_chat_presenter()
+    if not presenter:
+        raise HTTPException(status_code=503, detail="Chat not available")
+    return {
+        "threads": presenter.list_chat_threads(),
+        "active_thread_id": presenter.get_active_thread_id(),
+    }
+
+
+@app.post("/chat/threads")
+async def chat_create_thread(body: ChatThreadCreateBody):
+    """Create and switch to a new chat thread."""
+    from . import deps
+    presenter = deps.get_chat_presenter()
+    if not presenter:
+        raise HTTPException(status_code=503, detail="Chat not available")
+    thread = presenter.create_chat_thread(body.title)
+    return {
+        "thread": thread,
+        "active_thread_id": presenter.get_active_thread_id(),
+    }
+
+
+@app.put("/chat/threads/active")
+async def chat_set_active_thread(body: ChatThreadSwitchBody):
+    """Switch the active chat thread."""
+    from . import deps
+    presenter = deps.get_chat_presenter()
+    if not presenter:
+        raise HTTPException(status_code=503, detail="Chat not available")
+    if not presenter.switch_chat_thread(body.thread_id):
+        raise HTTPException(status_code=404, detail=f"Chat thread not found: {body.thread_id}")
+    return {
+        "active_thread_id": presenter.get_active_thread_id(),
+    }
 
 
 @app.get("/models/catalog")
@@ -406,16 +737,22 @@ async def models_download(body: ModelDownloadBody):
 
 
 @app.get("/chat/history")
-async def chat_get_history():
+async def chat_get_history(thread_id: Optional[str] = Query(None)):
     """Get current conversation history."""
     from . import deps
     presenter = deps.get_chat_presenter()
     if not presenter:
         raise HTTPException(status_code=503, detail="Chat not available")
-    history = presenter.get_conversation_history()
+    selected_thread_id = str(thread_id or "").strip()
+    if selected_thread_id:
+        known_ids = {str(item.get("id", "")) for item in presenter.list_chat_threads()}
+        if selected_thread_id not in known_ids:
+            raise HTTPException(status_code=404, detail=f"Chat thread not found: {selected_thread_id}")
+    history = presenter.get_thread_history(selected_thread_id or None)
     return {
+        "thread_id": selected_thread_id or presenter.get_active_thread_id(),
         "messages": [
-            {"role": m.role, "content": m.content}
+            {"role": m.role, "content": m.content, "timestamp": m.timestamp}
             for m in history
         ]
     }
@@ -451,13 +788,22 @@ async def process_save_session(body: ProcessSaveSessionBody):
     from . import deps
     from memscreen.services import session_analysis
     db_path = deps.get_process_db_path()
-    session_analysis.save_session(
+    session_id = session_analysis.save_session(
         events=body.events,
         start_time=body.start_time,
         end_time=body.end_time,
         db_path=db_path,
     )
-    return {"ok": True}
+    await asyncio.get_event_loop().run_in_executor(
+        _executor,
+        lambda: _persist_process_session_memory(
+            session_id=session_id,
+            events=body.events,
+            start_time=body.start_time,
+            end_time=body.end_time,
+        ),
+    )
+    return {"ok": True, "session_id": session_id}
 
 
 @app.get("/process/sessions/{session_id}")
@@ -511,7 +857,11 @@ async def process_delete_session(session_id: int):
     from memscreen.services import session_analysis
     db_path = deps.get_process_db_path()
     n = session_analysis.delete_session(session_id=session_id, db_path=db_path)
-    return {"deleted": n}
+    mem_deleted = await asyncio.get_event_loop().run_in_executor(
+        _executor,
+        lambda: _delete_process_session_memory(session_id),
+    )
+    return {"deleted": n, "memory_deleted": mem_deleted}
 
 
 @app.delete("/process/sessions")
@@ -521,7 +871,11 @@ async def process_delete_all_sessions():
     from memscreen.services import session_analysis
     db_path = deps.get_process_db_path()
     n = session_analysis.delete_all_sessions(db_path=db_path)
-    return {"deleted": n}
+    mem_deleted = await asyncio.get_event_loop().run_in_executor(
+        _executor,
+        lambda: _delete_all_process_session_memories(),
+    )
+    return {"deleted": n, "memory_deleted": mem_deleted}
 
 
 # ---------- Process: Keyboard/Mouse Tracking (InputTracker) ----------
@@ -668,17 +1022,32 @@ async def process_save_session_from_tracking():
     for e in session_events:
         e.pop("_dt", None)
     db_path = deps.get_process_db_path()
-    await asyncio.get_event_loop().run_in_executor(
+    session_id = await asyncio.get_event_loop().run_in_executor(
         _executor,
         lambda: session_analysis.save_session(
             events=session_events, start_time=start_time, end_time=end_time, db_path=db_path
+        ),
+    )
+    await asyncio.get_event_loop().run_in_executor(
+        _executor,
+        lambda: _persist_process_session_memory(
+            session_id=session_id,
+            events=session_events,
+            start_time=start_time,
+            end_time=end_time,
         ),
     )
     # Advance baseline after saving so repeated saves do not include already-saved history.
     await asyncio.get_event_loop().run_in_executor(
         _executor, lambda: presenter.advance_tracking_baseline()
     )
-    return {"ok": True, "events_saved": len(session_events), "start_time": start_time, "end_time": end_time}
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "events_saved": len(session_events),
+        "start_time": start_time,
+        "end_time": end_time,
+    }
 
 
 # ---------- Recording ----------
