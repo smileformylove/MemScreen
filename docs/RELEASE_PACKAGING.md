@@ -14,6 +14,8 @@ Design target:
 
 Output:
 - `MemScreen-vX.Y.Z-macos.dmg`
+- `MemScreen-vX.Y.Z-macos.zip`
+- `MemScreen-vX.Y.Z-macos.zip` (fallback if DMG mounting is blocked)
 
 Contains:
 - `MemScreen.app` (Flutter desktop UI)

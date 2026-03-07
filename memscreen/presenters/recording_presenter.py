@@ -293,14 +293,6 @@ class RecordingPresenter(BasePresenter):
                 )
 
                 if not bool(CGPreflightScreenCaptureAccess()):
-                    try:
-                        print("[RecordingPresenter] Requesting macOS screen recording permission...")
-                        CGRequestScreenCaptureAccess()
-                    except Exception as request_error:
-                        print(
-                            "[RecordingPresenter] Screen permission request API failed: "
-                            f"{request_error}"
-                        )
                     return (
                         False,
                         "Screen recording permission is required. "

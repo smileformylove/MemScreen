@@ -92,6 +92,24 @@ class NativeRecordingService {
     );
   }
 
+  Future<List<RecordingScreenInfo>> getScreens() async {
+    final raw = await _channel.invokeMethod<dynamic>('nativeRecordingScreens');
+    final list = raw is List ? raw : const [];
+    return list.map((entry) {
+      final map = entry is Map<String, dynamic>
+          ? entry
+          : Map<String, dynamic>.from(entry as Map);
+      return RecordingScreenInfo(
+        index: map['index'] as int? ?? 0,
+        name: map['name'] as String? ?? '',
+        width: map['width'] as int? ?? 0,
+        height: map['height'] as int? ?? 0,
+        isPrimary: map['is_primary'] as bool? ?? false,
+        displayId: map['display_id'] as int?,
+      );
+    }).toList();
+  }
+
   Future<RecordingStatus> getStatus() async {
     final raw = await _channel.invokeMethod<dynamic>('nativeRecordingStatus');
     final map = (raw is Map

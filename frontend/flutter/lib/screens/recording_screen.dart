@@ -103,10 +103,9 @@ class _RecordingScreenState extends State<RecordingScreen> {
   Future<void> _load() async {
     try {
       final appState = context.read<AppState>();
-      final api = context.read<AppState>().recordingApi;
       final s = await appState.loadRecordingStatusForUi();
       await appState.syncRecordingStateFromBackend(s.isRecording);
-      final screens = await api.getScreens();
+      final screens = await appState.loadAvailableScreensForUi();
       final justStopped = _wasRecording && !s.isRecording;
       if (mounted) {
         setState(() {
@@ -270,7 +269,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
 
     try {
       final requestedAudioSource = appState.recordingAudioSource;
-      if (requestedAudioSource != 'none') {
+      if (!appState.useNativeMacOSRecording && requestedAudioSource != 'none') {
         final diagnosis = await appState.recordingApi
             .diagnoseAudio(source: requestedAudioSource);
 

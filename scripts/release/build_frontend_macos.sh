@@ -147,6 +147,7 @@ APP_RESOURCES_DIR="$APP_STAGE_PATH/Contents/Resources"
 BACKEND_DIR="$APP_RESOURCES_DIR/backend"
 
 DMG_OUT="$DIST_ROOT/MemScreen-v${VERSION}-macos.dmg"
+ZIP_OUT="$DIST_ROOT/MemScreen-v${VERSION}-macos.zip"
 
 prepare_embedded_backend() {
   echo "[frontend-package] preparing embedded backend bootstrap"
@@ -362,6 +363,7 @@ SH
 mkdir -p "$DIST_ROOT"
 rm -rf "$STAGE_DIR"
 rm -f "$DIST_ROOT"/MemScreen-v*-macos.dmg
+rm -f "$DIST_ROOT"/MemScreen-v*-macos.zip
 rm -f "$DIST_ROOT"/MemScreen-frontend-v*-macos.dmg
 rm -f "$DIST_ROOT"/MemScreen-frontend-v*-macos.zip
 mkdir -p "$STAGE_DIR"
@@ -417,9 +419,13 @@ Model capability is optional. To install models:
 TXT
 
 echo "[frontend-package] creating dmg: $DMG_OUT"
-hdiutil create -volname "MemScreen" -srcfolder "$STAGE_DIR" -ov -format UDZO "$DMG_OUT" >/dev/null
+hdiutil create -volname "MemScreen" -srcfolder "$STAGE_DIR" -ov -format UDZO -fs HFS+ "$DMG_OUT" >/dev/null
+
+echo "[frontend-package] creating zip fallback: $ZIP_OUT"
+ditto -c -k --sequesterRsrc --keepParent "$APP_STAGE_PATH" "$ZIP_OUT"
 
 notarize_if_needed
 
 echo "[frontend-package] Done"
 echo "  dmg: $DMG_OUT"
+echo "  zip: $ZIP_OUT"

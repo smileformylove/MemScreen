@@ -215,7 +215,7 @@ class InputTracker:
 
         print("[INFO] Checking macOS Accessibility permissions...")
         accessibility_ok, accessibility_message = check_accessibility_permission()
-        input_ok, input_message = check_input_monitoring_permission(prompt=True)
+        input_ok, input_message = check_input_monitoring_permission(prompt=False)
 
         problems = []
         if not accessibility_ok:

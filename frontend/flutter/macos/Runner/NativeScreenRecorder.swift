@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 final class NativeScreenRecorder {
@@ -10,6 +11,8 @@ final class NativeScreenRecorder {
     private var screenDisplayId: Int?
     private var audioSourceUsed: String = "none"
     private var notice: String?
+    private var requestedDuration: Int = 9999
+    private var requestedInterval: Double = 2.0
 
     func start(arguments: [String: Any]) -> [String: Any] {
         if let process, process.isRunning {
@@ -19,14 +22,16 @@ final class NativeScreenRecorder {
         let requestedMode = (arguments["mode"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         mode = requestedMode?.isEmpty == false ? requestedMode! : "fullscreen"
         region = arguments["region"] as? [Double]
-        screenIndex = arguments["screenIndex"] as? Int
-        if screenIndex == nil, let number = arguments["screenIndex"] as? NSNumber {
-            screenIndex = number.intValue
+        screenIndex = Self.parseInt(arguments["screenIndex"])
+        if screenIndex == nil {
+            screenIndex = Self.parseInt(arguments["screen_index"])
         }
-        screenDisplayId = arguments["screenDisplayId"] as? Int
-        if screenDisplayId == nil, let number = arguments["screenDisplayId"] as? NSNumber {
-            screenDisplayId = number.intValue
+        screenDisplayId = Self.parseInt(arguments["screenDisplayId"])
+        if screenDisplayId == nil {
+            screenDisplayId = Self.parseInt(arguments["screen_display_id"])
         }
+        requestedDuration = Self.parseInt(arguments["duration"]) ?? 9999
+        requestedInterval = Self.parseDouble(arguments["interval"]) ?? 2.0
 
         let requestedAudio = ((arguments["audioSource"] as? String) ?? "none").lowercased()
         var args = ["-x", "-v"]
@@ -41,6 +46,10 @@ final class NativeScreenRecorder {
             }
         } else if requestedAudio == "system_audio" {
             notice = "Native macOS recording currently does not capture system audio. Recording continues without system audio."
+        }
+
+        if requestedDuration > 0 && requestedDuration < 36000 {
+            args.append("-V\(requestedDuration)")
         }
 
         if mode == "fullscreen-single", let screenIndex {
@@ -115,8 +124,8 @@ final class NativeScreenRecorder {
         let elapsed = startedAt.map { Date().timeIntervalSince($0) } ?? 0
         return [
             "isRecording": isRecording,
-            "duration": 9999,
-            "interval": 2.0,
+            "duration": requestedDuration,
+            "interval": requestedInterval,
             "outputDir": Self.outputDirectory().path,
             "frameCount": 0,
             "elapsedTime": elapsed,
@@ -125,6 +134,23 @@ final class NativeScreenRecorder {
             "screenIndex": screenIndex as Any,
             "screenDisplayId": screenDisplayId as Any,
         ]
+    }
+
+    func screens() -> [[String: Any]] {
+        let allScreens = NSScreen.screens
+        let mainDisplayID = Self.displayID(for: NSScreen.main)
+        return allScreens.enumerated().map { index, screen in
+            let frame = screen.frame
+            let displayID = Self.displayID(for: screen)
+            return [
+                "index": index,
+                "name": screen.localizedName,
+                "width": Int(frame.width),
+                "height": Int(frame.height),
+                "is_primary": displayID != nil && displayID == mainDisplayID,
+                "display_id": displayID as Any,
+            ]
+        }
     }
 
     private static func outputDirectory() -> URL {
@@ -138,5 +164,33 @@ final class NativeScreenRecorder {
         formatter.dateFormat = "yyyyMMdd_HHmmss"
         let name = "native_\(formatter.string(from: Date())).mov"
         return outputDirectory().appendingPathComponent(name)
+    }
+
+    private static func parseInt(_ value: Any?) -> Int? {
+        if let intValue = value as? Int {
+            return intValue
+        }
+        if let number = value as? NSNumber {
+            return number.intValue
+        }
+        return nil
+    }
+
+    private static func parseDouble(_ value: Any?) -> Double? {
+        if let doubleValue = value as? Double {
+            return doubleValue
+        }
+        if let number = value as? NSNumber {
+            return number.doubleValue
+        }
+        return nil
+    }
+
+    private static func displayID(for screen: NSScreen?) -> Int? {
+        guard let screen,
+              let raw = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+            return nil
+        }
+        return raw.intValue
     }
 }
