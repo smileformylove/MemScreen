@@ -153,6 +153,17 @@ class AppState extends ChangeNotifier {
   bool get useNativeMacOSRecording =>
       Platform.isMacOS && _nativeRecordingService != null;
 
+  bool _permissionGranted(String key) {
+    final section = _permissionStatus?[key];
+    return section is Map<String, dynamic> && section['granted'] == true;
+  }
+
+  bool get hasScreenRecordingPermission =>
+      _permissionGranted('screen_recording');
+  bool get hasAccessibilityPermission => _permissionGranted('accessibility');
+  bool get hasInputMonitoringPermission =>
+      _permissionGranted('input_monitoring');
+
   Future<RecordingStatus> loadRecordingStatusForUi() async {
     if (useNativeMacOSRecording) {
       return _nativeRecordingService!.getStatus();

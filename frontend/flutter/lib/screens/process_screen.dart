@@ -121,9 +121,46 @@ class _ProcessScreenState extends State<ProcessScreen> {
     });
   }
 
+  void _showTrackingPermissionMessage(BuildContext context) {
+    final appState = context.read<AppState>();
+    final missing = <String>[];
+    if (!appState.hasAccessibilityPermission) {
+      missing.add('Accessibility');
+    }
+    if (!appState.hasInputMonitoringPermission) {
+      missing.add('Input Monitoring');
+    }
+    final missingText = missing.isEmpty
+        ? 'Accessibility / Input Monitoring'
+        : missing.join(' + ');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+            'Tracking needs $missingText permission. Open Settings > macOS permissions.'),
+        action: SnackBarAction(
+          label: 'Open',
+          onPressed: () {
+            appState.setDesiredTabIndex(4);
+            if (!appState.hasAccessibilityPermission) {
+              appState.openPermissionSettings('accessibility');
+            } else {
+              appState.openPermissionSettings('input_monitoring');
+            }
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _startTracking() async {
+    final appState = context.read<AppState>();
+    if (Theme.of(context).platform == TargetPlatform.macOS &&
+        (!appState.hasAccessibilityPermission ||
+            !appState.hasInputMonitoringPermission)) {
+      _showTrackingPermissionMessage(context);
+      return;
+    }
     try {
-      final appState = context.read<AppState>();
       await appState.processApi.startTracking();
       appState.updateFloatingBallTracking(true);
       if (mounted) {
@@ -216,8 +253,12 @@ class _ProcessScreenState extends State<ProcessScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final appState = context.watch<AppState>();
     final tracking = _trackingStatus?.isTracking == true;
     final eventCount = _trackingStatus?.eventCount ?? 0;
+    final trackingReady = !Theme.of(context).platform.name.contains('macOS') ||
+        (appState.hasAccessibilityPermission &&
+            appState.hasInputMonitoringPermission);
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
@@ -268,9 +309,14 @@ class _ProcessScreenState extends State<ProcessScreen> {
                           const Spacer(),
                           if (!tracking)
                             FilledButton.tonalIcon(
-                              onPressed: _startTracking,
+                              onPressed: trackingReady
+                                  ? _startTracking
+                                  : () =>
+                                      _showTrackingPermissionMessage(context),
                               icon: const Icon(Icons.play_arrow),
-                              label: const Text('Start'),
+                              label: Text(trackingReady
+                                  ? 'Start'
+                                  : 'Grant Permissions'),
                             )
                           else
                             FilledButton.icon(
