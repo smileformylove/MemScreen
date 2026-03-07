@@ -9,7 +9,6 @@
 import os
 import time
 import threading
-import sqlite3
 import json
 import hashlib
 import re
@@ -24,6 +23,7 @@ from .base_presenter import BasePresenter
 from memscreen.audio import AudioRecorder, AudioSource
 from memscreen.cv2_loader import get_cv2
 from memscreen.services.model_capability import RecordingModelCapabilityService
+from memscreen.storage import RecordingMetadataRepository
 
 SUPPORTED_VIDEO_FORMATS = ("mp4", "mov", "mkv", "avi")
 SUPPORTED_AUDIO_FORMATS = ("wav", "m4a", "mp3", "aac")
@@ -85,6 +85,7 @@ class RecordingPresenter(BasePresenter):
             audio_dir = str(config.db_dir / "audio")
 
         self.db_path = db_path
+        self.recordings_repo = RecordingMetadataRepository(self.db_path)
         self.memory_system = memory_system
 
         # Recording state
@@ -192,93 +193,8 @@ class RecordingPresenter(BasePresenter):
     def _init_database(self):
         """Initialize SQLite database for recording metadata"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-
-            # Create recordings table with new columns for region/window support
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS recordings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    filename TEXT NOT NULL,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    frame_count INTEGER,
-                    fps REAL,
-                    duration REAL,
-                    file_size INTEGER,
-                    recording_mode TEXT DEFAULT 'fullscreen',
-                    region_bbox TEXT,
-                    window_title TEXT,
-                    content_tags TEXT,
-                    content_keywords TEXT,
-                    content_summary TEXT,
-                    analysis_status TEXT,
-                    audio_file TEXT,
-                    audio_source TEXT
-                )
-            ''')
-
-            # Create saved_regions table for storing custom regions and windows
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS saved_regions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
-                    region_type TEXT NOT NULL,
-                    bbox TEXT NOT NULL,
-                    window_title TEXT,
-                    window_app TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    last_used DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-
-            # Try to add new columns to existing recordings table (for backwards compatibility)
-            try:
-                cursor.execute('ALTER TABLE recordings ADD COLUMN recording_mode TEXT DEFAULT \'fullscreen\'')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-
-            try:
-                cursor.execute('ALTER TABLE recordings ADD COLUMN region_bbox TEXT')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-
-            try:
-                cursor.execute('ALTER TABLE recordings ADD COLUMN window_title TEXT')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-
-            try:
-                cursor.execute('ALTER TABLE recordings ADD COLUMN content_tags TEXT')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-
-            try:
-                cursor.execute('ALTER TABLE recordings ADD COLUMN content_summary TEXT')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-
-            try:
-                cursor.execute('ALTER TABLE recordings ADD COLUMN content_keywords TEXT')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-
-            try:
-                cursor.execute('ALTER TABLE recordings ADD COLUMN analysis_status TEXT')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-
-            try:
-                cursor.execute('ALTER TABLE recordings ADD COLUMN audio_file TEXT')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-
-            try:
-                cursor.execute('ALTER TABLE recordings ADD COLUMN audio_source TEXT')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-
-            conn.commit()
-            conn.close()
+            self.recordings_repo.ensure_schema()
+            self.recordings_repo.ensure_saved_regions_schema()
         except Exception as e:
             self.handle_error(e, "Failed to initialize database")
             raise
@@ -369,15 +285,27 @@ class RecordingPresenter(BasePresenter):
             (is_ready, error_message)
         """
         if sys.platform == "darwin":
-            # On macOS, this API reliably reports screen recording permission.
+            # On macOS, ask the system for screen-capture permission when possible.
             try:
-                from Quartz import CGPreflightScreenCaptureAccess  # type: ignore
+                from Quartz import (  # type: ignore
+                    CGPreflightScreenCaptureAccess,
+                    CGRequestScreenCaptureAccess,
+                )
 
                 if not bool(CGPreflightScreenCaptureAccess()):
+                    try:
+                        print("[RecordingPresenter] Requesting macOS screen recording permission...")
+                        CGRequestScreenCaptureAccess()
+                    except Exception as request_error:
+                        print(
+                            "[RecordingPresenter] Screen permission request API failed: "
+                            f"{request_error}"
+                        )
                     return (
                         False,
                         "Screen recording permission is required. "
-                        "Grant access in System Settings > Privacy & Security > Screen Recording.",
+                        "Allow MemScreen.app and the runtime process, then restart the app. "
+                        "Path: ~/.memscreen/runtime/.venv/bin/python",
                     )
             except Exception as e:
                 # Non-fatal: fall back to runtime grab probe below.
@@ -1061,27 +989,19 @@ class RecordingPresenter(BasePresenter):
             List of recording metadata dictionaries
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-
-            cursor.execute('''
-                SELECT filename, timestamp, frame_count, fps, duration, file_size
-                FROM recordings
-                ORDER BY timestamp DESC
-            ''')
-
+            rows = self.recordings_repo.list_recordings()
             recordings = []
-            for row in cursor.fetchall():
-                recordings.append({
-                    "filename": row[0],
-                    "timestamp": row[1],
-                    "frame_count": row[2],
-                    "fps": row[3],
-                    "duration": row[4],
-                    "file_size": row[5]
-                })
-
-            conn.close()
+            for row in rows:
+                recordings.append(
+                    {
+                        "filename": row.get("filename"),
+                        "timestamp": row.get("timestamp"),
+                        "frame_count": row.get("frame_count"),
+                        "fps": row.get("fps"),
+                        "duration": row.get("duration"),
+                        "file_size": row.get("file_size"),
+                    }
+                )
             return recordings
 
         except Exception as e:
@@ -1206,33 +1126,11 @@ Content Tags: {", ".join(content_tags)}
 
     def _load_recording_metrics(self, filename: str) -> Tuple[int, float, str, float]:
         """Load frame_count/fps/timestamp/duration from DB for one recording."""
-        frame_count = 0
-        fps = 0.0
-        timestamp = ""
-        duration = 0.0
         try:
-            conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT frame_count, fps, timestamp, duration
-                FROM recordings
-                WHERE filename = ?
-                ORDER BY rowid DESC
-                LIMIT 1
-                """,
-                (filename,),
-            )
-            row = cursor.fetchone()
-            conn.close()
-            if row:
-                frame_count = int(row[0] or 0)
-                fps = float(row[1] or 0.0)
-                timestamp = str(row[2] or "")
-                duration = float(row[3] or 0.0)
+            return self.recordings_repo.get_recording_metrics(filename)
         except Exception as e:
             print(f"[RecordingPresenter] Failed to load recording metrics: {e}")
-        return frame_count, fps, timestamp, duration
+            return 0, 0.0, "", 0.0
 
     def _find_recording_memory_id(self, filename: str) -> Optional[str]:
         """Find existing memory id for this recording file if available."""
@@ -1823,53 +1721,36 @@ Content Tags: {", ".join(content_tags)}
     def _save_to_database(self, filename, frame_count, fps, duration, file_size, audio_file=None):
         """Save recording metadata to database"""
         try:
-            import json
-
             print(f"[RecordingPresenter] 📝 Saving to database: {filename}")
             print(f"[RecordingPresenter]    - frame_count={frame_count}, fps={fps}, duration={duration:.2f}s, size={file_size}")
 
-            # Use check_same_thread=False for multi-threaded access
-            conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            cursor = conn.cursor()
-
-            # Get current timestamp
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-            # Prepare metadata
             recording_mode = getattr(self, 'recording_mode', 'fullscreen')
             region_bbox = json.dumps(self.region_bbox) if getattr(self, 'region_bbox', None) else None
             window_title = getattr(self, 'window_title', None)
-            content_tags = None
-            content_keywords = None
-            content_summary = None
-            analysis_status = "pending"
             audio_source = self._active_audio_source if self._active_audio_source != AudioSource.NONE else self.audio_source
             audio_source_str = audio_source.value if audio_source != AudioSource.NONE else None
 
-            cursor.execute('''
-                INSERT INTO recordings (
-                    filename, timestamp, frame_count, fps, duration, file_size,
-                    recording_mode, region_bbox, window_title, content_tags, content_keywords,
-                    content_summary, analysis_status, audio_file, audio_source
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                filename, timestamp, frame_count, fps, duration, file_size,
-                recording_mode, region_bbox, window_title, content_tags, content_keywords,
-                content_summary, analysis_status, audio_file, audio_source_str
-            ))
+            rowid = self.recordings_repo.insert_recording(
+                filename=filename,
+                frame_count=frame_count,
+                fps=fps,
+                duration=duration,
+                file_size=file_size,
+                recording_mode=recording_mode,
+                region_bbox=region_bbox,
+                window_title=window_title,
+                content_tags=None,
+                content_keywords=None,
+                content_summary=None,
+                analysis_status="pending",
+                audio_file=audio_file,
+                audio_source=audio_source_str,
+            )
 
-            conn.commit()
-
-            # Verify the insert was successful
-            cursor.execute('SELECT rowid FROM recordings WHERE filename = ? ORDER BY rowid DESC LIMIT 1', (filename,))
-            result = cursor.fetchone()
-            if result:
-                print(f"[RecordingPresenter] ✅ Verified in database: rowid={result[0]}")
+            if rowid:
+                print(f"[RecordingPresenter] ✅ Verified in database: rowid={rowid}")
             else:
-                print(f"[RecordingPresenter] ⚠️ WARNING: Insert may have failed - not found in database")
-
-            conn.close()
+                print(f"[RecordingPresenter] ⚠️ WARNING: Insert returned empty rowid")
 
             print(f"[RecordingPresenter] ✅ Successfully saved to database: {filename}")
 
@@ -2583,24 +2464,13 @@ When users ask about what was on their screen or what they were doing, reference
     ) -> None:
         """Persist enriched content metadata into recordings DB for video organization."""
         try:
-            conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                UPDATE recordings
-                SET content_tags = ?, content_keywords = ?, content_summary = ?, analysis_status = ?
-                WHERE filename = ?
-                """,
-                (
-                    json.dumps(content_tags, ensure_ascii=False),
-                    json.dumps(content_keywords or [], ensure_ascii=False),
-                    content_description[:500] if content_description else None,
-                    analysis_status,
-                    filename,
-                ),
+            self.recordings_repo.update_content_metadata(
+                filename=filename,
+                content_tags=content_tags,
+                content_keywords=content_keywords,
+                content_summary=content_description,
+                analysis_status=analysis_status,
             )
-            conn.commit()
-            conn.close()
         except Exception as e:
             print(f"[RecordingPresenter] Failed to save content metadata for {filename}: {e}")
 
@@ -2659,19 +2529,11 @@ When users ask about what was on their screen or what they were doing, reference
     def delete_recording(self, filename):
         """Delete a recording file and database entry"""
         try:
-            # Delete file
             if os.path.exists(filename):
                 os.remove(filename)
 
-            # Delete from database
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            self.recordings_repo.delete_recording(filename)
 
-            cursor.execute('DELETE FROM recordings WHERE filename = ?', (filename,))
-            conn.commit()
-            conn.close()
-
-            # Notify view
             if self.view:
                 self.view.on_recording_deleted(filename)
 

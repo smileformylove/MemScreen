@@ -7,7 +7,6 @@
 """Presenter for Video Playback functionality (MVP Pattern)"""
 
 import os
-import sqlite3
 import threading
 import json
 import hashlib
@@ -20,6 +19,7 @@ if TYPE_CHECKING:
     import cv2
 
 from .base_presenter import BasePresenter
+from memscreen.storage import RecordingMetadataRepository
 
 
 class VideoInfo:
@@ -212,6 +212,7 @@ class VideoPresenter(BasePresenter):
         """
         super().__init__(view)
         self.db_path = db_path
+        self.recordings_repo = RecordingMetadataRepository(self.db_path)
 
         # Video playback state
         self.current_video: Optional[VideoInfo] = None
@@ -262,57 +263,16 @@ class VideoPresenter(BasePresenter):
         """
         try:
             print(f"[VideoPresenter] 📋 Loading video list from database: {self.db_path}")
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-
-            try:
-                cursor.execute('''
-                    SELECT filename, timestamp, frame_count, fps, duration, file_size,
-                           recording_mode, window_title, audio_source, content_tags, content_summary,
-                           content_keywords, analysis_status
-                    FROM recordings
-                    ORDER BY timestamp DESC
-                ''')
-            except sqlite3.OperationalError:
-                # Backward compatibility for older DB schema.
-                cursor.execute('''
-                    SELECT filename, timestamp, frame_count, fps, duration, file_size
-                    FROM recordings
-                    ORDER BY timestamp DESC
-                ''')
-
-            all_rows = cursor.fetchall()
-            print(f"[VideoPresenter] 📊 Found {len(all_rows)} total records in database")
+            rows = self.recordings_repo.list_recordings(existing_only=True, clean_missing=True)
+            print(f"[VideoPresenter] 📊 Found {len(rows)} valid records in database")
 
             videos = []
-            for row in all_rows:
-                filename = row[0]
-                # Only include videos that actually exist
-                if os.path.exists(filename):
-                    video = VideoInfo(
-                        filename=filename,
-                        timestamp=row[1],
-                        frame_count=row[2],
-                        fps=row[3] or 30.0,
-                        duration=row[4] or 0.0,
-                        file_size=row[5] or 0,
-                        recording_mode=row[6] if len(row) > 6 else "fullscreen",
-                        window_title=row[7] if len(row) > 7 else None,
-                        audio_source=row[8] if len(row) > 8 else None,
-                        content_tags=self._parse_content_tags(row[9] if len(row) > 9 else None),
-                        content_summary=row[10] if len(row) > 10 else None,
-                        content_keywords=self._parse_content_keywords(row[11] if len(row) > 11 else None),
-                        analysis_status=row[12] if len(row) > 12 else "pending",
-                    )
+            for row in rows:
+                video = self._video_info_from_row(row)
+                if video is not None:
                     videos.append(video)
-                    print(f"[VideoPresenter] ✅ Video exists: {os.path.basename(filename)}")
-                else:
-                    # Clean up database records for deleted files
-                    print(f"[VideoPresenter] 🗑️ Cleaning up database record for missing file: {filename}")
-                    cursor.execute('DELETE FROM recordings WHERE filename = ?', (filename,))
-                    conn.commit()
+                    print(f"[VideoPresenter] ✅ Video exists: {os.path.basename(video.filename)}")
 
-            conn.close()
             print(f"[VideoPresenter] 📤 Returning {len(videos)} valid videos")
             return videos
 
@@ -322,35 +282,6 @@ class VideoPresenter(BasePresenter):
             traceback.print_exc()
             self.handle_error(e, "Failed to get video list")
             return []
-
-    def delete_video(self, filename: str) -> bool:
-        """
-        Delete a video from database.
-
-        Args:
-            filename: Path to video file
-
-        Returns:
-            True if deleted successfully
-        """
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-
-            cursor.execute('DELETE FROM recordings WHERE filename = ?', (filename,))
-            conn.commit()
-
-            deleted = cursor.rowcount > 0
-            conn.close()
-
-            if deleted:
-                print(f"[VideoPresenter] Deleted video record from database: {filename}")
-
-            return deleted
-
-        except Exception as e:
-            self.handle_error(e, "Failed to delete video from database")
-            return False
 
     def load_video(self, filename: str) -> bool:
         """
@@ -558,7 +489,6 @@ class VideoPresenter(BasePresenter):
             True if deleted successfully
         """
         try:
-            # Stop playback if this video is playing
             if self.current_video and self.current_video.filename == filename:
                 self.stop_playback()
                 with self._capture_lock:
@@ -567,18 +497,11 @@ class VideoPresenter(BasePresenter):
                         self.video_capture = None
                 self.current_video = None
 
-            # Delete file
             if os.path.exists(filename):
                 os.remove(filename)
 
-            # Delete from database
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM recordings WHERE filename = ?', (filename,))
-            conn.commit()
-            conn.close()
+            self.recordings_repo.delete_recording(filename)
 
-            # Notify view
             if self.view:
                 self.view.on_video_deleted(filename)
 
@@ -702,10 +625,7 @@ class VideoPresenter(BasePresenter):
 
     def _init_database(self):
         """Initialize database connection"""
-        # Database is created by RecordingPresenter
-        # Just verify it exists
-        if not os.path.exists(self.db_path):
-            raise FileNotFoundError(f"Database not found: {self.db_path}")
+        self.recordings_repo.ensure_schema()
 
     def _parse_content_tags(self, raw: Any) -> List[str]:
         """Parse serialized content tags from DB."""
@@ -754,49 +674,33 @@ class VideoPresenter(BasePresenter):
             pass
         return None
 
+    def _video_info_from_row(self, row: Dict[str, Any]) -> Optional[VideoInfo]:
+        filename = str(row.get("filename") or "")
+        if not filename:
+            return None
+        return VideoInfo(
+            filename=filename,
+            timestamp=str(row.get("timestamp") or ""),
+            frame_count=int(row.get("frame_count") or 0),
+            fps=float(row.get("fps") or 30.0),
+            duration=float(row.get("duration") or 0.0),
+            file_size=int(row.get("file_size") or 0),
+            recording_mode=str(row.get("recording_mode") or "fullscreen"),
+            window_title=row.get("window_title"),
+            audio_source=row.get("audio_source"),
+            content_tags=self._parse_content_tags(row.get("content_tags")),
+            content_summary=row.get("content_summary"),
+            content_keywords=self._parse_content_keywords(row.get("content_keywords")),
+            analysis_status=row.get("analysis_status") or "pending",
+        )
+
     def _get_video_info(self, filename: str) -> Optional[VideoInfo]:
         """Get video info from database"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-
-            try:
-                cursor.execute('''
-                    SELECT filename, timestamp, frame_count, fps, duration, file_size,
-                           recording_mode, window_title, audio_source, content_tags, content_summary,
-                           content_keywords, analysis_status
-                    FROM recordings
-                    WHERE filename = ?
-                ''', (filename,))
-            except sqlite3.OperationalError:
-                cursor.execute('''
-                    SELECT filename, timestamp, frame_count, fps, duration, file_size
-                    FROM recordings
-                    WHERE filename = ?
-                ''', (filename,))
-
-            row = cursor.fetchone()
-            conn.close()
-
-            if row:
-                return VideoInfo(
-                    filename=row[0],
-                    timestamp=row[1],
-                    frame_count=row[2],
-                    fps=row[3] or 30.0,
-                    duration=row[4] or 0.0,
-                    file_size=row[5] or 0,
-                    recording_mode=row[6] if len(row) > 6 else "fullscreen",
-                    window_title=row[7] if len(row) > 7 else None,
-                    audio_source=row[8] if len(row) > 8 else None,
-                    content_tags=self._parse_content_tags(row[9] if len(row) > 9 else None),
-                    content_summary=row[10] if len(row) > 10 else None,
-                    content_keywords=self._parse_content_keywords(row[11] if len(row) > 11 else None),
-                    analysis_status=row[12] if len(row) > 12 else "pending",
-                )
-
-            return None
-
+            row = self.recordings_repo.get_recording(filename)
+            if not row:
+                return None
+            return self._video_info_from_row(row)
         except Exception as e:
             print(f"[VideoPresenter] Failed to get video info: {e}")
             return None

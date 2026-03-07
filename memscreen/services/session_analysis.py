@@ -452,6 +452,27 @@ def load_sessions(
     return rows
 
 
+def get_session_summary(
+    session_id: int,
+    db_path: str = DEFAULT_DB_PATH,
+) -> Optional[Tuple[int, str, str, int, int, int]]:
+    """Load one session summary row."""
+    _ensure_db_dir(db_path)
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(
+        '''
+        SELECT id, start_time, end_time, event_count, keystrokes, clicks
+        FROM sessions
+        WHERE id=?
+        ''',
+        (session_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return row
+
+
 def get_session_events(
     session_id: int,
     db_path: str = DEFAULT_DB_PATH,

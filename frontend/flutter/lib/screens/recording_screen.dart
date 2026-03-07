@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../api/recording_api.dart';
 import '../app_state.dart';
+import '../api/api_client.dart';
 import '../services/floating_ball_service.dart';
 
 class RecordingScreen extends StatefulWidget {
@@ -328,10 +329,22 @@ class _RecordingScreenState extends State<RecordingScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start recording: $e')),
+          SnackBar(content: Text(_friendlyRecordingStartError(e))),
         );
       }
     }
+  }
+
+  String _friendlyRecordingStartError(Object error) {
+    final raw = error is ApiException ? error.message : error.toString();
+    final lower = raw.toLowerCase();
+    if (lower.contains('screen recording permission')) {
+      return 'Screen Recording permission is missing. In macOS System Settings, allow both MemScreen.app and ~/.memscreen/runtime/.venv/bin/python under Screen Recording, then restart the app.';
+    }
+    if (lower.contains('accessibility') || lower.contains('input monitoring')) {
+      return 'Keyboard/Mouse permission is missing. Allow ~/.memscreen/runtime/.venv/bin/python in Accessibility and Input Monitoring, then restart the app.';
+    }
+    return 'Failed to start recording: $raw';
   }
 
   String _resolveAudioSource(bool useSystem, bool useMic) {

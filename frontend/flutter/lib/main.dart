@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'app_state.dart';
+import 'connection/connection_state.dart';
 import 'screens/home_scaffold.dart';
 
 void main() {
@@ -36,12 +38,40 @@ class _HomeWrapper extends StatefulWidget {
 }
 
 class _HomeWrapperState extends State<_HomeWrapper> {
+  Timer? _connectionRetryTimer;
+  int _connectionRetryCount = 0;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<AppState>().checkConnection();
+      _startConnectionRetryLoop();
     });
+  }
+
+  void _startConnectionRetryLoop() {
+    _connectionRetryTimer?.cancel();
+    _connectionRetryTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted) return;
+      final appState = context.read<AppState>();
+      if (appState.connectionState.status == ConnectionStatus.connected) {
+        _connectionRetryTimer?.cancel();
+        return;
+      }
+      if (_connectionRetryCount >= 40) {
+        _connectionRetryTimer?.cancel();
+        return;
+      }
+      _connectionRetryCount += 1;
+      appState.checkConnection();
+    });
+  }
+
+  @override
+  void dispose() {
+    _connectionRetryTimer?.cancel();
+    super.dispose();
   }
 
   @override

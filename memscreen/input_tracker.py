@@ -22,6 +22,11 @@ from typing import Optional, Callable
 from collections import deque
 from pynput import keyboard, mouse
 
+from memscreen.macos_permissions import (
+    check_accessibility_permission,
+    check_input_monitoring_permission,
+)
+
 
 class InputTracker:
     """
@@ -209,32 +214,21 @@ class InputTracker:
             return True  # Only check on macOS
 
         print("[INFO] Checking macOS Accessibility permissions...")
+        accessibility_ok, accessibility_message = check_accessibility_permission()
+        input_ok, input_message = check_input_monitoring_permission(prompt=True)
 
-        try:
-            # Use AXIsProcessTrusted to avoid CGEventTap crash risk on some macOS/Python combos.
-            app_services = ctypes.CDLL("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")
-            app_services.AXIsProcessTrusted.restype = ctypes.c_bool
-            trusted = bool(app_services.AXIsProcessTrusted())
-            if not trusted:
-                exe_path = sys.executable
-                error_msg = (
-                    "Accessibility permission is required for keyboard/mouse recording.\n\n"
-                    "Go to: System Settings > Privacy & Security > Accessibility.\n"
-                    f"Enable access for the current runtime:\n{exe_path}\n\n"
-                    "If launched from terminal, also ensure your terminal app is allowed."
-                )
-                raise PermissionError(error_msg)
+        problems = []
+        if not accessibility_ok:
+            problems.append(accessibility_message)
+        if not input_ok:
+            problems.append(input_message)
 
-            print("[INFO] ✓ Accessibility permissions verified")
-            return True
+        if problems:
+            raise PermissionError("\n\n".join(problems))
 
-        except OSError as e:
-            print(f"[WARNING] Accessibility check unavailable: {e}")
-            print("[INFO] Proceeding without explicit permission precheck")
-            return True
-        except PermissionError:
-            # Re-raise PermissionError with our message
-            raise
+        print("[INFO] ✓ Accessibility permissions verified")
+        print("[INFO] ✓ Input Monitoring permissions verified")
+        return True
 
     def start_tracking(self):
         """Start tracking keyboard and mouse events"""
@@ -253,9 +247,12 @@ class InputTracker:
             print("       Also grant Input Monitoring to the runtime process for keyboard events.")
 
         self.is_tracking = True
+        startup_errors = []
+        ready_events = []
 
-        # Start mouse listener in a separate thread
         def start_mouse_listener():
+            event = threading.Event()
+            ready_events.append(event)
             try:
                 self.mouse_listener = mouse.Listener(
                     on_move=self._on_mouse_move,
@@ -264,44 +261,24 @@ class InputTracker:
                 )
                 self.mouse_listener.start()
                 print("[INFO] Mouse listener started")
-
-                # Check if listener is actually running
                 time.sleep(0.5)
                 if self.mouse_listener.is_alive():
                     print("[INFO] Mouse listener is running")
                 else:
+                    startup_errors.append(
+                        "Mouse listener failed to start. Allow the runtime process in Accessibility and Input Monitoring."
+                    )
                     print("[WARNING] Mouse listener failed to start (not alive)")
-
             except Exception as e:
+                startup_errors.append(f"Failed to start mouse listener: {e}")
                 print(f"[ERROR] Failed to start mouse listener: {e}")
                 import traceback
                 traceback.print_exc()
+            finally:
+                event.set()
 
         mouse_thread = threading.Thread(target=start_mouse_listener, daemon=True)
         mouse_thread.start()
-
-        # Start keyboard listener in a separate thread to avoid blocking main thread
-        # This is critical for GUI applications like Kivy to prevent freezing/crashes
-        def start_keyboard_listener():
-            try:
-                self.keyboard_listener = keyboard.Listener(
-                    on_press=self._on_keyboard_press,
-                    on_release=self._on_keyboard_release
-                )
-                self.keyboard_listener.start()
-                print("[INFO] Keyboard listener started")
-
-                # Check if listener is actually running
-                time.sleep(0.5)
-                if self.keyboard_listener.is_alive():
-                    print("[INFO] Keyboard listener is running")
-                else:
-                    print("[WARNING] Keyboard listener failed to start (not alive)")
-
-            except Exception as e:
-                print(f"[ERROR] Failed to start keyboard listener: {e}")
-                import traceback
-                traceback.print_exc()
 
         disable_keyboard = os.getenv("MEMSCREEN_DISABLE_MACOS_KEYBOARD_TRACKING", "").strip().lower() in {
             "1", "true", "yes", "on"
@@ -309,8 +286,41 @@ class InputTracker:
         if sys.platform == 'darwin' and disable_keyboard:
             print("[WARNING] Keyboard tracking disabled by MEMSCREEN_DISABLE_MACOS_KEYBOARD_TRACKING")
         else:
+            def start_keyboard_listener():
+                event = threading.Event()
+                ready_events.append(event)
+                try:
+                    self.keyboard_listener = keyboard.Listener(
+                        on_press=self._on_keyboard_press,
+                        on_release=self._on_keyboard_release
+                    )
+                    self.keyboard_listener.start()
+                    print("[INFO] Keyboard listener started")
+                    time.sleep(0.5)
+                    if self.keyboard_listener.is_alive():
+                        print("[INFO] Keyboard listener is running")
+                    else:
+                        startup_errors.append(
+                            "Keyboard listener failed to start. Allow the runtime process in Input Monitoring."
+                        )
+                        print("[WARNING] Keyboard listener failed to start (not alive)")
+                except Exception as e:
+                    startup_errors.append(f"Failed to start keyboard listener: {e}")
+                    print(f"[ERROR] Failed to start keyboard listener: {e}")
+                    import traceback
+                    traceback.print_exc()
+                finally:
+                    event.set()
+
             keyboard_thread = threading.Thread(target=start_keyboard_listener, daemon=True)
             keyboard_thread.start()
+
+        for event in ready_events:
+            event.wait(timeout=2.0)
+
+        if startup_errors:
+            self.stop_tracking()
+            raise PermissionError("\n".join(startup_errors))
 
         print("[INFO] Input tracking started successfully")
 

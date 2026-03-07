@@ -167,6 +167,7 @@ RUNTIME_DIR="${HOME}/.memscreen/runtime"
 VENV_DIR="${RUNTIME_DIR}/.venv"
 STAMP_FILE="${RUNTIME_DIR}/.backend_installed"
 LOCK_DIR="${RUNTIME_DIR}/.bootstrap_lock"
+LOCK_PID_FILE="${LOCK_DIR}/pid"
 LOG_DIR="${HOME}/.memscreen/logs"
 API_LOG="${LOG_DIR}/api_from_app.log"
 BOOTSTRAP_LOG="${LOG_DIR}/backend_bootstrap.log"
@@ -181,11 +182,22 @@ exec >>"$BOOTSTRAP_LOG" 2>&1
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] [backend-bootstrap] begin"
 
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] [backend-bootstrap] another bootstrap is running"
-  exit 0
+if [[ -d "$LOCK_DIR" ]]; then
+  EXISTING_PID=""
+  if [[ -f "$LOCK_PID_FILE" ]]; then
+    EXISTING_PID="$(cat "$LOCK_PID_FILE" | tr -d '[:space:]')"
+  fi
+  if [[ -n "$EXISTING_PID" ]] && kill -0 "$EXISTING_PID" >/dev/null 2>&1; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [backend-bootstrap] another bootstrap is running (pid=$EXISTING_PID)"
+    exit 0
+  fi
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] [backend-bootstrap] removing stale bootstrap lock"
+  rm -rf "$LOCK_DIR"
 fi
-trap 'rmdir "$LOCK_DIR" >/dev/null 2>&1 || true' EXIT
+
+mkdir -p "$LOCK_DIR"
+echo "$$" > "$LOCK_PID_FILE"
+trap 'rm -rf "$LOCK_DIR" >/dev/null 2>&1 || true' EXIT
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "[backend-bootstrap] python3 not found"
@@ -242,6 +254,8 @@ if curl -fsS "$API_HEALTH_URL" >/dev/null 2>&1 && [[ "$SOURCE_CHANGED" != "1" ]]
 fi
 
 if [[ ! -f "$STAMP_FILE" || "$REQ_FILE" -nt "$STAMP_FILE" || "$SOURCE_MARKER" -nt "$STAMP_FILE" ]]; then
+  echo "[backend-bootstrap] upgrading packaging tooling"
+  "${VENV_DIR}/bin/python" -m pip install --upgrade pip setuptools wheel
   echo "[backend-bootstrap] installing lite runtime dependencies"
   "${VENV_DIR}/bin/python" -m pip install -r "$REQ_FILE"
   date +"%Y-%m-%d %H:%M:%S" > "$STAMP_FILE"
@@ -321,6 +335,13 @@ HEALTH_URL="${MEMSCREEN_API_URL:-http://127.0.0.1:8765/health}"
 LOG_DIR="${HOME}/.memscreen/logs"
 WRAPPER_LOG="${LOG_DIR}/app_wrapper.log"
 
+if [[ "$APP_BIN_DIR" == /Volumes/* ]]; then
+  osascript <<'OSA' >/dev/null 2>&1 || true
+  display alert "Install MemScreen first" message "Please drag MemScreen.app into Applications, eject the DMG, then launch MemScreen from Applications. Running directly from the DMG can break macOS permissions." buttons {"OK"} default button "OK"
+OSA
+  exit 1
+fi
+
 if [[ -x "$BACKEND_BOOTSTRAP" ]]; then
   mkdir -p "$LOG_DIR"
   touch "$WRAPPER_LOG"
@@ -361,8 +382,19 @@ prepare_embedded_backend
 install_startup_wrapper
 codesign_app_if_needed
 
+ln -s /Applications "$STAGE_DIR/Applications"
+
 cat > "$STAGE_DIR/README_FIRST.txt" <<'TXT'
 MemScreen Installer (No Models Bundled)
+
+Install steps:
+1. Drag MemScreen.app into Applications
+2. Launch MemScreen from Applications (do NOT run it directly from the DMG window)
+3. On first launch, wait while local backend runtime is prepared
+4. If recording or shortcuts fail, grant permissions in System Settings:
+   - Screen Recording: MemScreen.app and ~/.memscreen/runtime/.venv/bin/python
+   - Accessibility: ~/.memscreen/runtime/.venv/bin/python
+   - Input Monitoring: ~/.memscreen/runtime/.venv/bin/python
 
 This package includes:
 - Flutter desktop app

@@ -21,6 +21,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final FocusNode _intervalFocusNode = FocusNode();
   LocalModelCatalog? _modelCatalog;
   bool _loadingModelCatalog = false;
+  bool _loadingPermissions = false;
+  Map<String, dynamic>? _permissionStatus;
   String? _downloadingModelName;
 
   @override
@@ -31,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _durationController.text = appState.recordingDurationSec.toString();
     _intervalController.text = appState.recordingIntervalSec.toString();
     _loadModelCatalog();
+    _loadPermissionStatus();
   }
 
   @override
@@ -84,6 +87,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await context.read<AppState>().setRecordingAudioDenoise(value);
   }
 
+  Future<void> _loadPermissionStatus({
+    bool showError = false,
+    bool promptSystem = false,
+  }) async {
+    if (!mounted) return;
+    setState(() => _loadingPermissions = true);
+    try {
+      final result = await context.read<AppState>().client.get(
+            '/permissions/status?prompt=${promptSystem ? 'true' : 'false'}',
+          );
+      if (!mounted) return;
+      setState(() => _permissionStatus = result);
+    } catch (e) {
+      if (showError && mounted) {
+        final msg = e is ApiException ? e.message : e.toString();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load permissions: $msg')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loadingPermissions = false);
+      }
+    }
+  }
+
   Future<void> _loadModelCatalog({bool showError = false}) async {
     if (!mounted) return;
     setState(() => _loadingModelCatalog = true);
@@ -135,10 +164,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final appState = context.watch<AppState>();
     final durationText = appState.recordingDurationSec.toString();
     final intervalText = appState.recordingIntervalSec.toString();
-    if (!_durationFocusNode.hasFocus && _durationController.text != durationText) {
+    if (!_durationFocusNode.hasFocus &&
+        _durationController.text != durationText) {
       _durationController.text = durationText;
     }
-    if (!_intervalFocusNode.hasFocus && _intervalController.text != intervalText) {
+    if (!_intervalFocusNode.hasFocus &&
+        _intervalController.text != intervalText) {
       _intervalController.text = intervalText;
     }
 
@@ -152,6 +183,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             padding: const EdgeInsets.all(16),
             children: [
               _recordingDefaultsCard(appState),
+              const SizedBox(height: 12),
+              _permissionsCard(),
               const SizedBox(height: 12),
               _modelsCard(),
               const SizedBox(height: 12),
@@ -302,6 +335,108 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _permissionsCard() {
+    final theme = Theme.of(context);
+    final permissionStatus = _permissionStatus;
+    final runtimePath = (permissionStatus?['runtime_executable'] ??
+            '~/.memscreen/runtime/.venv/bin/python')
+        .toString();
+
+    Widget rowFor(String title, String key) {
+      final section = permissionStatus?[key];
+      final granted = section is Map && section['granted'] == true;
+      final message =
+          section is Map ? (section['message'] ?? '').toString() : '';
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              granted ? Icons.check_circle : Icons.error_outline,
+              size: 16,
+              color: granted ? Colors.green : theme.colorScheme.error,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title),
+                  if (message.isNotEmpty)
+                    Text(
+                      message,
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(child: Text('macOS permissions')),
+              IconButton(
+                tooltip: 'Refresh',
+                onPressed: _loadingPermissions
+                    ? null
+                    : () => _loadPermissionStatus(showError: true),
+                icon: const Icon(Icons.refresh, size: 18),
+              ),
+              TextButton(
+                onPressed: _loadingPermissions
+                    ? null
+                    : () => _loadPermissionStatus(
+                          showError: true,
+                          promptSystem: true,
+                        ),
+                child: const Text('Check / Prompt'),
+              ),
+            ],
+          ),
+          Text(
+            'Required runtime path: $runtimePath',
+            style: TextStyle(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 8),
+          rowFor('Screen Recording', 'screen_recording'),
+          rowFor('Accessibility', 'accessibility'),
+          rowFor('Input Monitoring', 'input_monitoring'),
+          const SizedBox(height: 8),
+          Text(
+            'Allow both MemScreen.app and the runtime path above where relevant, then quit and reopen MemScreen.',
+            style: TextStyle(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
+          if (_loadingPermissions) ...[
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(minHeight: 2),
+          ],
         ],
       ),
     );

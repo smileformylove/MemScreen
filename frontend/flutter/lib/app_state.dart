@@ -1,14 +1,11 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'api/api_client.dart';
 import 'api/chat_api.dart';
 import 'api/config_api.dart';
-import 'api/health_api.dart';
 import 'api/model_api.dart';
 import 'api/process_api.dart';
 import 'api/recording_api.dart';
@@ -16,7 +13,11 @@ import 'api/video_api.dart';
 import 'config/api_config.dart';
 import 'connection/connection_state.dart';
 import 'connection/connection_service.dart';
+import 'services/floating_ball_commands.dart';
 import 'services/floating_ball_service.dart';
+import 'services/recording_lifecycle_coordinator.dart';
+import 'services/recording_settings_store.dart';
+import 'services/recording_tracking_coordinator.dart';
 
 /// Global app state: config, client, connection, API facades.
 class AppState extends ChangeNotifier {
@@ -49,6 +50,27 @@ class AppState extends ChangeNotifier {
       channel.setMethodCallHandler(_handleFloatingBallCall);
     }
 
+    _recordingSettingsStore = RecordingSettingsStore();
+    _recordingTrackingCoordinator = RecordingTrackingCoordinator(
+      processApi: _processApi,
+      requestRecordingStatusRefresh: () => requestRecordingStatusRefresh(),
+      requestVideoRefresh: () => requestVideoRefresh(),
+      updateFloatingBallTracking: updateFloatingBallTracking,
+    );
+    _recordingLifecycleCoordinator = RecordingLifecycleCoordinator(
+      recordingApi: _recordingApi,
+      trackingCoordinator: _recordingTrackingCoordinator,
+      autoTrackInputWithRecording: () => _autoTrackInputWithRecording,
+      recordSystemAudio: () => _recordSystemAudio,
+      recordMicrophoneAudio: () => _recordMicrophoneAudio,
+      recordingAudioSource: () => recordingAudioSource,
+      recordingVideoFormat: () => _recordingVideoFormat,
+      recordingAudioFormat: () => _recordingAudioFormat,
+      recordingAudioDenoise: () => _recordingAudioDenoise,
+      updateFloatingBallState: updateFloatingBallState,
+      requestRecordingStatusRefresh: () => requestRecordingStatusRefresh(),
+      requestVideoRefresh: () => requestVideoRefresh(),
+    );
     _loadRecordingSettings();
   }
 
@@ -56,8 +78,9 @@ class AppState extends ChangeNotifier {
   late ApiClient _client;
   late ConnectionService _connection;
 
-  ApiConnectionState _connectionState =
-      ApiConnectionState(status: ConnectionStatus.unknown);
+  ApiConnectionState _connectionState = ApiConnectionState(
+    status: ConnectionStatus.unknown,
+  );
   ApiConnectionState get connectionState => _connectionState;
 
   // Desired tab index from floating ball (null = no change requested)
@@ -85,7 +108,7 @@ class AppState extends ChangeNotifier {
     return 'none';
   }
 
-  bool _autoTrackInputWithRecording = true;
+  bool _autoTrackInputWithRecording = false;
   bool get autoTrackInputWithRecording => _autoTrackInputWithRecording;
   String _recordingVideoFormat = 'mp4';
   String get recordingVideoFormat => _recordingVideoFormat;
@@ -93,14 +116,13 @@ class AppState extends ChangeNotifier {
   String get recordingAudioFormat => _recordingAudioFormat;
   bool _recordingAudioDenoise = true;
   bool get recordingAudioDenoise => _recordingAudioDenoise;
-  bool _trackingStartedByRecording = false;
-  bool _trackingBoundToRecording = false;
-  bool _recordingExpectedActive = false;
-  bool _syncingUnexpectedRecordingStop = false;
-  Timer? _recordingWatchdogTimer;
-  String? _pendingRecordingNotice;
-  String get _settingsFilePath =>
-      '${Platform.environment['HOME'] ?? ''}/.memscreen/flutter_settings.json';
+  final RecordingTrackingState _recordingTrackingState =
+      RecordingTrackingState();
+  final RecordingLifecycleState _recordingLifecycleState =
+      RecordingLifecycleState();
+  late final RecordingTrackingCoordinator _recordingTrackingCoordinator;
+  late final RecordingLifecycleCoordinator _recordingLifecycleCoordinator;
+  late final RecordingSettingsStore _recordingSettingsStore;
 
   late ChatApi _chatApi;
   late ProcessApi _processApi;
@@ -120,8 +142,9 @@ class AppState extends ChangeNotifier {
 
   /// Check connection (e.g. on startup or retry).
   Future<void> checkConnection() async {
-    _connectionState =
-        _connectionState.copyWith(status: ConnectionStatus.connecting);
+    _connectionState = _connectionState.copyWith(
+      status: ConnectionStatus.connecting,
+    );
     notifyListeners();
     final state = await _connection.check();
     _connectionState = state;
@@ -130,8 +153,9 @@ class AppState extends ChangeNotifier {
 
   /// Retry with optional new base URL (replaces config and client).
   Future<void> reconnectWithBaseUrl(String baseUrl) async {
-    _connectionState =
-        _connectionState.copyWith(status: ConnectionStatus.connecting);
+    _connectionState = _connectionState.copyWith(
+      status: ConnectionStatus.connecting,
+    );
     notifyListeners();
     final state = await _connection.reconnectWithBaseUrl(baseUrl);
     if (state.config != null) {
@@ -191,11 +215,8 @@ class AppState extends ChangeNotifier {
 
   Future<void> _loadRecordingSettings() async {
     try {
-      final file = File(_settingsFilePath);
-      if (!await file.exists()) return;
-      final raw = await file.readAsString();
-      final map = jsonDecode(raw);
-      if (map is! Map<String, dynamic>) return;
+      final map = await _recordingSettingsStore.load();
+      if (map == null) return;
       final duration = map['recording_duration_sec'];
       final interval = map['recording_interval_sec'];
       final audioSource = map['recording_audio_source'];
@@ -290,16 +311,16 @@ class AppState extends ChangeNotifier {
   Future<void> setAutoTrackInputWithRecording(bool enabled) async {
     _autoTrackInputWithRecording = enabled;
     if (!enabled) {
-      _trackingStartedByRecording = false;
-      _trackingBoundToRecording = false;
+      _recordingTrackingState.startedByRecording = false;
+      _recordingTrackingState.boundToRecording = false;
     }
     notifyListeners();
     await _persistRecordingSettings();
   }
 
   String? consumePendingRecordingNotice() {
-    final notice = _pendingRecordingNotice;
-    _pendingRecordingNotice = null;
+    final notice = _recordingTrackingState.pendingRecordingNotice;
+    _recordingTrackingState.pendingRecordingNotice = null;
     return notice;
   }
 
@@ -376,121 +397,18 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _persistRecordingSettings() async {
-    try {
-      final file = File(_settingsFilePath);
-      await file.parent.create(recursive: true);
-      await file.writeAsString(
-        jsonEncode({
-          'recording_duration_sec': _recordingDurationSec,
-          'recording_interval_sec': _recordingIntervalSec,
-          'recording_audio_source': recordingAudioSource,
-          'record_system_audio_enabled': _recordSystemAudio,
-          'record_microphone_audio_enabled': _recordMicrophoneAudio,
-          'recording_audio_user_configured': _recordingAudioUserConfigured,
-          'auto_track_input_with_recording': _autoTrackInputWithRecording,
-          'recording_video_format': _recordingVideoFormat,
-          'recording_audio_format': _recordingAudioFormat,
-          'recording_audio_denoise': _recordingAudioDenoise,
-        }),
-      );
-    } catch (e) {
-      debugPrint('[AppState] Failed to persist recording settings: $e');
-    }
-  }
-
-  Future<void> _maybeStartTrackingForRecording() async {
-    _trackingStartedByRecording = false;
-    _trackingBoundToRecording = false;
-    if (!_autoTrackInputWithRecording) return;
-    try {
-      final status = await _processApi.getTrackingStatus();
-      if (status.isTracking) {
-        await _processApi.markTrackingStart();
-        _trackingBoundToRecording = true;
-        updateFloatingBallTracking(true);
-        requestRecordingStatusRefresh();
-        return;
-      }
-      if (!status.isTracking) {
-        await _processApi.startTracking();
-        _trackingStartedByRecording = true;
-        _trackingBoundToRecording = true;
-        updateFloatingBallTracking(true);
-        requestRecordingStatusRefresh();
-      }
-    } catch (e) {
-      String reason = 'Key-Mouse tracking did not start. Video recording continues.';
-      if (e is ApiException) {
-        final details = e.message.trim();
-        if (details.isNotEmpty) {
-          reason = 'Key-Mouse tracking disabled for this recording: $details';
-        }
-      }
-      _pendingRecordingNotice = reason;
-      debugPrint('[AppState] Failed to auto-start input tracking: $e');
-    }
-  }
-
-  Future<void> _saveTrackingSessionForRecording() async {
-    await Future.delayed(const Duration(milliseconds: 400));
-    for (var attempt = 0; attempt < 3; attempt++) {
-      try {
-        final result = await _processApi.saveSessionFromTracking();
-        if (result.eventsSaved > 0) {
-          requestVideoRefresh();
-        }
-        return;
-      } catch (e) {
-        // Retry briefly because tracker flush may lag behind recording stop.
-        final msg = e.toString().toLowerCase();
-        final noEvents =
-            msg.contains('no events') ||
-            msg.contains('no meaningful events') ||
-            msg.contains('not enough events');
-        if (noEvents) {
-          if (attempt == 2) {
-            return;
-          }
-        } else if (attempt == 2) {
-          debugPrint('[AppState] Error auto-saving tracking session: $e');
-          return;
-        }
-        await Future.delayed(Duration(milliseconds: 250 * (attempt + 1)));
-      }
-    }
-  }
-
-  Future<void> _maybeStopTrackingAfterRecording() async {
-    if (!_trackingBoundToRecording) return;
-    try {
-      if (_trackingStartedByRecording) {
-        await _processApi.stopTracking();
-        updateFloatingBallTracking(false);
-        requestRecordingStatusRefresh();
-      }
-      await _saveTrackingSessionForRecording();
-    } catch (e) {
-      debugPrint('[AppState] Failed to auto-stop input tracking: $e');
-    } finally {
-      _trackingStartedByRecording = false;
-      _trackingBoundToRecording = false;
-    }
-  }
-
-  Future<void> _rollbackTrackingForFailedRecordingStart() async {
-    if (!_trackingBoundToRecording) return;
-    try {
-      if (_trackingStartedByRecording) {
-        await _processApi.stopTracking();
-        updateFloatingBallTracking(false);
-        requestRecordingStatusRefresh();
-      }
-    } catch (e) {
-      debugPrint('[AppState] Failed to rollback input tracking after start failure: $e');
-    } finally {
-      _trackingStartedByRecording = false;
-      _trackingBoundToRecording = false;
-    }
+    await _recordingSettingsStore.save({
+      'recording_duration_sec': _recordingDurationSec,
+      'recording_interval_sec': _recordingIntervalSec,
+      'recording_audio_source': recordingAudioSource,
+      'record_system_audio_enabled': _recordSystemAudio,
+      'record_microphone_audio_enabled': _recordMicrophoneAudio,
+      'recording_audio_user_configured': _recordingAudioUserConfigured,
+      'auto_track_input_with_recording': _autoTrackInputWithRecording,
+      'recording_video_format': _recordingVideoFormat,
+      'recording_audio_format': _recordingAudioFormat,
+      'recording_audio_denoise': _recordingAudioDenoise,
+    });
   }
 
   Future<void> startRecording({
@@ -502,148 +420,32 @@ class AppState extends ChangeNotifier {
     int? screenDisplayId,
     String? windowTitle,
   }) async {
-    await _maybeStartTrackingForRecording();
-    try {
-      final effectiveAudioSource = await _resolveRecordingAudioSourceForStart();
-      await _recordingApi.start(
-        duration: duration,
-        interval: interval,
-        mode: mode,
-        region: region,
-        screenIndex: screenIndex,
-        screenDisplayId: screenDisplayId,
-        windowTitle: windowTitle,
-        audioSource: effectiveAudioSource,
-        videoFormat: _recordingVideoFormat,
-        audioFormat: _recordingAudioFormat,
-        audioDenoise: _recordingAudioDenoise,
-      );
-      // Confirm backend entered recording state; if not, surface immediate failure
-      // so floating-ball selection flow can recover and allow instant retry.
-      await Future.delayed(const Duration(milliseconds: 500));
-      final status = await _recordingApi.getStatus();
-      if (!status.isRecording) {
-        await _rollbackTrackingForFailedRecordingStart();
-        updateFloatingBallState(false);
-        requestRecordingStatusRefresh();
-        throw Exception(
-            'Recording did not start. Please reselect target and retry.');
-      }
-      if (_autoTrackInputWithRecording && !_trackingBoundToRecording) {
-        await _maybeStartTrackingForRecording();
-      }
-      _recordingExpectedActive = true;
-      _startRecordingWatchdog();
-      updateFloatingBallState(true);
-      requestRecordingStatusRefresh();
-    } catch (_) {
-      await _rollbackTrackingForFailedRecordingStart();
-      _recordingExpectedActive = false;
-      _recordingWatchdogTimer?.cancel();
-      rethrow;
-    }
-  }
-
-  Future<String> _resolveRecordingAudioSourceForStart() async {
-    final requested = recordingAudioSource;
-    if (requested == 'none') return requested;
-    try {
-      final diagnosis = await _recordingApi.diagnoseAudio(source: requested);
-      var useSystem = _recordSystemAudio;
-      var useMic = _recordMicrophoneAudio;
-
-      if (useSystem && !diagnosis.systemDeviceAvailable) {
-        useSystem = false;
-      }
-      if (useMic && !diagnosis.microphoneAvailable) {
-        useMic = false;
-      }
-
-      final resolved = _composeAudioSource(useSystem, useMic);
-      if (resolved != requested) {
-        debugPrint(
-          '[AppState] Audio source fallback: requested=$requested, resolved=$resolved',
-        );
-      }
-      return resolved;
-    } catch (e) {
-      debugPrint(
-        '[AppState] Audio diagnosis failed, using requested source=$requested: $e',
-      );
-      return requested;
-    }
-  }
-
-  String _composeAudioSource(bool useSystem, bool useMic) {
-    if (useSystem && useMic) return 'mixed';
-    if (useSystem) return 'system_audio';
-    if (useMic) return 'microphone';
-    return 'none';
+    await _recordingLifecycleCoordinator.start(
+      lifecycleState: _recordingLifecycleState,
+      trackingState: _recordingTrackingState,
+      duration: duration,
+      interval: interval,
+      mode: mode,
+      region: region,
+      screenIndex: screenIndex,
+      screenDisplayId: screenDisplayId,
+      windowTitle: windowTitle,
+    );
   }
 
   Future<void> stopRecording() async {
-    await _recordingApi.stop();
-    _recordingExpectedActive = false;
-    _recordingWatchdogTimer?.cancel();
-    updateFloatingBallState(false);
-    requestRecordingStatusRefresh();
-    requestVideoRefresh();
-    _schedulePostStopRefreshes();
-    await _maybeStopTrackingAfterRecording();
+    await _recordingLifecycleCoordinator.stop(
+      lifecycleState: _recordingLifecycleState,
+      trackingState: _recordingTrackingState,
+    );
   }
 
   Future<void> syncRecordingStateFromBackend(bool isRecording) async {
-    if (isRecording) {
-      _recordingExpectedActive = true;
-      _startRecordingWatchdog();
-      return;
-    }
-    if (!_recordingExpectedActive) return;
-    _recordingExpectedActive = false;
-    _recordingWatchdogTimer?.cancel();
-    updateFloatingBallState(false);
-    requestRecordingStatusRefresh();
-    if (_syncingUnexpectedRecordingStop) return;
-    _syncingUnexpectedRecordingStop = true;
-    try {
-      await _maybeStopTrackingAfterRecording();
-      requestVideoRefresh();
-    } catch (e) {
-      debugPrint('[AppState] Failed to handle unexpected recording stop: $e');
-    } finally {
-      _syncingUnexpectedRecordingStop = false;
-    }
-  }
-
-  void _startRecordingWatchdog() {
-    _recordingWatchdogTimer?.cancel();
-    _recordingWatchdogTimer =
-        Timer.periodic(const Duration(seconds: 2), (_) async {
-      if (!_recordingExpectedActive) return;
-      try {
-        final status = await _recordingApi.getStatus();
-        if (!status.isRecording) {
-          await syncRecordingStateFromBackend(false);
-          return;
-        }
-        if (_autoTrackInputWithRecording && !_trackingBoundToRecording) {
-          await _maybeStartTrackingForRecording();
-        }
-      } catch (e) {
-        debugPrint('[AppState] Recording watchdog poll failed: $e');
-      }
-    });
-  }
-
-  void _schedulePostStopRefreshes() {
-    // Video save/merge can take several seconds; refresh in a short window so
-    // Videos timeline updates as soon as the new file is persisted.
-    for (var sec = 1; sec <= 12; sec++) {
-      Future.delayed(Duration(seconds: sec), () {
-        requestRecordingStatusRefresh();
-        requestVideoRefresh();
-      });
-    }
+    await _recordingLifecycleCoordinator.syncFromBackend(
+      isRecording: isRecording,
+      lifecycleState: _recordingLifecycleState,
+      trackingState: _recordingTrackingState,
+    );
   }
 
   /// Handle method calls from native floating ball
@@ -652,68 +454,29 @@ class AppState extends ChangeNotifier {
     switch (call.method) {
       case 'startRecording':
         try {
-          final args =
-              call.arguments is Map ? (call.arguments as Map) : const {};
-          final rawMode = args['mode'];
-          var mode =
-              rawMode is String && rawMode.isNotEmpty ? rawMode : 'fullscreen';
-          if (mode == 'window') {
-            mode = 'region';
-          }
-
-          List<double>? region;
-          final rawRegion = args['region'];
-          if (rawRegion is List) {
-            region = rawRegion.map((e) => (e as num).toDouble()).toList();
-            if (region.length != 4) {
-              region = null;
-            }
-          }
-
-          int? screenIndex;
-          final rawScreenIndex = args['screenIndex'] ?? args['screen_index'];
-          if (rawScreenIndex is int) {
-            screenIndex = rawScreenIndex;
-          } else if (rawScreenIndex is num) {
-            screenIndex = rawScreenIndex.toInt();
-          }
-          int? screenDisplayId;
-          final rawScreenDisplayId =
-              args['screenDisplayId'] ?? args['screen_display_id'];
-          if (rawScreenDisplayId is int) {
-            screenDisplayId = rawScreenDisplayId;
-          } else if (rawScreenDisplayId is num) {
-            screenDisplayId = rawScreenDisplayId.toInt();
-          }
-          final rawWindowTitle = args['windowTitle'] ?? args['window_title'];
-          final windowTitle =
-              rawWindowTitle is String && rawWindowTitle.isNotEmpty
-                  ? rawWindowTitle
-                  : null;
-
-          // Safety fallback: avoid invalid region start when selector payload is missing.
-          if (mode == 'region' && (region == null || region.length != 4)) {
-            mode = (screenIndex != null || screenDisplayId != null)
-                ? 'fullscreen-single'
-                : 'fullscreen';
-            region = null;
-          }
+          final request = FloatingBallStartRecordingRequest.fromArguments(
+            call.arguments,
+          );
 
           await startRecording(
             duration: _recordingDurationSec,
             interval: _recordingIntervalSec,
-            mode: mode,
-            region: region,
-            screenIndex: screenIndex,
-            screenDisplayId: screenDisplayId,
-            windowTitle: windowTitle,
+            mode: request.mode,
+            region: request.region,
+            screenIndex: request.screenIndex,
+            screenDisplayId: request.screenDisplayId,
+            windowTitle: request.windowTitle,
           );
           final notice = consumePendingRecordingNotice();
           if (notice != null && notice.isNotEmpty) {
             debugPrint('[AppState] Recording notice: $notice');
           }
           debugPrint(
-            '[AppState] Recording started from floating ball: mode=$mode, region=$region, screen=$screenIndex, displayId=$screenDisplayId, windowTitle=$windowTitle',
+            '[AppState] Recording started from floating ball: '
+            'mode=${request.mode}, region=${request.region}, '
+            'screen=${request.screenIndex}, '
+            'displayId=${request.screenDisplayId}, '
+            'windowTitle=${request.windowTitle}',
           );
           return <String, dynamic>{'ok': true};
         } catch (e) {
@@ -740,31 +503,10 @@ class AppState extends ChangeNotifier {
 
       case 'toggleTracking':
         try {
-          final status = await _processApi.getTrackingStatus();
-          if (status.isTracking) {
-            await _processApi.stopTracking();
-            _trackingStartedByRecording = false;
-            updateFloatingBallTracking(false);
-            requestVideoRefresh();
-            requestRecordingStatusRefresh();
-            Future.delayed(const Duration(milliseconds: 400), () async {
-              try {
-                final result = await _processApi.saveSessionFromTracking();
-                if (result.eventsSaved > 0) {
-                  requestVideoRefresh();
-                }
-              } catch (e) {
-                debugPrint('[AppState] Error saving tracking session: $e');
-              }
-            });
-            debugPrint('[AppState] Input tracking stopped from floating ball');
-          } else {
-            await _processApi.startTracking();
-            _trackingStartedByRecording = false;
-            updateFloatingBallTracking(true);
-            requestRecordingStatusRefresh();
-            debugPrint('[AppState] Input tracking started from floating ball');
-          }
+          await _recordingTrackingCoordinator.toggleTrackingFromFloatingBall(
+            state: _recordingTrackingState,
+          );
+          debugPrint('[AppState] Input tracking toggled from floating ball');
           return <String, dynamic>{'ok': true};
         } catch (e) {
           debugPrint('[AppState] Error toggling input tracking: $e');
@@ -818,7 +560,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
-    _recordingWatchdogTimer?.cancel();
+    _recordingLifecycleCoordinator.dispose(_recordingLifecycleState);
     super.dispose();
   }
 }
