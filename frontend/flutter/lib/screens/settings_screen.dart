@@ -426,6 +426,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
           rowFor('Accessibility', 'accessibility'),
           rowFor('Input Monitoring', 'input_monitoring'),
           const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton(
+                onPressed: () => context
+                    .read<AppState>()
+                    .openPermissionSettings('screen_recording'),
+                child: const Text('Open Screen Recording'),
+              ),
+              OutlinedButton(
+                onPressed: () => context
+                    .read<AppState>()
+                    .openPermissionSettings('accessibility'),
+                child: const Text('Open Accessibility'),
+              ),
+              OutlinedButton(
+                onPressed: () => context
+                    .read<AppState>()
+                    .openPermissionSettings('input_monitoring'),
+                child: const Text('Open Input Monitoring'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           Text(
             'Allow both MemScreen.app and the runtime path above where relevant, then quit and reopen MemScreen.',
             style: TextStyle(

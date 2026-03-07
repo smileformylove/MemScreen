@@ -11,6 +11,14 @@ from .. import deps
 router = APIRouter(prefix="/recording", tags=["recording"])
 
 
+class RecordingImportBody(BaseModel):
+    filename: str
+    duration_sec: Optional[float] = None
+    mode: Optional[str] = None
+    window_title: Optional[str] = None
+    audio_source: Optional[str] = None
+
+
 class RecordingStartBody(BaseModel):
     duration: int = 60
     interval: float = 2.0
@@ -158,3 +166,22 @@ async def recording_screens():
     if not presenter:
         raise HTTPException(status_code=503, detail="Recording not available")
     return {"screens": presenter.get_available_screens()}
+
+
+@router.post("/import")
+async def recording_import(body: RecordingImportBody):
+    """Import a recording file created natively into the local video catalog."""
+    presenter = deps.get_recording_presenter()
+    if not presenter:
+        raise HTTPException(status_code=503, detail="Recording not available")
+    result = await run_in_threadpool(
+        presenter.import_recording_file,
+        body.filename,
+        duration_sec=body.duration_sec,
+        recording_mode=body.mode,
+        window_title=body.window_title,
+        audio_source=body.audio_source,
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to import recording"))
+    return result

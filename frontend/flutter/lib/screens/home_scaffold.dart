@@ -47,6 +47,19 @@ class HomeScaffoldState extends State<HomeScaffold> {
     }
   }
 
+  bool _hasPermissionIssues(Map<String, dynamic>? status) {
+    if (status == null) return false;
+
+    bool denied(String key) {
+      final section = status[key];
+      return section is Map<String, dynamic> && section['granted'] != true;
+    }
+
+    return denied('screen_recording') ||
+        denied('accessibility') ||
+        denied('input_monitoring');
+  }
+
   static const _tabs = [
     (icon: Icons.fiber_manual_record, label: 'Record'),
     (icon: Icons.video_library, label: 'Videos'),
@@ -57,13 +70,17 @@ class HomeScaffoldState extends State<HomeScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    final connectionState = context.watch<AppState>().connectionState;
+    final appState = context.watch<AppState>();
+    final connectionState = appState.connectionState;
+    final permissionStatus = appState.permissionStatus;
     final showBanner = connectionState.status != ConnectionStatus.connected;
 
     return Scaffold(
       body: Column(
         children: [
           if (showBanner) _ConnectionBanner(state: connectionState),
+          if (!showBanner && _hasPermissionIssues(permissionStatus))
+            _PermissionBanner(status: permissionStatus!),
           Expanded(
             child: IndexedStack(
               index: _index,
@@ -186,6 +203,62 @@ class _ConnectionBanner extends StatelessWidget {
             child: const Text('OK'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PermissionBanner extends StatelessWidget {
+  const _PermissionBanner({required this.status});
+
+  final Map<String, dynamic> status;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final appState = context.read<AppState>();
+
+    String line(String key, String label) {
+      final section = status[key];
+      final granted =
+          section is Map<String, dynamic> && section['granted'] == true;
+      return granted ? '✓ $label' : '✗ $label';
+    }
+
+    return Material(
+      color: theme.colorScheme.tertiaryContainer,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.privacy_tip,
+                  color: theme.colorScheme.onTertiaryContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Permissions needed: ${line('screen_recording', 'Screen Recording')} · '
+                  '${line('accessibility', 'Accessibility')} · '
+                  '${line('input_monitoring', 'Input Monitoring')}',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+              TextButton(
+                onPressed: () =>
+                    appState.refreshPermissionStatus(promptSystem: true),
+                child: const Text('Check'),
+              ),
+              TextButton(
+                onPressed: () {
+                  appState.setDesiredTabIndex(4);
+                },
+                child: const Text('Settings'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

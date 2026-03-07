@@ -104,7 +104,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
     try {
       final appState = context.read<AppState>();
       final api = context.read<AppState>().recordingApi;
-      final s = await api.getStatus();
+      final s = await appState.loadRecordingStatusForUi();
       await appState.syncRecordingStateFromBackend(s.isRecording);
       final screens = await api.getScreens();
       final justStopped = _wasRecording && !s.isRecording;

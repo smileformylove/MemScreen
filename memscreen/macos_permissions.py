@@ -44,6 +44,22 @@ def _open_privacy_settings(anchor: str) -> None:
         pass
 
 
+def open_privacy_settings(area: str) -> bool:
+    if not _is_macos():
+        return False
+    area_key = str(area or '').strip().lower()
+    anchors = {
+        'screen_recording': 'Privacy_ScreenCapture',
+        'accessibility': 'Privacy_Accessibility',
+        'input_monitoring': 'Privacy_ListenEvent',
+    }
+    anchor = anchors.get(area_key)
+    if not anchor:
+        return False
+    _open_privacy_settings(anchor)
+    return True
+
+
 def create_permission_message() -> str:
     runtime_path = _runtime_executable()
     return (

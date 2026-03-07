@@ -38,6 +38,18 @@ async def permission_status(prompt: bool = Query(False)):
         }
 
 
+@router.post("/permissions/open-settings")
+async def open_permission_settings(area: str = Query(...)):
+    """Open a specific macOS privacy settings pane."""
+    try:
+        from memscreen.macos_permissions import open_privacy_settings
+
+        ok = open_privacy_settings(area)
+        return {"ok": ok, "area": area}
+    except Exception as e:
+        return {"ok": False, "area": area, "error": str(e)}
+
+
 @router.get("/health")
 async def health():
     """Health check (process alive; optional Ollama/DB)."""

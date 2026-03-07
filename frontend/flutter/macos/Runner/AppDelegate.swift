@@ -8,12 +8,14 @@ private let flutterWindowReadyNotification = Notification.Name("MemScreenFlutter
 class AppDelegate: FlutterAppDelegate {
     private var floatingBall: FloatingBallWindow?
     private var methodChannel: FlutterMethodChannel?
+    private var nativeRecordingChannel: FlutterMethodChannel?
     private var creationTimer: Timer?
     private var creationAttempts = 0
     private var shouldForceQuit = false
     private var mainWindow: NSWindow?
     private var lastKnownFlutterController: FlutterViewController?
     private var floatingBallHealthTimer: Timer?
+    private let nativeScreenRecorder = NativeScreenRecorder()
 
     let logger = OSLog(subsystem: "com.memscreen", category: "AppDelegate")
 
@@ -287,6 +289,14 @@ class AppDelegate: FlutterAppDelegate {
             methodChannel?.setMethodCallHandler { [weak self] (call, result) in
                 self?.handleMethodCall(call, result: result)
             }
+
+            nativeRecordingChannel = FlutterMethodChannel(
+                name: "com.memscreen/native_recording",
+                binaryMessenger: channelController.engine.binaryMessenger
+            )
+            nativeRecordingChannel?.setMethodCallHandler { [weak self] (call, result) in
+                self?.handleNativeRecordingCall(call, result: result)
+            }
         }
     }
 
@@ -357,6 +367,20 @@ class AppDelegate: FlutterAppDelegate {
         guard let window = findFlutterWindow() else { return }
         if !window.isMiniaturized {
             window.miniaturize(nil)
+        }
+    }
+
+    private func handleNativeRecordingCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        switch call.method {
+        case "startNativeRecording":
+            let args = call.arguments as? [String: Any] ?? [:]
+            result(nativeScreenRecorder.start(arguments: args))
+        case "stopNativeRecording":
+            result(nativeScreenRecorder.stop())
+        case "nativeRecordingStatus":
+            result(nativeScreenRecorder.status())
+        default:
+            result(FlutterMethodNotImplemented)
         }
     }
 

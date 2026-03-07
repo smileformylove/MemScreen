@@ -15,6 +15,7 @@ import 'connection/connection_state.dart';
 import 'connection/connection_service.dart';
 import 'services/floating_ball_commands.dart';
 import 'services/floating_ball_service.dart';
+import 'services/native_recording_service.dart';
 import 'services/recording_lifecycle_coordinator.dart';
 import 'services/recording_settings_store.dart';
 import 'services/recording_tracking_coordinator.dart';
@@ -51,6 +52,9 @@ class AppState extends ChangeNotifier {
     }
 
     _recordingSettingsStore = RecordingSettingsStore();
+    if (Platform.isMacOS) {
+      _nativeRecordingService = NativeRecordingService();
+    }
     _recordingTrackingCoordinator = RecordingTrackingCoordinator(
       processApi: _processApi,
       requestRecordingStatusRefresh: () => requestRecordingStatusRefresh(),
@@ -123,6 +127,9 @@ class AppState extends ChangeNotifier {
   late final RecordingTrackingCoordinator _recordingTrackingCoordinator;
   late final RecordingLifecycleCoordinator _recordingLifecycleCoordinator;
   late final RecordingSettingsStore _recordingSettingsStore;
+  NativeRecordingService? _nativeRecordingService;
+  Map<String, dynamic>? _permissionStatus;
+  Map<String, dynamic>? get permissionStatus => _permissionStatus;
 
   late ChatApi _chatApi;
   late ProcessApi _processApi;
@@ -140,6 +147,16 @@ class AppState extends ChangeNotifier {
   ApiClient get client => _client;
   ApiConfig get config => _config;
 
+  bool get useNativeMacOSRecording =>
+      Platform.isMacOS && _nativeRecordingService != null;
+
+  Future<RecordingStatus> loadRecordingStatusForUi() async {
+    if (useNativeMacOSRecording) {
+      return _nativeRecordingService!.getStatus();
+    }
+    return _recordingApi.getStatus();
+  }
+
   /// Check connection (e.g. on startup or retry).
   Future<void> checkConnection() async {
     _connectionState = _connectionState.copyWith(
@@ -149,6 +166,9 @@ class AppState extends ChangeNotifier {
     final state = await _connection.check();
     _connectionState = state;
     notifyListeners();
+    if (state.status == ConnectionStatus.connected) {
+      await refreshPermissionStatus();
+    }
   }
 
   /// Retry with optional new base URL (replaces config and client).
@@ -171,10 +191,18 @@ class AppState extends ChangeNotifier {
     }
     _connectionState = state;
     notifyListeners();
+    if (state.status == ConnectionStatus.connected) {
+      await refreshPermissionStatus();
+    }
   }
 
   void setConnectionState(ApiConnectionState s) {
     _connectionState = s;
+    notifyListeners();
+  }
+
+  void setDesiredTabIndex(int index) {
+    _desiredTabIndex = index;
     notifyListeners();
   }
 
@@ -210,6 +238,25 @@ class AppState extends ChangeNotifier {
     _recordingStatusVersion += 1;
     if (notify) {
       notifyListeners();
+    }
+  }
+
+  Future<void> refreshPermissionStatus({bool promptSystem = false}) async {
+    try {
+      _permissionStatus = await _client.get(
+        '/permissions/status?prompt=${promptSystem ? 'true' : 'false'}',
+      );
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[AppState] Failed to refresh permission status: $e');
+    }
+  }
+
+  Future<void> openPermissionSettings(String area) async {
+    try {
+      await _client.post('/permissions/open-settings?area=$area');
+    } catch (e) {
+      debugPrint('[AppState] Failed to open permission settings: $e');
     }
   }
 
@@ -420,6 +467,28 @@ class AppState extends ChangeNotifier {
     int? screenDisplayId,
     String? windowTitle,
   }) async {
+    if (useNativeMacOSRecording) {
+      final result = await _nativeRecordingService!.start(
+        duration: duration,
+        interval: interval,
+        mode: mode,
+        region: region,
+        screenIndex: screenIndex,
+        screenDisplayId: screenDisplayId,
+        windowTitle: windowTitle,
+        audioSource: recordingAudioSource,
+      );
+      if (!result.ok) {
+        throw Exception(result.error ?? 'Failed to start native recording');
+      }
+      if ((result.notice ?? '').isNotEmpty) {
+        _recordingTrackingState.pendingRecordingNotice = result.notice;
+      }
+      updateFloatingBallState(true);
+      requestRecordingStatusRefresh();
+      return;
+    }
+
     await _recordingLifecycleCoordinator.start(
       lifecycleState: _recordingLifecycleState,
       trackingState: _recordingTrackingState,
@@ -434,6 +503,33 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> stopRecording() async {
+    if (useNativeMacOSRecording) {
+      final result = await _nativeRecordingService!.stop();
+      updateFloatingBallState(false);
+      requestRecordingStatusRefresh();
+      if ((result.notice ?? '').isNotEmpty) {
+        _recordingTrackingState.pendingRecordingNotice = result.notice;
+      }
+      final filename = result.filename;
+      if (result.ok && filename != null && filename.isNotEmpty) {
+        try {
+          await _client.post(
+            '/recording/import',
+            body: {
+              'filename': filename,
+              'duration_sec': result.durationSec,
+              'mode': result.mode,
+              'audio_source': result.audioSourceUsed,
+            },
+          );
+          requestVideoRefresh();
+        } catch (e) {
+          debugPrint('[AppState] Failed to import native recording: $e');
+        }
+      }
+      return;
+    }
+
     await _recordingLifecycleCoordinator.stop(
       lifecycleState: _recordingLifecycleState,
       trackingState: _recordingTrackingState,
@@ -441,6 +537,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> syncRecordingStateFromBackend(bool isRecording) async {
+    if (useNativeMacOSRecording) {
+      return;
+    }
     await _recordingLifecycleCoordinator.syncFromBackend(
       isRecording: isRecording,
       lifecycleState: _recordingLifecycleState,

@@ -1008,6 +1008,74 @@ class RecordingPresenter(BasePresenter):
             self.handle_error(e, "Failed to get recordings list")
             return []
 
+    def import_recording_file(
+        self,
+        filename: str,
+        *,
+        duration_sec: Optional[float] = None,
+        recording_mode: Optional[str] = None,
+        window_title: Optional[str] = None,
+        audio_source: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Import a recording created outside the Python recorder into local metadata DB."""
+        try:
+            target = str(filename or '').strip()
+            if not target:
+                return {"ok": False, "error": "filename is required"}
+            if not os.path.exists(target):
+                return {"ok": False, "error": f"file not found: {target}"}
+
+            existing = self.recordings_repo.get_recording(target)
+            if existing:
+                return {"ok": True, "filename": target, "imported": False, "existing": True}
+
+            file_size = os.path.getsize(target)
+            fps = 0.0
+            frame_count = 0
+            resolved_duration = float(duration_sec or 0.0)
+
+            cv2 = get_cv2()
+            if cv2 is not None:
+                try:
+                    cap = cv2.VideoCapture(target)
+                    if cap.isOpened():
+                        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+                        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+                    cap.release()
+                except Exception as e:
+                    print(f"[RecordingPresenter] Failed to probe imported video metrics: {e}")
+
+            if resolved_duration <= 0 and fps > 0 and frame_count > 0:
+                resolved_duration = frame_count / fps
+
+            self.recordings_repo.insert_recording(
+                filename=target,
+                frame_count=frame_count,
+                fps=fps,
+                duration=resolved_duration,
+                file_size=file_size,
+                recording_mode=str(recording_mode or 'fullscreen'),
+                region_bbox=None,
+                window_title=window_title,
+                content_tags=None,
+                content_keywords=None,
+                content_summary=None,
+                analysis_status='pending',
+                audio_file=None,
+                audio_source=audio_source,
+            )
+            return {
+                "ok": True,
+                "filename": target,
+                "imported": True,
+                "duration": resolved_duration,
+                "fps": fps,
+                "frame_count": frame_count,
+            }
+        except Exception as e:
+            self.handle_error(e, f"Failed to import recording: {filename}")
+            return {"ok": False, "error": str(e)}
+
     def reanalyze_recording_content(self, filename: str) -> Dict[str, Any]:
         """
         Re-run visual analysis on an existing recording and refresh content tags/summary.
