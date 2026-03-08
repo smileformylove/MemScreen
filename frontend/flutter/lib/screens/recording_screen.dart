@@ -594,6 +594,25 @@ class _RecordingScreenState extends State<RecordingScreen> {
     }
   }
 
+  bool get _requiresOverlayFlow => _mode == 'region' || _mode == 'window';
+
+  IconData _primaryActionIcon(bool isRecording) {
+    if (isRecording) {
+      return Icons.stop_circle_outlined;
+    }
+    return _requiresOverlayFlow ? Icons.open_in_new : Icons.fiber_manual_record;
+  }
+
+  String _primaryActionHintText(bool isRecording) {
+    if (isRecording) {
+      return 'Recording is active on the current target.';
+    }
+    if (_requiresOverlayFlow) {
+      return 'Requires overlay selection before recording can begin.';
+    }
+    return 'Starts immediately from this page.';
+  }
+
   ({String label, String detail, ColorScheme Function(BuildContext) colors})
       _captureStatePresentation() {
     final isRecording = _status?.isRecording ?? false;
@@ -762,6 +781,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
             runSpacing: 8,
             children: [
               ChoiceChip(
+                avatar: const Icon(Icons.desktop_windows_outlined, size: 16),
                 label: const Text('Full screen'),
                 selected: _mode == 'fullscreen',
                 onSelected: isRecording
@@ -769,12 +789,14 @@ class _RecordingScreenState extends State<RecordingScreen> {
                     : (_) => _onFullscreenSelected(_screenIndex ?? -1),
               ),
               ChoiceChip(
+                avatar: const Icon(Icons.crop_free, size: 16),
                 label: const Text('Pick region'),
                 selected: _mode == 'region',
                 onSelected:
                     isRecording ? null : (_) => _onModeChanged('region'),
               ),
               ChoiceChip(
+                avatar: const Icon(Icons.web_asset, size: 16),
                 label: const Text('Pick window'),
                 selected: _mode == 'window',
                 onSelected:
@@ -855,6 +877,50 @@ class _RecordingScreenState extends State<RecordingScreen> {
             ),
           ),
           const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isRecording
+                  ? Theme.of(context).colorScheme.errorContainer
+                  : _requiresOverlayFlow
+                      ? Theme.of(context).colorScheme.tertiaryContainer
+                      : Theme.of(context).colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  _primaryActionIcon(isRecording),
+                  size: 18,
+                  color: isRecording
+                      ? Theme.of(context).colorScheme.onErrorContainer
+                      : _requiresOverlayFlow
+                          ? Theme.of(context).colorScheme.onTertiaryContainer
+                          : Theme.of(context).colorScheme.onSecondaryContainer,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _primaryActionHintText(isRecording),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: isRecording
+                              ? Theme.of(context).colorScheme.onErrorContainer
+                              : _requiresOverlayFlow
+                                  ? Theme.of(context)
+                                      .colorScheme
+                                      .onTertiaryContainer
+                                  : Theme.of(context)
+                                      .colorScheme
+                                      .onSecondaryContainer,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           if (isRecording)
             FilledButton.icon(
               onPressed: _stop,
@@ -867,7 +933,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
           else if (_mode == 'fullscreen')
             FilledButton.icon(
               onPressed: _start,
-              icon: const Icon(Icons.fiber_manual_record),
+              icon: Icon(_primaryActionIcon(false)),
               label: Text(primaryActionLabel),
             )
           else
@@ -875,7 +941,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
               onPressed: _mode == 'region'
                   ? _selectRegionWithFloatingBall
                   : _selectWindowWithFloatingBall,
-              icon: const Icon(Icons.open_in_new),
+              icon: Icon(_primaryActionIcon(false)),
               label: Text(primaryActionLabel),
             ),
         ],

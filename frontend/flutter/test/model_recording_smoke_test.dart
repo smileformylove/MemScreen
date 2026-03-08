@@ -109,6 +109,7 @@ void main() {
     expect(find.text('Pick region'), findsOneWidget);
     expect(find.text('Pick window'), findsOneWidget);
     expect(find.text('Ready to record'), findsOneWidget);
+    expect(find.text('Starts immediately from this page.'), findsOneWidget);
     expect(find.textContaining('Mode:'), findsWidgets);
     expect(find.textContaining('Flow:'), findsWidgets);
     expect(find.textContaining('Target:'), findsWidgets);
