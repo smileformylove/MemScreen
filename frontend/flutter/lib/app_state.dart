@@ -175,6 +175,9 @@ class AppState extends ChangeNotifier {
   bool get useNativeMacOSPermissions =>
       Platform.isMacOS && _nativePermissionService != null;
 
+  bool get supportsLocalFirstCoreFeatures =>
+      useNativeMacOSRecording && useNativeMacOSTracking;
+
   bool _permissionGranted(String key) {
     final section = _permissionStatus?[key];
     return section is Map<String, dynamic> && section['granted'] == true;

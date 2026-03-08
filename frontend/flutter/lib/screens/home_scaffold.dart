@@ -78,7 +78,11 @@ class HomeScaffoldState extends State<HomeScaffold> {
     return Scaffold(
       body: Column(
         children: [
-          if (showBanner) _ConnectionBanner(state: connectionState),
+          if (showBanner)
+            _ConnectionBanner(
+              state: connectionState,
+              localFirstAvailable: appState.supportsLocalFirstCoreFeatures,
+            ),
           if (_hasPermissionIssues(permissionStatus))
             _PermissionBanner(status: permissionStatus!),
           Expanded(
@@ -109,9 +113,11 @@ class HomeScaffoldState extends State<HomeScaffold> {
 
 ///  API
 class _ConnectionBanner extends StatelessWidget {
-  const _ConnectionBanner({required this.state});
+  const _ConnectionBanner(
+      {required this.state, required this.localFirstAvailable});
 
   final ApiConnectionState state;
+  final bool localFirstAvailable;
 
   @override
   Widget build(BuildContext context) {
@@ -119,10 +125,15 @@ class _ConnectionBanner extends StatelessWidget {
     final appState = context.read<AppState>();
     final isConnecting = state.status == ConnectionStatus.connecting;
 
+    final useSoftWarning =
+        localFirstAvailable && state.status == ConnectionStatus.error;
+
     return Material(
-      color: state.status == ConnectionStatus.error
-          ? theme.colorScheme.errorContainer
-          : theme.colorScheme.surfaceContainerHighest,
+      color: useSoftWarning
+          ? theme.colorScheme.secondaryContainer
+          : (state.status == ConnectionStatus.error
+              ? theme.colorScheme.errorContainer
+              : theme.colorScheme.surfaceContainerHighest),
       child: SafeArea(
         bottom: false,
         child: Padding(
@@ -140,16 +151,20 @@ class _ConnectionBanner extends StatelessWidget {
                 )
               else
                 Icon(
-                  Icons.cloud_off,
+                  useSoftWarning ? Icons.sync_problem : Icons.cloud_off,
                   size: 20,
-                  color: theme.colorScheme.error,
+                  color: useSoftWarning
+                      ? theme.colorScheme.onSecondaryContainer
+                      : theme.colorScheme.error,
                 ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   isConnecting
                       ? 'Connecting to backend...'
-                      : (state.message ?? 'Backend not connected'),
+                      : (useSoftWarning
+                          ? 'Backend features are unavailable. Recording, Videos, and Process still work locally.'
+                          : (state.message ?? 'Backend not connected')),
                   style: theme.textTheme.bodySmall,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
