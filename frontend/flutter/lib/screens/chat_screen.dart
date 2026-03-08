@@ -79,7 +79,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _loadThreads({bool refreshHistory = true}) async {
-    final api = context.read<AppState>().chatApi;
+    final appState = context.read<AppState>();
+    await appState.ensureBackendConnection();
+    final api = appState.chatApi;
     try {
       final state = await api.getThreads();
       if (!mounted) return;

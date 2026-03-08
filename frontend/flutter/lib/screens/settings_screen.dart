@@ -117,7 +117,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() => _loadingModelCatalog = true);
     try {
-      final catalog = await context.read<AppState>().modelApi.getCatalog();
+      final appState = context.read<AppState>();
+      await appState.ensureBackendConnection();
+      if (!appState.isBackendConnected) {
+        return;
+      }
+      final catalog = await appState.modelApi.getCatalog();
       if (!mounted) return;
       setState(() => _modelCatalog = catalog);
     } catch (e) {

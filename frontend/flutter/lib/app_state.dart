@@ -157,6 +157,8 @@ class AppState extends ChangeNotifier {
   LocalVideoCatalog? _localVideoCatalog;
   LocalProcessSessionStore? _localProcessSessionStore;
   Map<String, dynamic>? _permissionStatus;
+  bool _backendCheckInFlight = false;
+  DateTime? _lastBackendCheckAt;
   bool _nativeRuntimeBootstrapRequested = false;
   Map<String, dynamic>? get permissionStatus => _permissionStatus;
 
@@ -441,6 +443,28 @@ class AppState extends ChangeNotifier {
   void setConnectionState(ApiConnectionState s) {
     _connectionState = s;
     notifyListeners();
+  }
+
+  Future<void> ensureBackendConnection({bool force = false}) async {
+    if (!force && _connectionState.status == ConnectionStatus.connected) {
+      return;
+    }
+    if (_backendCheckInFlight) {
+      return;
+    }
+    final now = DateTime.now();
+    if (!force &&
+        _lastBackendCheckAt != null &&
+        now.difference(_lastBackendCheckAt!) < const Duration(seconds: 5)) {
+      return;
+    }
+    _backendCheckInFlight = true;
+    _lastBackendCheckAt = now;
+    try {
+      await checkConnection();
+    } finally {
+      _backendCheckInFlight = false;
+    }
   }
 
   void setDesiredTabIndex(int index) {

@@ -44,7 +44,7 @@ class HomeScaffoldState extends State<HomeScaffold> {
       });
       if ((_index == 3 || _index == 4) &&
           appState.connectionState.status != ConnectionStatus.connected) {
-        appState.checkConnection();
+        appState.ensureBackendConnection();
       }
       // Clear the desired tab after consuming it
       appState.clearDesiredTab();
@@ -110,7 +110,7 @@ class HomeScaffoldState extends State<HomeScaffold> {
           final appState = context.read<AppState>();
           if ((i == 3 || i == 4) &&
               appState.connectionState.status != ConnectionStatus.connected) {
-            appState.checkConnection();
+            appState.ensureBackendConnection();
           }
         },
         destinations: _tabs
@@ -183,7 +183,8 @@ class _ConnectionBanner extends StatelessWidget {
               ),
               if (!isConnecting) ...[
                 TextButton(
-                  onPressed: () => appState.checkConnection(),
+                  onPressed: () =>
+                      appState.ensureBackendConnection(force: true),
                   child: const Text('Retry'),
                 ),
                 TextButton(
