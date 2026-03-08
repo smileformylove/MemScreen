@@ -19,6 +19,9 @@ class HomeScaffold extends StatefulWidget {
 /// Public state class for external access
 class HomeScaffoldState extends State<HomeScaffold> {
   int _index = 0;
+  final Map<int, Widget> _loadedTabs = <int, Widget>{
+    0: const RecordingScreen(),
+  };
 
   @override
   void initState() {
@@ -40,6 +43,7 @@ class HomeScaffoldState extends State<HomeScaffold> {
     final appState = context.read<AppState>();
     if (appState.desiredTabIndex != null) {
       setState(() {
+        _ensureTabLoaded(appState.desiredTabIndex!);
         _index = appState.desiredTabIndex!;
       });
       if ((_index == 3 || _index == 4) &&
@@ -49,6 +53,25 @@ class HomeScaffoldState extends State<HomeScaffold> {
       // Clear the desired tab after consuming it
       appState.clearDesiredTab();
     }
+  }
+
+  void _ensureTabLoaded(int index) {
+    _loadedTabs.putIfAbsent(index, () {
+      switch (index) {
+        case 0:
+          return const RecordingScreen();
+        case 1:
+          return const VideoScreen();
+        case 2:
+          return const ProcessScreen();
+        case 3:
+          return const ChatScreen();
+        case 4:
+          return const SettingsScreen();
+        default:
+          return const SizedBox.shrink();
+      }
+    });
   }
 
   bool _hasPermissionIssues(Map<String, dynamic>? status) {
@@ -92,13 +115,9 @@ class HomeScaffoldState extends State<HomeScaffold> {
           Expanded(
             child: IndexedStack(
               index: _index,
-              children: const [
-                RecordingScreen(),
-                VideoScreen(),
-                ProcessScreen(),
-                ChatScreen(),
-                SettingsScreen(),
-              ],
+              children: List<Widget>.generate(_tabs.length, (i) {
+                return _loadedTabs[i] ?? const SizedBox.shrink();
+              }),
             ),
           ),
         ],
@@ -106,7 +125,10 @@ class HomeScaffoldState extends State<HomeScaffold> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) {
-          setState(() => _index = i);
+          setState(() {
+            _ensureTabLoaded(i);
+            _index = i;
+          });
           final appState = context.read<AppState>();
           if ((i == 3 || i == 4) &&
               appState.connectionState.status != ConnectionStatus.connected) {
