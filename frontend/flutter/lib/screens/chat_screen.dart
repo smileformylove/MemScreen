@@ -32,6 +32,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Map<String, LocalModelEntry> _availableModelDetails =
       <String, LocalModelEntry>{};
   String? _currentModel;
+  String? _recommendedModel;
   int _lastChatModelRefreshVersion = -1;
   StreamSubscription? _streamSub;
   Timer? _thinkingTimer;
@@ -174,6 +175,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _availableModels = models;
         _availableModelDetails = details;
         _currentModel = current;
+        _recommendedModel = catalog.recommendedChatModel;
       });
     } catch (e) {
       if (showError && mounted) {
@@ -220,6 +222,18 @@ class _ChatScreenState extends State<ChatScreen> {
     return resolveModelDetails(modelName, _availableModelDetails);
   }
 
+  bool _isRecommendedModel(String modelName) {
+    final recommended = (_recommendedModel ?? '').trim();
+    if (recommended.isEmpty) {
+      return false;
+    }
+    if (recommended == modelName) {
+      return true;
+    }
+    final details = _modelDetailsFor(modelName);
+    return details != null && details.installedName == recommended;
+  }
+
   Future<void> _openModelSheet() async {
     if (_loadingModels) {
       return;
@@ -258,14 +272,58 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ],
               ),
-              if ((_currentModel ?? '').isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    'Current: $_currentModel',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+              if ((_currentModel ?? '').isNotEmpty ||
+                  (_recommendedModel ?? '').isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if ((_currentModel ?? '').isNotEmpty)
+                        Text(
+                          'Current: $_currentModel',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      if ((_recommendedModel ?? '').isNotEmpty) ...[
+                        if ((_currentModel ?? '').isNotEmpty)
+                          const SizedBox(height: 6),
+                        Text(
+                          'Recommended: $_recommendedModel',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                      if ((_recommendedModel ?? '').isNotEmpty &&
+                          (_currentModel ?? '') != _recommendedModel) ...[
+                        const SizedBox(height: 10),
+                        FilledButton.tonalIcon(
+                          onPressed: _loadingModels
+                              ? null
+                              : () async {
+                                  Navigator.of(sheetContext).pop();
+                                  await _setChatModel(_recommendedModel!);
+                                },
+                          icon: const Icon(Icons.auto_awesome),
+                          label: const Text('Use recommended'),
+                        ),
+                      ] else if ((_recommendedModel ?? '').isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'You are already using the recommended model.',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               for (final group in groups) ...[
@@ -292,6 +350,11 @@ class _ChatScreenState extends State<ChatScreen> {
                         details: _modelDetailsFor(model),
                       ),
                     ),
+                    trailing: model == _currentModel
+                        ? const Text('Current')
+                        : (_isRecommendedModel(model)
+                            ? const Text('Recommended')
+                            : null),
                     onTap: () async {
                       Navigator.of(sheetContext).pop();
                       await _setChatModel(model);
