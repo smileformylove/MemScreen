@@ -4,7 +4,7 @@ Base URL:
 - `http://127.0.0.1:8765`
 
 Health:
-- `GET /health`
+- `GET /health` (lightweight, no Ollama probe by default)
 
 System:
 - `GET /config`

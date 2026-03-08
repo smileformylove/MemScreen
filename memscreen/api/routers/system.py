@@ -51,27 +51,37 @@ async def open_permission_settings(area: str = Query(...)):
 
 
 @router.get("/health")
-async def health():
-    """Health check (process alive; optional Ollama/DB)."""
-    out = {"status": "ok"}
-    try:
-        from memscreen.config import get_config
-        import requests
+async def health(include_db: bool = Query(False), include_ollama: bool = Query(False)):
+    """Lightweight health check with optional deeper dependency probes."""
+    out = {"status": "ok", "mode": "light"}
 
-        config = get_config()
-        response = requests.get(f"{config.ollama_base_url}/api/tags", timeout=2)
-        out["ollama"] = "ok" if response.status_code == 200 else f"status_{response.status_code}"
-    except Exception as e:
-        out["ollama"] = f"error: {str(e)}"
+    if include_db:
+        try:
+            from memscreen.config import get_config
+            import sqlite3
 
-    try:
-        from memscreen.config import get_config
-        import sqlite3
+            config = get_config()
+            conn = sqlite3.connect(str(config.db_path))
+            conn.close()
+            out["db"] = "ok"
+        except Exception as e:
+            out["db"] = f"error: {str(e)}"
+            out["status"] = "degraded"
+        out["mode"] = "db"
 
-        config = get_config()
-        conn = sqlite3.connect(str(config.db_path))
-        conn.close()
-        out["db"] = "ok"
-    except Exception as e:
-        out["db"] = f"error: {str(e)}"
+    if include_ollama:
+        try:
+            from memscreen.config import get_config
+            import requests
+
+            config = get_config()
+            response = requests.get(f"{config.ollama_base_url}/api/tags", timeout=2)
+            out["ollama"] = (
+                "ok" if response.status_code == 200 else f"status_{response.status_code}"
+            )
+        except Exception as e:
+            out["ollama"] = f"error: {str(e)}"
+            out["status"] = "degraded"
+        out["mode"] = "full" if include_db else "ollama"
+
     return out
