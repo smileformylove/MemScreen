@@ -14,6 +14,18 @@ class GroupedCatalogModels {
   final List<LocalModelEntry> entries;
 }
 
+class SettingsModelSection {
+  const SettingsModelSection({
+    required this.catalog,
+    required this.groups,
+    this.recommendedEntry,
+  });
+
+  final LocalModelCatalog catalog;
+  final List<GroupedCatalogModels> groups;
+  final LocalModelEntry? recommendedEntry;
+}
+
 String recommendedUseLabel(LocalModelEntry entry) {
   switch (entry.recommendedUse) {
     case 'ultra_light':
@@ -407,5 +419,23 @@ ChatModelSelection buildChatModelSelection(
     detailsByModel: buildChatModelDetailsMap(catalog, resolvedAvailable),
     currentModel: currentModel ?? catalog.currentChatModel,
     recommendedModel: catalog.recommendedChatModel,
+  );
+}
+
+SettingsModelSection buildSettingsModelSection(LocalModelCatalog catalog) {
+  final recommended = (catalog.recommendedChatModel ?? '').trim();
+  LocalModelEntry? recommendedEntry;
+  if (recommended.isNotEmpty) {
+    for (final entry in catalog.models) {
+      if (modelNameMatchesEntry(entry, recommended)) {
+        recommendedEntry = entry;
+        break;
+      }
+    }
+  }
+  return SettingsModelSection(
+    catalog: catalog,
+    groups: buildCatalogModelGroups(catalog.models),
+    recommendedEntry: recommendedEntry,
   );
 }

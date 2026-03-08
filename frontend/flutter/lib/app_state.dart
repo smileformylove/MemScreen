@@ -345,6 +345,14 @@ class AppState extends ChangeNotifier {
     return loadLocalModelCatalogForUi(forceRefresh: true);
   }
 
+  Future<SettingsModelSection> loadSettingsModelSectionForUi({
+    bool forceRefresh = false,
+  }) async {
+    final catalog =
+        await loadLocalModelCatalogForUi(forceRefresh: forceRefresh);
+    return buildSettingsModelSection(catalog);
+  }
+
   Future<LocalModelCatalog> loadLocalModelCatalogForUi({
     bool forceRefresh = false,
   }) async {

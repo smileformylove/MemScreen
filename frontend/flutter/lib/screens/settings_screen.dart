@@ -10,7 +10,7 @@ import '../services/model_catalog_groups.dart';
 
 class _SettingsModelUiState {
   const _SettingsModelUiState({
-    this.catalog,
+    this.section,
     this.loading = false,
     this.requestedHydration = false,
     this.lastRefreshVersion = -1,
@@ -18,7 +18,7 @@ class _SettingsModelUiState {
     this.switchingChatModelName,
   });
 
-  final LocalModelCatalog? catalog;
+  final SettingsModelSection? section;
   final bool loading;
   final bool requestedHydration;
   final int lastRefreshVersion;
@@ -26,7 +26,7 @@ class _SettingsModelUiState {
   final String? switchingChatModelName;
 
   _SettingsModelUiState copyWith({
-    LocalModelCatalog? catalog,
+    SettingsModelSection? section,
     bool? loading,
     bool? requestedHydration,
     int? lastRefreshVersion,
@@ -34,7 +34,7 @@ class _SettingsModelUiState {
     String? switchingChatModelName,
   }) {
     return _SettingsModelUiState(
-      catalog: catalog ?? this.catalog,
+      section: section ?? this.section,
       loading: loading ?? this.loading,
       requestedHydration: requestedHydration ?? this.requestedHydration,
       lastRefreshVersion: lastRefreshVersion ?? this.lastRefreshVersion,
@@ -61,7 +61,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   _SettingsModelUiState _modelUiState = const _SettingsModelUiState();
   bool _loadingPermissions = false;
 
-  LocalModelCatalog? get _modelCatalog => _modelUiState.catalog;
+  SettingsModelSection? get _modelSection => _modelUiState.section;
+  LocalModelCatalog? get _modelCatalog => _modelSection?.catalog;
   bool get _loadingModelCatalog => _modelUiState.loading;
   bool get _requestedModelHydration => _modelUiState.requestedHydration;
   int get _lastChatModelRefreshVersion => _modelUiState.lastRefreshVersion;
@@ -208,10 +209,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!appState.isBackendConnected) {
         return;
       }
-      final catalog =
-          await appState.loadLocalModelCatalogForUi(forceRefresh: forceRefresh);
+      final section = await appState.loadSettingsModelSectionForUi(
+        forceRefresh: forceRefresh,
+      );
       if (!mounted) return;
-      _setModelUiState(_modelUiState.copyWith(catalog: catalog));
+      _setModelUiState(_modelUiState.copyWith(section: section));
     } catch (e) {
       if (showError && mounted) {
         final msg = e is ApiException ? e.message : e.toString();
@@ -245,19 +247,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return current == entry.name || current == (entry.installedName ?? '');
   }
 
-  LocalModelEntry? _entryForModelName(
-    List<LocalModelEntry> entries,
-    String modelName,
-  ) {
-    final normalized = modelName.trim();
-    for (final entry in entries) {
-      if (entry.name == normalized || entry.installedName == normalized) {
-        return entry;
-      }
-    }
-    return null;
-  }
-
   Future<void> _setChatModel(LocalModelEntry entry) async {
     if (_switchingChatModelName != null) return;
     _setModelUiState(
@@ -267,7 +256,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           .read<AppState>()
           .setChatModelForUi(entry.installedName ?? entry.name);
       if (!mounted) return;
-      _setModelUiState(_modelUiState.copyWith(catalog: updatedCatalog));
+      _setModelUiState(_modelUiState.copyWith(
+          section: buildSettingsModelSection(updatedCatalog)));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content:
@@ -294,7 +284,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final updatedCatalog =
           await context.read<AppState>().downloadLocalModelForUi(entry.name);
       if (mounted) {
-        _setModelUiState(_modelUiState.copyWith(catalog: updatedCatalog));
+        _setModelUiState(_modelUiState.copyWith(
+            section: buildSettingsModelSection(updatedCatalog)));
       }
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
@@ -638,7 +629,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _modelsCard() {
     final appState = context.watch<AppState>();
-    final catalog = _modelCatalog;
+    final section = _modelSection;
+    final catalog = section?.catalog;
     final theme = Theme.of(context);
 
     if (!appState.isBackendConnected) {
@@ -707,6 +699,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final modelsDirExternal = catalog?.modelsDirExternal ?? false;
     final currentChatModel = catalog?.currentChatModel;
     final recommendedChatModel = catalog?.recommendedChatModel;
+    final recommendedEntry = section?.recommendedEntry;
     final models = catalog?.models ?? const <LocalModelEntry>[];
     final disableDownloads = _loadingModelCatalog;
 
@@ -789,12 +782,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onPressed: _switchingChatModelName != null
                         ? null
                         : () {
-                            final entry = _entryForModelName(
-                              models,
-                              recommendedChatModel!,
-                            );
-                            if (entry != null) {
-                              _setChatModel(entry);
+                            if (recommendedEntry != null) {
+                              _setChatModel(recommendedEntry);
                             }
                           },
                     child: const Text('Use recommended'),
@@ -826,7 +815,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
           if (models.isNotEmpty) ...[
             const SizedBox(height: 8),
-            for (final group in buildCatalogModelGroups(models)) ...[
+            for (final group
+                in (section?.groups ?? const <GroupedCatalogModels>[])) ...[
               Padding(
                 padding: const EdgeInsets.only(top: 8, bottom: 6),
                 child: Align(
