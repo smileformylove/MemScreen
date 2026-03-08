@@ -23,6 +23,7 @@ import 'services/native_permission_service.dart';
 import 'services/native_recording_import_queue.dart';
 import 'services/native_tracking_session_queue.dart';
 import 'services/native_recording_service.dart';
+import 'services/native_runtime_service.dart';
 import 'services/recording_lifecycle_coordinator.dart';
 import 'services/recording_settings_store.dart';
 import 'services/recording_tracking_coordinator.dart';
@@ -64,6 +65,7 @@ class AppState extends ChangeNotifier {
       _nativeRecordingImportQueue = NativeRecordingImportQueue();
       _nativeInputTrackingService = NativeInputTrackingService();
       _nativePermissionService = NativePermissionService();
+      _nativeRuntimeService = NativeRuntimeService();
       _nativeTrackingSessionQueue = NativeTrackingSessionQueue();
       _localVideoCatalogStore = LocalVideoCatalogStore();
       _localVideoCatalog = LocalVideoCatalog(store: _localVideoCatalogStore);
@@ -149,11 +151,13 @@ class AppState extends ChangeNotifier {
   NativeRecordingImportQueue? _nativeRecordingImportQueue;
   NativeInputTrackingService? _nativeInputTrackingService;
   NativePermissionService? _nativePermissionService;
+  NativeRuntimeService? _nativeRuntimeService;
   NativeTrackingSessionQueue? _nativeTrackingSessionQueue;
   LocalVideoCatalogStore? _localVideoCatalogStore;
   LocalVideoCatalog? _localVideoCatalog;
   LocalProcessSessionStore? _localProcessSessionStore;
   Map<String, dynamic>? _permissionStatus;
+  bool _nativeRuntimeBootstrapRequested = false;
   Map<String, dynamic>? get permissionStatus => _permissionStatus;
 
   late ChatApi _chatApi;
@@ -180,6 +184,9 @@ class AppState extends ChangeNotifier {
 
   bool get useNativeMacOSPermissions =>
       Platform.isMacOS && _nativePermissionService != null;
+
+  bool get useNativeMacOSRuntime =>
+      Platform.isMacOS && _nativeRuntimeService != null;
 
   bool get supportsLocalFirstCoreFeatures =>
       useNativeMacOSRecording && useNativeMacOSTracking;
@@ -392,10 +399,12 @@ class AppState extends ChangeNotifier {
     _connectionState = state;
     notifyListeners();
     if (state.status == ConnectionStatus.connected) {
+      _nativeRuntimeBootstrapRequested = false;
       await refreshPermissionStatus();
       await _flushPendingNativeImports();
       await _flushPendingTrackingSessions();
-      await _flushPendingTrackingSessions();
+    } else {
+      await _ensureNativeBackendBootstrap();
     }
   }
 
@@ -420,8 +429,12 @@ class AppState extends ChangeNotifier {
     _connectionState = state;
     notifyListeners();
     if (state.status == ConnectionStatus.connected) {
+      _nativeRuntimeBootstrapRequested = false;
       await refreshPermissionStatus();
       await _flushPendingNativeImports();
+      await _flushPendingTrackingSessions();
+    } else {
+      await _ensureNativeBackendBootstrap();
     }
   }
 
@@ -496,6 +509,18 @@ class AppState extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('[AppState] Failed to open permission settings: $e');
+    }
+  }
+
+  Future<void> _ensureNativeBackendBootstrap() async {
+    if (!useNativeMacOSRuntime || _nativeRuntimeBootstrapRequested) {
+      return;
+    }
+    _nativeRuntimeBootstrapRequested = true;
+    try {
+      await _nativeRuntimeService!.ensureBackendBootstrap();
+    } catch (e) {
+      debugPrint('[AppState] Failed to ensure native backend bootstrap: $e');
     }
   }
 
