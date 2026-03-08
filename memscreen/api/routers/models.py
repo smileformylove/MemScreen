@@ -160,7 +160,7 @@ async def models_catalog():
             'balanced': 500,
             'fast': 450,
             'ultra_light': 420,
-            'advanced': 390,
+            'advanced': 360,
             'vision_fallback': 300,
             'general': 200,
             'embedding': 0,

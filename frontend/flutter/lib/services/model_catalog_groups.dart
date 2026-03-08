@@ -79,13 +79,13 @@ bool isFastModel(String modelName, {LocalModelEntry? details}) {
 
 int modelPriorityScore(LocalModelEntry entry) {
   switch (entry.recommendedUse) {
-    case 'advanced':
-      return 500;
     case 'balanced':
-      return 450;
+      return 500;
     case 'fast':
-      return 400;
+      return 450;
     case 'ultra_light':
+      return 400;
+    case 'advanced':
       return 350;
     case 'vision_fallback':
       return 300;
@@ -105,14 +105,14 @@ int chatModelPreferenceScore(String modelName, {LocalModelEntry? details}) {
   final size = ((double.tryParse(match?.group(1) ?? '') ?? 0.0) * 10).round();
   if (details != null) {
     switch (details.recommendedUse) {
-      case 'advanced':
-        return 500 + size;
       case 'balanced':
-        return 450 + size;
+        return 500 + size;
       case 'fast':
-        return 420 + size;
+        return 450 + size;
       case 'ultra_light':
-        return 390 + size;
+        return 420 + size;
+      case 'advanced':
+        return 360 + size;
       case 'vision_fallback':
         return 320 + size;
       default:
