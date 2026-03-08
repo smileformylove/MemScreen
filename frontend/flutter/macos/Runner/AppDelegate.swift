@@ -288,14 +288,20 @@ class AppDelegate: FlutterAppDelegate {
         )
         FileManager.default.createFile(atPath: wrapperLog, contents: nil)
 
-        let escapedBootstrap = backendBootstrap.replacingOccurrences(of: "'", with: "'\''")
-        let escapedLog = wrapperLog.replacingOccurrences(of: "'", with: "'\''")
-        let command = "nohup '\(escapedBootstrap)' >> '\(escapedLog)' 2>&1 &"
-
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.arguments = ["-lc", command]
+        process.executableURL = URL(fileURLWithPath: backendBootstrap)
+        process.arguments = []
         process.environment = ProcessInfo.processInfo.environment
+        process.currentDirectoryURL = URL(fileURLWithPath: resourcesPath)
+
+        let logURL = URL(fileURLWithPath: wrapperLog)
+        FileManager.default.createFile(atPath: wrapperLog, contents: nil)
+        if let handle = try? FileHandle(forWritingTo: logURL) {
+            handle.seekToEndOfFile()
+            process.standardOutput = handle
+            process.standardError = handle
+        }
+
         do {
             try process.run()
             os_log("Embedded backend bootstrap launched", log: logger, type: .info)
