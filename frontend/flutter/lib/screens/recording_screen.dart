@@ -50,6 +50,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
   bool _wasRecording = false;
   AppState? _appState;
   int _lastRecordingStatusVersion = -1;
+  int _lastCurrentTabIndex = -1;
 
   @override
   void initState() {
@@ -59,6 +60,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
       if (!mounted) return;
       _appState = context.read<AppState>();
       _lastRecordingStatusVersion = _appState!.recordingStatusVersion;
+      _lastCurrentTabIndex = _appState!.currentTabIndex;
       _appState!.addListener(_onAppStateChanged);
     });
 
@@ -82,6 +84,15 @@ class _RecordingScreenState extends State<RecordingScreen> {
 
   void _onAppStateChanged() {
     if (!mounted || _appState == null) return;
+    final currentTabIndex = _appState!.currentTabIndex;
+    if (currentTabIndex != _lastCurrentTabIndex) {
+      _lastCurrentTabIndex = currentTabIndex;
+      if (currentTabIndex == 0) {
+        _load();
+      } else {
+        _stopPolling();
+      }
+    }
     final currentVersion = _appState!.recordingStatusVersion;
     if (currentVersion != _lastRecordingStatusVersion) {
       _lastRecordingStatusVersion = currentVersion;
@@ -147,7 +158,13 @@ class _RecordingScreenState extends State<RecordingScreen> {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _load());
+    _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      final appState = _appState;
+      if (appState == null || !mounted || appState.currentTabIndex != 0) {
+        return;
+      }
+      _load();
+    });
   }
 
   void _stopPolling() {
