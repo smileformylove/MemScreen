@@ -15,6 +15,7 @@ import 'connection/connection_state.dart';
 import 'connection/connection_service.dart';
 import 'services/floating_ball_commands.dart';
 import 'services/floating_ball_service.dart';
+import 'services/local_process_session_store.dart';
 import 'services/local_video_catalog_store.dart';
 import 'services/native_input_tracking_service.dart';
 import 'services/native_permission_service.dart';
@@ -64,6 +65,7 @@ class AppState extends ChangeNotifier {
       _nativePermissionService = NativePermissionService();
       _nativeTrackingSessionQueue = NativeTrackingSessionQueue();
       _localVideoCatalogStore = LocalVideoCatalogStore();
+      _localProcessSessionStore = LocalProcessSessionStore();
     }
     _recordingTrackingCoordinator = RecordingTrackingCoordinator(
       processApi: _processApi,
@@ -143,6 +145,7 @@ class AppState extends ChangeNotifier {
   NativePermissionService? _nativePermissionService;
   NativeTrackingSessionQueue? _nativeTrackingSessionQueue;
   LocalVideoCatalogStore? _localVideoCatalogStore;
+  LocalProcessSessionStore? _localProcessSessionStore;
   Map<String, dynamic>? _permissionStatus;
   Map<String, dynamic>? get permissionStatus => _permissionStatus;
 
@@ -220,6 +223,15 @@ class AppState extends ChangeNotifier {
     return _processApi.getTrackingStatus();
   }
 
+  Future<List<ProcessSession>> loadProcessSessionsForUi(
+      {int limit = 20}) async {
+    try {
+      return await _processApi.getSessions(limit: limit);
+    } catch (_) {
+      return await _localProcessSessionStore?.listSessions() ?? const [];
+    }
+  }
+
   Future<void> startInputTracking() async {
     if (useNativeMacOSTracking) {
       await _nativeInputTrackingService!.start();
@@ -247,26 +259,36 @@ class AppState extends ChangeNotifier {
   Future<SaveFromTrackingResult> saveTrackingSessionForUi() async {
     if (useNativeMacOSTracking) {
       try {
-        final result =
-            await _nativeInputTrackingService!.saveSession(_processApi);
+        final payload =
+            await _nativeInputTrackingService!.captureSessionPayload();
+        final result = await _nativeInputTrackingService!
+            .saveSession(_processApi, payload);
+        await _localProcessSessionStore?.appendSession(
+          startTime: payload.startTime,
+          endTime: payload.endTime,
+          events: payload.events,
+        );
         requestVideoRefresh();
         return result;
       } catch (e) {
         if (_nativeTrackingSessionQueue != null) {
-          final map =
+          final payload =
               await _nativeInputTrackingService!.captureSessionPayload();
-          if (map['ok'] == true) {
-            await _nativeTrackingSessionQueue!.enqueue({
-              'events': map['events'],
-              'start_time': map['startTime'],
-              'end_time': map['endTime'],
-            });
-            return SaveFromTrackingResult(
-              eventsSaved: map['eventsSaved'] as int? ?? 0,
-              startTime: map['startTime'] as String? ?? '',
-              endTime: map['endTime'] as String? ?? '',
-            );
-          }
+          await _nativeTrackingSessionQueue!.enqueue({
+            'events': payload.events,
+            'start_time': payload.startTime,
+            'end_time': payload.endTime,
+          });
+          await _localProcessSessionStore?.appendSession(
+            startTime: payload.startTime,
+            endTime: payload.endTime,
+            events: payload.events,
+          );
+          return SaveFromTrackingResult(
+            eventsSaved: payload.eventsSaved,
+            startTime: payload.startTime,
+            endTime: payload.endTime,
+          );
         }
         rethrow;
       }

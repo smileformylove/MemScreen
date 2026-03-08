@@ -1,0 +1,79 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+
+import '../api/process_api.dart';
+
+class LocalProcessSessionStore {
+  LocalProcessSessionStore({String? filePath})
+      : _filePath = filePath ??
+            '${Platform.environment['HOME'] ?? ''}/.memscreen/local_process_sessions.json';
+
+  final String _filePath;
+
+  Future<List<Map<String, dynamic>>> _readAll() async {
+    try {
+      final file = File(_filePath);
+      if (!await file.exists()) return <Map<String, dynamic>>[];
+      final raw = await file.readAsString();
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return <Map<String, dynamic>>[];
+      return decoded
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    } catch (e) {
+      debugPrint('[LocalProcessSessionStore] Failed to read cache: $e');
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<void> _writeAll(List<Map<String, dynamic>> items) async {
+    try {
+      final file = File(_filePath);
+      await file.parent.create(recursive: true);
+      await file.writeAsString(jsonEncode(items));
+    } catch (e) {
+      debugPrint('[LocalProcessSessionStore] Failed to write cache: $e');
+    }
+  }
+
+  Future<void> appendSession({
+    required String startTime,
+    required String endTime,
+    required List<Map<String, dynamic>> events,
+  }) async {
+    final items = await _readAll();
+    final keystrokes =
+        events.where((entry) => entry['type'] == 'keypress').length;
+    final clicks = events.where((entry) => entry['type'] == 'click').length;
+    items.add({
+      'id': DateTime.now().microsecondsSinceEpoch,
+      'start_time': startTime,
+      'end_time': endTime,
+      'event_count': events.length,
+      'keystrokes': keystrokes,
+      'clicks': clicks,
+      'events': events,
+      'source': 'local-native',
+    });
+    await _writeAll(items);
+  }
+
+  Future<List<ProcessSession>> listSessions() async {
+    final items = await _readAll();
+    final sessions = items.map((item) {
+      return ProcessSession(
+        id: item['id'] as int? ?? 0,
+        startTime: item['start_time'] as String? ?? '',
+        endTime: item['end_time'] as String? ?? '',
+        eventCount: item['event_count'] as int? ?? 0,
+        keystrokes: item['keystrokes'] as int? ?? 0,
+        clicks: item['clicks'] as int? ?? 0,
+      );
+    }).toList();
+    sessions.sort((a, b) => b.startTime.compareTo(a.startTime));
+    return sessions;
+  }
+}

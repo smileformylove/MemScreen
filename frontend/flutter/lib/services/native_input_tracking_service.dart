@@ -14,6 +14,20 @@ class NativeInputTrackingStatus extends TrackingStatus {
   final bool inputMonitoringGranted;
 }
 
+class NativeTrackingSessionPayload {
+  NativeTrackingSessionPayload({
+    required this.events,
+    required this.eventsSaved,
+    required this.startTime,
+    required this.endTime,
+  });
+
+  final List<Map<String, dynamic>> events;
+  final int eventsSaved;
+  final String startTime;
+  final String endTime;
+}
+
 class NativeInputTrackingService {
   static const _channel = MethodChannel('com.memscreen/native_input_tracking');
 
@@ -45,37 +59,44 @@ class NativeInputTrackingService {
     await _channel.invokeMethod<dynamic>('stopNativeTracking');
   }
 
-  Future<Map<String, dynamic>> captureSessionPayload() async {
+  Future<NativeTrackingSessionPayload> captureSessionPayload() async {
     final raw =
         await _channel.invokeMethod<dynamic>('saveNativeTrackingSession');
-    return raw is Map<String, dynamic>
+    final map = raw is Map<String, dynamic>
         ? raw
         : Map<String, dynamic>.from(raw as Map);
-  }
-
-  Future<SaveFromTrackingResult> saveSession(ProcessApi processApi) async {
-    final map = await captureSessionPayload();
     if (map['ok'] != true) {
       throw PlatformException(
         code: 'NATIVE_TRACKING_SAVE_FAILED',
         message: (map['error'] ?? 'No events to save').toString(),
       );
     }
-
     final events = (map['events'] as List? ?? const [])
         .map((entry) => Map<String, dynamic>.from(entry as Map))
         .toList();
     final startTime = map['startTime'] as String? ?? '';
     final endTime = map['endTime'] as String? ?? startTime;
-    await processApi.saveSession(
+    return NativeTrackingSessionPayload(
       events: events,
-      startTime: startTime,
-      endTime: endTime,
-    );
-    return SaveFromTrackingResult(
       eventsSaved: map['eventsSaved'] as int? ?? events.length,
       startTime: startTime,
       endTime: endTime,
+    );
+  }
+
+  Future<SaveFromTrackingResult> saveSession(
+    ProcessApi processApi,
+    NativeTrackingSessionPayload payload,
+  ) async {
+    await processApi.saveSession(
+      events: payload.events,
+      startTime: payload.startTime,
+      endTime: payload.endTime,
+    );
+    return SaveFromTrackingResult(
+      eventsSaved: payload.eventsSaved,
+      startTime: payload.startTime,
+      endTime: payload.endTime,
     );
   }
 }
