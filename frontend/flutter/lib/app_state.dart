@@ -380,6 +380,7 @@ class AppState extends ChangeNotifier {
       final remote = await _processApi.getSessions(limit: 50);
       await _localProcessSessionStore?.reconcileWithRemote(remote);
     }
+    requestProcessRefresh();
   }
 
   Future<int> deleteProcessSessionForUi(int sessionId) async {
@@ -388,6 +389,7 @@ class AppState extends ChangeNotifier {
       deleted = await _processApi.deleteSession(sessionId.toString());
     } catch (_) {}
     deleted += await _localProcessSessionStore?.deleteSession(sessionId) ?? 0;
+    requestProcessRefresh();
     return deleted;
   }
 
@@ -397,6 +399,7 @@ class AppState extends ChangeNotifier {
       deleted = await _processApi.deleteAllSessions();
     } catch (_) {}
     deleted += await _localProcessSessionStore?.deleteAllSessions() ?? 0;
+    requestProcessRefresh();
     return deleted;
   }
 
@@ -405,11 +408,13 @@ class AppState extends ChangeNotifier {
       await _nativeInputTrackingService!.start();
       updateFloatingBallTracking(true);
       requestRecordingStatusRefresh();
+      requestProcessRefresh();
       return;
     }
     await _processApi.startTracking();
     updateFloatingBallTracking(true);
     requestRecordingStatusRefresh();
+    requestProcessRefresh();
   }
 
   Future<void> stopInputTracking() async {
@@ -417,11 +422,13 @@ class AppState extends ChangeNotifier {
       await _nativeInputTrackingService!.stop();
       updateFloatingBallTracking(false);
       requestRecordingStatusRefresh();
+      requestProcessRefresh();
       return;
     }
     await _processApi.stopTracking();
     updateFloatingBallTracking(false);
     requestRecordingStatusRefresh();
+    requestProcessRefresh();
   }
 
   Future<SaveFromTrackingResult> saveTrackingSessionForUi() async {
