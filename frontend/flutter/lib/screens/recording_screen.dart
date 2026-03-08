@@ -709,6 +709,28 @@ class _RecordingScreenState extends State<RecordingScreen> {
     return 'Nonstandard path';
   }
 
+  String _logsDirPath() {
+    return '${Platform.environment['HOME'] ?? '~'}/.memscreen/logs';
+  }
+
+  Future<void> _openPath(String path, {required String label}) async {
+    try {
+      if (Platform.isMacOS) {
+        final result = await Process.run('open', [path]);
+        if (result.exitCode != 0) {
+          throw Exception((result.stderr ?? '').toString().trim());
+        }
+      } else {
+        throw Exception('Open path is only implemented for macOS right now.');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to open $label: $e')),
+      );
+    }
+  }
+
   String _recordingTargetLabel() {
     if (_mode == 'region') {
       return 'Region selection';
@@ -739,6 +761,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
       'screen_recording_permission: ${appState.hasScreenRecordingPermission ? 'granted' : 'missing'}',
       'target: ${_recordingTargetLabel()}',
       'output_dir: ${(status?.outputDir ?? '').isNotEmpty ? status!.outputDir : '${Platform.environment['HOME'] ?? '~'}/.memscreen/videos'}',
+      'logs_dir: ${_logsDirPath()}',
       'is_recording: ${status?.isRecording ?? false}',
     ];
     if ((status?.lastFailureKind ?? '').isNotEmpty) {
@@ -908,6 +931,12 @@ class _RecordingScreenState extends State<RecordingScreen> {
             label: 'Output',
             value: outputDir,
           ),
+          _buildDiagnosticRow(
+            context,
+            icon: Icons.receipt_long_outlined,
+            label: 'Logs',
+            value: _logsDirPath(),
+          ),
           if ((_recordingNotice ?? '').isNotEmpty)
             _buildDiagnosticRow(
               context,
@@ -963,6 +992,17 @@ class _RecordingScreenState extends State<RecordingScreen> {
                   _runningSmokeCheck ? 'Running check...' : 'Run smoke check',
                 ),
               ),
+              OutlinedButton.icon(
+                onPressed: () => _openPath(outputDir, label: 'output folder'),
+                icon: const Icon(Icons.video_library_outlined),
+                label: const Text('Open output'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () =>
+                    _openPath(_logsDirPath(), label: 'logs folder'),
+                icon: const Icon(Icons.folder_open_outlined),
+                label: const Text('Open logs'),
+              ),
               if (Theme.of(context).platform == TargetPlatform.macOS &&
                   !hasPermission)
                 OutlinedButton.icon(
@@ -973,19 +1013,6 @@ class _RecordingScreenState extends State<RecordingScreen> {
                 ),
             ],
           ),
-          if (Theme.of(context).platform == TargetPlatform.macOS &&
-              !hasPermission) ...[
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: () =>
-                    appState.openPermissionSettings('screen_recording'),
-                icon: const Icon(Icons.open_in_new),
-                label: const Text('Open Screen Recording'),
-              ),
-            ),
-          ],
         ],
       ),
     );
