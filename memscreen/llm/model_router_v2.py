@@ -55,19 +55,19 @@ class EnhancedModelRouter:
 
         # 7b model configuration
         self.model_configs = {
-            "qwen2.5:7b": {
+            "qwen3.5:4b": {
                 "quality": 0.92,
                 "avg_latency_ms": 400,
                 "max_tokens": 2048,
                 "specialized_for": ["vision_reasoning", "context_heavy"],
             },
-            "qwen2.5vl:3b": {
+            "qwen3.5:2b": {
                 "quality": 0.82,
                 "avg_latency_ms": 200,
                 "max_tokens": 1024,
                 "specialized_for": ["quick_vision"],
             },
-            "qwen3:1.7b": {
+            "qwen3.5:0.8b": {
                 "quality": 0.75,
                 "avg_latency_ms": 120,
                 "max_tokens": 512,
@@ -112,7 +112,7 @@ class EnhancedModelRouter:
         # Routing decision
         if has_visual_context and context_size > 3:
             # Rich visual context → use 7b
-            model = "qwen2.5:7b"
+            model = "qwen3.5:4b"
             params = {
                 "temperature": 0.5,
                 "num_predict": 1024,
@@ -127,7 +127,7 @@ class EnhancedModelRouter:
 
         elif needs_vision_reasoning or context_size > 0:
             # Some visual reasoning needed → use 3b vision model
-            model = "qwen2.5vl:3b"
+            model = "qwen3.5:2b"
             params = {
                 "temperature": 0.3,
                 "num_predict": 512,
@@ -141,7 +141,7 @@ class EnhancedModelRouter:
 
         else:
             # No visual context → use fast model
-            model = "qwen3:1.7b"
+            model = "qwen3.5:0.8b"
             params = {
                 "temperature": 0.3,
                 "num_predict": 256,

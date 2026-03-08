@@ -4,6 +4,12 @@ from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
+from memscreen.ollama_runtime import (
+    build_ollama_env,
+    is_external_models_dir,
+    resolve_ollama_models_dir,
+)
+
 router = APIRouter(prefix="/models", tags=["models"])
 
 
@@ -32,6 +38,9 @@ async def models_catalog():
         (cfg.ollama_llm_model, "Chat", True),
         (cfg.ollama_vision_model, "Video tags", True),
         (cfg.ollama_embedding_model, "Memory retrieval", True),
+        ("qwen3.5:0.8b", "Ultra-light chat/vision (optional)", False),
+        ("qwen3.5:2b", "Fast chat/vision (optional)", False),
+        ("qwen3.5:4b", "Balanced chat/vision (optional)", False),
         ("qwen2.5vl:7b", "Advanced vision (optional)", False),
     ]
 
@@ -108,8 +117,11 @@ async def models_catalog():
             }
         )
 
+    models_dir = resolve_ollama_models_dir()
     return {
         "base_url": base_url,
+        "models_dir": models_dir,
+        "models_dir_external": is_external_models_dir(models_dir),
         "models_disabled": disable_models,
         "runtime_ready": runtime_ready,
         "runtime_error": runtime_error,
@@ -152,6 +164,7 @@ async def models_download(body: ModelDownloadBody):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
+                env=build_ollama_env(),
             )
         except Exception:
             return False

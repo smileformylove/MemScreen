@@ -99,7 +99,7 @@ class ChatPresenter(BasePresenter):
         self._chat_thread_meta: Dict[str, Dict[str, Any]] = {}
         self._active_thread_id: str = ""
         self._chat_threads_store_path = self._get_chat_threads_store_path()
-        self.current_model = "qwen3:1.7b"
+        self.current_model = "qwen3.5:4b"
         self.available_models = []
 
         # Streaming state
@@ -117,7 +117,7 @@ class ChatPresenter(BasePresenter):
         self.agent_executor = AgentExecutor(
             memory_system=memory_system,
             ollama_base_url=self.model_capability.ollama_base_url,
-            current_model="qwen3:1.7b"
+            current_model="qwen3.5:4b"
         )
 
         # OPTIMIZATION: Reusable event loop for async operations
@@ -166,7 +166,7 @@ class ChatPresenter(BasePresenter):
                         else:
                             content = str(messages)
                         return self.capability.generate_once(
-                            model="qwen3:1.7b",
+                            model="qwen3.5:4b",
                             prompt=content,
                             timeout=120,
                         )
@@ -1151,12 +1151,12 @@ class ChatPresenter(BasePresenter):
 
     def _is_vision_model(self, model_name: str) -> bool:
         name = model_name.lower()
-        return ("vl" in name) or ("vision" in name)
+        return (("vl" in name) or ("vision" in name) or name.startswith("qwen3.5"))
 
     def _pick_default_chat_model(self, models: List[str]) -> str:
         """Pick a sane default generation model from available models."""
         if not models:
-            return "qwen3:1.7b"
+            return "qwen3.5:4b"
         candidates = [m for m in models if not self._is_embedding_model(m)]
         if not candidates:
             candidates = list(models)
@@ -1195,9 +1195,10 @@ class ChatPresenter(BasePresenter):
             vision_models.sort(key=lambda m: self._parse_model_size_b(m), reverse=True)
             return vision_models[0]
         # Fallback to known default
-        if "qwen2.5vl:3b" in self.available_models:
-            return "qwen2.5vl:3b"
-        return self.current_model or "qwen3:1.7b"
+        for candidate in ["qwen3.5:4b", "qwen3.5:2b", "qwen3.5:0.8b", "qwen2.5vl:3b"]:
+            if candidate in self.available_models:
+                return candidate
+        return self.current_model or "qwen3.5:4b"
 
     def _ensure_model_available(self, model_name: str, allow_pull: bool = True) -> bool:
         """Ensure a model exists locally; optionally trigger `ollama pull` once."""
@@ -1244,15 +1245,15 @@ class ChatPresenter(BasePresenter):
         ]
         vision_models.sort(key=lambda m: self._parse_model_size_b(m), reverse=not prefer_fast)
 
-        preferred = ["qwen2.5vl:7b", "qwen2.5vl:3b"]
+        preferred = ["qwen3.5:4b", "qwen3.5:2b", "qwen3.5:0.8b", "qwen2.5vl:7b", "qwen2.5vl:3b"]
         for model in preferred:
             if model not in vision_models and self._ensure_model_available(model, allow_pull=True):
                 vision_models.append(model)
 
         if prefer_fast:
-            ordered = ["qwen2.5vl:3b", "qwen2.5vl:7b"]
+            ordered = ["qwen3.5:0.8b", "qwen3.5:2b", "qwen3.5:4b", "qwen2.5vl:3b", "qwen2.5vl:7b"]
         else:
-            ordered = ["qwen2.5vl:7b", "qwen2.5vl:3b"]
+            ordered = ["qwen3.5:4b", "qwen3.5:2b", "qwen2.5vl:7b", "qwen2.5vl:3b", "qwen3.5:0.8b"]
 
         deduped: List[str] = []
         seen = set()
@@ -1269,11 +1270,11 @@ class ChatPresenter(BasePresenter):
         if not self.available_models:
             self._load_available_models()
         if not self.available_models:
-            return "qwen3:1.7b"
+            return "qwen3.5:4b"
 
         chat_models = [m for m in self.available_models if not self._is_embedding_model(m)]
         if not chat_models:
-            return "qwen3:1.7b"
+            return "qwen3.5:4b"
 
         # Prefer >=7B non-vision models; if unavailable, allow large vision models.
         non_vision = [m for m in chat_models if not self._is_vision_model(m)]
@@ -5024,7 +5025,7 @@ class ChatPresenter(BasePresenter):
         if default_model not in chat_models and chat_models:
             default_model = sorted(chat_models, key=lambda m: self._parse_model_size_b(m), reverse=True)[0]
         if not default_model:
-            default_model = "qwen3:1.7b"
+            default_model = "qwen3.5:4b"
 
         default_params = {
             "temperature": 0.45,
@@ -5916,8 +5917,9 @@ class ChatPresenter(BasePresenter):
             self.available_models = self.model_capability.list_models(timeout=10)
             if not self.available_models:
                 self.available_models = [
-                    "qwen3:1.7b",
-                    "qwen3:1.7b",
+                    "qwen3.5:4b",
+                    "qwen3.5:2b",
+                    "qwen3.5:0.8b",
                     "llama3.2:3b",
                     "gemma2:9b",
                 ]
@@ -5940,8 +5942,9 @@ class ChatPresenter(BasePresenter):
             self.handle_error(e, "Failed to load models")
             # Set default models if API call fails
             self.available_models = [
-                "qwen3:1.7b",
-                "qwen3:1.7b",
+                "qwen3.5:4b",
+                "qwen3.5:2b",
+                "qwen3.5:0.8b",
                 "llama3.2:3b",
                 "gemma2:9b"
             ]

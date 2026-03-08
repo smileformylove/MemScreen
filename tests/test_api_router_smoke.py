@@ -1,3 +1,4 @@
+import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -177,6 +178,7 @@ class ApiRouterSmokeTest(unittest.TestCase):
     self.old_persist = process_router_module.persist_process_session_memory
     self.old_delete = process_router_module.delete_process_session_memory
     self.old_delete_all = process_router_module.delete_all_process_session_memories
+    self.old_models_dir_env = os.environ.get('MEMSCREEN_OLLAMA_MODELS_DIR')
 
     deps._chat_presenter = _DummyChatPresenter()
     deps._chat_presenter_initialized = True
@@ -186,6 +188,7 @@ class ApiRouterSmokeTest(unittest.TestCase):
     deps._recording_presenter_initialized = True
     deps._process_mining_presenter = _DummyProcessPresenter()
     deps._process_mining_presenter_initialized = True
+    os.environ['MEMSCREEN_OLLAMA_MODELS_DIR'] = '/Volumes/TestDrive/models/ollama'
     process_router_module.persist_process_session_memory = lambda **kwargs: False
     process_router_module.delete_process_session_memory = lambda session_id: 0
     process_router_module.delete_all_process_session_memories = lambda: 0
@@ -207,6 +210,10 @@ class ApiRouterSmokeTest(unittest.TestCase):
     process_router_module.persist_process_session_memory = self.old_persist
     process_router_module.delete_process_session_memory = self.old_delete
     process_router_module.delete_all_process_session_memories = self.old_delete_all
+    if self.old_models_dir_env is None:
+      os.environ.pop('MEMSCREEN_OLLAMA_MODELS_DIR', None)
+    else:
+      os.environ['MEMSCREEN_OLLAMA_MODELS_DIR'] = self.old_models_dir_env
 
   def test_router_paths_are_available(self):
     response = self.client.get('/openapi.json')
@@ -226,6 +233,17 @@ class ApiRouterSmokeTest(unittest.TestCase):
       '/health',
     ]:
       self.assertIn(path, paths)
+
+  def test_models_catalog_exposes_qwen35_and_storage(self):
+    response = self.client.get('/models/catalog')
+    self.assertEqual(response.status_code, 200)
+    payload = response.json()
+    self.assertEqual(payload['models_dir'], '/Volumes/TestDrive/models/ollama')
+    self.assertTrue(payload['models_dir_external'])
+    names = {item['name'] for item in payload['models']}
+    self.assertIn('qwen3.5:0.8b', names)
+    self.assertIn('qwen3.5:2b', names)
+    self.assertIn('qwen3.5:4b', names)
 
   def test_chat_video_and_system_routes(self):
     self.assertEqual(self.client.get('/chat/models').json()['models'], ['m1', 'm2'])

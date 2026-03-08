@@ -559,6 +559,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final runtimeReady = catalog?.runtimeReady ?? false;
     final runtimeText = runtimeReady ? 'Runtime ready' : 'Runtime unavailable';
     final statusColor = runtimeReady ? Colors.green : theme.colorScheme.error;
+    final modelsDir = catalog?.modelsDir;
+    final modelsDirExternal = catalog?.modelsDirExternal ?? false;
     final models = catalog?.models ?? const <LocalModelEntry>[];
     final disableDownloads = _loadingModelCatalog;
 
@@ -600,6 +602,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (_loadingModelCatalog) ...[
             const SizedBox(height: 8),
             const LinearProgressIndicator(minHeight: 2),
+          ],
+          if ((modelsDir ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              modelsDirExternal
+                  ? 'Model storage (external): $modelsDir'
+                  : 'Model storage: $modelsDir',
+              style: TextStyle(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
           ],
           if (catalog?.modelsDisabled == true) ...[
             const SizedBox(height: 8),

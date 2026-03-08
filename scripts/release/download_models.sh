@@ -4,9 +4,37 @@
 #   ./download_models.sh minimal
 #   ./download_models.sh recommended
 #   ./download_models.sh full
-#   ./download_models.sh custom qwen2.5vl:3b mxbai-embed-large:latest
+#   ./download_models.sh custom qwen3.5:0.8b qwen3.5:2b qwen3.5:4b
 
 set -euo pipefail
+
+resolve_models_dir() {
+  if [[ -n "${MEMSCREEN_OLLAMA_MODELS_DIR:-}" ]]; then
+    printf '%s\n' "$MEMSCREEN_OLLAMA_MODELS_DIR"
+    return
+  fi
+  if [[ -n "${OLLAMA_MODELS:-}" ]]; then
+    printf '%s\n' "$OLLAMA_MODELS"
+    return
+  fi
+  if [[ -e "$HOME/.ollama" ]]; then
+    python3 - <<'PY'
+from pathlib import Path
+path = Path.home() / '.ollama'
+try:
+    print(path.resolve())
+except Exception:
+    print(path)
+PY
+    return
+  fi
+}
+
+MODELS_DIR="$(resolve_models_dir || true)"
+if [[ -n "$MODELS_DIR" ]]; then
+  export OLLAMA_MODELS="$MODELS_DIR"
+  echo "[model-download] using model storage: $OLLAMA_MODELS"
+fi
 
 PRESET="${1:-recommended}"
 shift || true
@@ -40,22 +68,21 @@ MODELS=()
 case "$PRESET" in
   minimal)
     MODELS=(
-      "qwen3:1.7b"
+      "qwen3.5:0.8b"
       "mxbai-embed-large:latest"
     )
     ;;
   recommended)
     MODELS=(
-      "qwen3:1.7b"
-      "qwen2.5vl:3b"
+      "qwen3.5:4b"
       "mxbai-embed-large:latest"
     )
     ;;
   full)
     MODELS=(
-      "qwen3:1.7b"
-      "qwen2.5vl:3b"
-      "qwen2.5vl:7b"
+      "qwen3.5:0.8b"
+      "qwen3.5:2b"
+      "qwen3.5:4b"
       "mxbai-embed-large:latest"
       "nomic-embed-text:latest"
     )
@@ -63,7 +90,7 @@ case "$PRESET" in
   custom)
     if [[ $# -eq 0 ]]; then
       echo "[model-download] custom mode requires model names."
-      echo "example: ./download_models.sh custom qwen2.5vl:3b mxbai-embed-large:latest"
+      echo "example: ./download_models.sh custom qwen3.5:0.8b qwen3.5:2b qwen3.5:4b"
       exit 1
     fi
     MODELS=("$@")

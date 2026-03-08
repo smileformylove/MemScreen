@@ -24,6 +24,8 @@ class ModelApi {
     }
     return LocalModelCatalog(
       baseUrl: m['base_url'] as String? ?? '',
+      modelsDir: m['models_dir'] as String?,
+      modelsDirExternal: m['models_dir_external'] as bool? ?? false,
       runtimeReady: m['runtime_ready'] as bool? ?? false,
       runtimeError: m['runtime_error'] as String?,
       modelsDisabled: m['models_disabled'] as bool? ?? false,
@@ -49,6 +51,8 @@ class ModelApi {
 class LocalModelCatalog {
   LocalModelCatalog({
     required this.baseUrl,
+    required this.modelsDir,
+    required this.modelsDirExternal,
     required this.runtimeReady,
     required this.runtimeError,
     required this.modelsDisabled,
@@ -56,6 +60,8 @@ class LocalModelCatalog {
   });
 
   final String baseUrl;
+  final String? modelsDir;
+  final bool modelsDirExternal;
   final bool runtimeReady;
   final String? runtimeError;
   final bool modelsDisabled;
