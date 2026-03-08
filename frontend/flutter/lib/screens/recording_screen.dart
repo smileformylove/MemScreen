@@ -633,6 +633,159 @@ class _RecordingScreenState extends State<RecordingScreen> {
     return null;
   }
 
+  String _recordingEngineLabel(AppState appState) {
+    if (Theme.of(context).platform == TargetPlatform.macOS &&
+        appState.useNativeMacOSRecording) {
+      return 'Native macOS recorder';
+    }
+    return 'Backend recorder';
+  }
+
+  String _recordingTargetLabel() {
+    if (_mode == 'region') {
+      return 'Region selection';
+    }
+    if (_mode == 'window') {
+      return 'Window selection';
+    }
+    if (_screenIndex == null) {
+      return 'All screens';
+    }
+    final screen = _findScreenByIndex(_screenIndex);
+    if (screen == null) {
+      return 'Screen ${_screenIndex! + 1}';
+    }
+    return '${screen.name} (${screen.width}x${screen.height})';
+  }
+
+  Widget _buildDiagnosticRow(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String value,
+    Color? valueColor,
+  }) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                children: [
+                  TextSpan(text: '$label: '),
+                  TextSpan(
+                    text: value,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: valueColor ?? theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDiagnosticsCard(AppState appState) {
+    final theme = Theme.of(context);
+    final hasPermission = Theme.of(context).platform != TargetPlatform.macOS ||
+        appState.hasScreenRecordingPermission;
+    final permissionText = hasPermission ? 'Granted' : 'Missing';
+    final permissionColor =
+        hasPermission ? Colors.green : theme.colorScheme.error;
+    final outputDir = (_status?.outputDir ?? '').isNotEmpty
+        ? _status!.outputDir
+        : '${Platform.environment['HOME'] ?? '~'}/.memscreen/videos';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(child: Text('Recording diagnostics')),
+              TextButton(
+                onPressed: () async {
+                  await appState.refreshPermissionStatus();
+                  await _load();
+                },
+                child: const Text('Check again'),
+              ),
+            ],
+          ),
+          _buildDiagnosticRow(
+            context,
+            icon: Icons.videocam_outlined,
+            label: 'Engine',
+            value: _recordingEngineLabel(appState),
+          ),
+          _buildDiagnosticRow(
+            context,
+            icon: Icons.privacy_tip_outlined,
+            label: 'Screen Recording',
+            value: permissionText,
+            valueColor: permissionColor,
+          ),
+          _buildDiagnosticRow(
+            context,
+            icon: Icons.filter_center_focus_outlined,
+            label: 'Target',
+            value: _recordingTargetLabel(),
+          ),
+          _buildDiagnosticRow(
+            context,
+            icon: Icons.folder_open_outlined,
+            label: 'Output',
+            value: outputDir,
+          ),
+          if ((_recordingNotice ?? '').isNotEmpty)
+            _buildDiagnosticRow(
+              context,
+              icon: Icons.info_outline,
+              label: 'Last result',
+              value: _recordingNotice!,
+              valueColor: switch (_recordingNoticeLevel) {
+                _RecordingNoticeLevel.error => theme.colorScheme.error,
+                _RecordingNoticeLevel.warning =>
+                  theme.colorScheme.onTertiaryContainer,
+                _RecordingNoticeLevel.info => theme.colorScheme.onSurface,
+              },
+            ),
+          if (Theme.of(context).platform == TargetPlatform.macOS &&
+              !hasPermission) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () =>
+                    appState.openPermissionSettings('screen_recording'),
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Open Screen Recording'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   List<Widget> _buildActionBar() {
     final isRecording = _status?.isRecording ?? false;
     if (_mode == 'fullscreen') {
@@ -709,6 +862,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
       );
     }
 
+    final appState = context.watch<AppState>();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Record'),
@@ -729,6 +884,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                _buildDiagnosticsCard(appState),
                 if ((_recordingNotice ?? '').isNotEmpty) ...[
                   Builder(builder: (context) {
                     final colorScheme = Theme.of(context).colorScheme;
