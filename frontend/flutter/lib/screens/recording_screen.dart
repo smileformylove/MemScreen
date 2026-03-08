@@ -594,6 +594,38 @@ class _RecordingScreenState extends State<RecordingScreen> {
     }
   }
 
+  ({String label, String detail, ColorScheme Function(BuildContext) colors})
+      _captureStatePresentation() {
+    final isRecording = _status?.isRecording ?? false;
+    if (isRecording) {
+      return (
+        label: 'Recording live',
+        detail: 'Capture is already running. Stop it before changing target.',
+        colors: (context) => Theme.of(context).colorScheme,
+      );
+    }
+    switch (_mode) {
+      case 'region':
+        return (
+          label: 'Overlay required',
+          detail: 'Use the floating ball to mark the region before recording.',
+          colors: (context) => Theme.of(context).colorScheme,
+        );
+      case 'window':
+        return (
+          label: 'Overlay required',
+          detail: 'Use the floating ball to pick a window before recording.',
+          colors: (context) => Theme.of(context).colorScheme,
+        );
+      default:
+        return (
+          label: 'Ready here',
+          detail: 'You can start recording directly from this page.',
+          colors: (context) => Theme.of(context).colorScheme,
+        );
+    }
+  }
+
   Widget _summaryChip({
     required IconData icon,
     required String label,
@@ -630,10 +662,11 @@ class _RecordingScreenState extends State<RecordingScreen> {
     final isRecording = _status?.isRecording ?? false;
     final targetLabel = _recordingTargetLabel();
     final primaryActionLabel = switch (_mode) {
-      'region' => 'Pick region in overlay',
-      'window' => 'Pick window in overlay',
+      'region' => 'Open region selector',
+      'window' => 'Open window picker',
       _ => 'Start recording here',
     };
+    final captureState = _captureStatePresentation();
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -651,6 +684,77 @@ class _RecordingScreenState extends State<RecordingScreen> {
           Text(
             _selectedModeHelpText(),
             style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: (_status?.isRecording ?? false)
+                  ? Theme.of(context).colorScheme.errorContainer
+                  : _mode == 'fullscreen'
+                      ? Theme.of(context).colorScheme.secondaryContainer
+                      : Theme.of(context).colorScheme.tertiaryContainer,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  (_status?.isRecording ?? false)
+                      ? Icons.fiber_manual_record
+                      : _mode == 'fullscreen'
+                          ? Icons.play_circle_outline
+                          : Icons.touch_app_outlined,
+                  color: (_status?.isRecording ?? false)
+                      ? Theme.of(context).colorScheme.onErrorContainer
+                      : _mode == 'fullscreen'
+                          ? Theme.of(context).colorScheme.onSecondaryContainer
+                          : Theme.of(context).colorScheme.onTertiaryContainer,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        captureState.label,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: (_status?.isRecording ?? false)
+                                  ? Theme.of(context)
+                                      .colorScheme
+                                      .onErrorContainer
+                                  : _mode == 'fullscreen'
+                                      ? Theme.of(context)
+                                          .colorScheme
+                                          .onSecondaryContainer
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .onTertiaryContainer,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        captureState.detail,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: (_status?.isRecording ?? false)
+                                  ? Theme.of(context)
+                                      .colorScheme
+                                      .onErrorContainer
+                                  : _mode == 'fullscreen'
+                                      ? Theme.of(context)
+                                          .colorScheme
+                                          .onSecondaryContainer
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .onTertiaryContainer,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           Wrap(

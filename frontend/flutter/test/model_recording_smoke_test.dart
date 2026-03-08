@@ -105,10 +105,12 @@ void main() {
     expect(find.text('Recording diagnostics'), findsOneWidget);
     expect(find.text('Capture target'), findsOneWidget);
     expect(find.text('Start recording here'), findsOneWidget);
+    expect(find.text('Ready here'), findsOneWidget);
     expect(find.text('Pick region'), findsOneWidget);
     expect(find.text('Pick window'), findsOneWidget);
     expect(find.text('Ready to record'), findsOneWidget);
     expect(find.textContaining('Mode:'), findsWidgets);
+    expect(find.textContaining('Flow:'), findsWidgets);
     expect(find.textContaining('Target:'), findsWidgets);
     expect(find.byIcon(Icons.commit), findsWidgets);
     expect(find.byIcon(Icons.videocam_outlined), findsWidgets);
