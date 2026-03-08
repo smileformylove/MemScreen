@@ -248,6 +248,37 @@ void main() {
           'next_step: Open the last output file and verify it plays back correctly.'),
     );
   });
+
+  test('recording diagnostics brief prioritizes summary and next step', () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: false,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastFailureKind: 'permission_denied',
+    );
+
+    final brief = buildRecordingDiagnosticsBrief(data);
+    expect(brief, contains('Summary: Blocked by Screen Recording permission.'));
+    expect(
+      brief,
+      contains(
+          'Next: Quit MemScreen fully, reopen it, then run Smoke check again.'),
+    );
+  });
+
+  test('recording diagnostics report starts with brief summary', () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+      lastOutputFileSize: 1536,
+    );
+
+    final report = buildRecordingDiagnosticsReport(data).split('\n');
+    expect(report[0], 'MemScreen recording diagnostics');
+    expect(report[1], contains('Summary: Latest output: Saved · 1.5 KB.'));
+  });
   test('recording diagnostics summary falls back to native failure mapping',
       () {
     final summary = recordingDiagnosticsSummary(

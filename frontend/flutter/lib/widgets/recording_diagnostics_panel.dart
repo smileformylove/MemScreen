@@ -86,9 +86,27 @@ class RecordingDiagnosticsQuickAction {
   final bool isLoading;
 }
 
+String buildRecordingDiagnosticsBrief(RecordingDiagnosticsData data) {
+  final parts = <String>[];
+  if ((data.problemSummary ?? '').isNotEmpty) {
+    parts.add('Summary: ${data.problemSummary!}');
+  }
+  if ((data.nextStep ?? '').isNotEmpty) {
+    parts.add('Next: ${data.nextStep!}');
+  }
+  if ((data.lastOutputStatus ?? '').isNotEmpty) {
+    parts.add('Output: ${data.lastOutputStatus!}');
+  }
+  if (parts.isEmpty) {
+    parts.add('Summary: No immediate recording issue detected.');
+  }
+  return parts.join(' | ');
+}
+
 String buildRecordingDiagnosticsReport(RecordingDiagnosticsData data) {
   final lines = <String>[
     'MemScreen recording diagnostics',
+    buildRecordingDiagnosticsBrief(data),
     'build: ${data.buildLabel}',
     'install_status: ${data.installStatus}',
     'screen_recording_permission: ${data.screenRecordingGranted ? 'granted' : 'missing'}',
