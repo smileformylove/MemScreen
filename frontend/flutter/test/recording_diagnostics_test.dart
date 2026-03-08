@@ -312,6 +312,44 @@ void main() {
 
     expect(labels.first, 'Open logs');
   });
+
+  test('recording diagnostics banners keep only top actionable items', () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      statusNotice:
+          'Import warning: Recording saved locally, but adding it to Videos failed.',
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+      lastOutputFileSize: 2048,
+    );
+
+    final banners = buildRecordingDiagnosticsBanners(data);
+    expect(banners.length, 3);
+    expect(banners[0].label, 'Problem summary');
+    expect(banners[1].label, 'Next step');
+    expect(banners[2].label, 'Output file');
+  });
+
+  test('recording diagnostics banners dedupe repeated summary text', () {
+    const data = RecordingDiagnosticsData(
+      buildLabel: 'commit · release',
+      installStatus: 'Applications',
+      screenRecordingGranted: false,
+      outputDir: '/tmp/videos',
+      logsDir: '/tmp/logs',
+      isRecording: false,
+      problemSummary: 'Blocked by Screen Recording permission.',
+      problemSummaryLevel: RecordingDiagnosticsNoticeLevel.error,
+      nextStep: 'Blocked by Screen Recording permission.',
+      nextStepLevel: RecordingDiagnosticsNoticeLevel.error,
+      advice: 'Blocked by Screen Recording permission.',
+    );
+
+    final banners = buildRecordingDiagnosticsBanners(data);
+    expect(banners.length, 1);
+    expect(banners.single.label, 'Problem summary');
+  });
   test('recording diagnostics brief prioritizes summary and next step', () {
     final data = buildRecordingDiagnosticsData(
       screenRecordingGranted: false,

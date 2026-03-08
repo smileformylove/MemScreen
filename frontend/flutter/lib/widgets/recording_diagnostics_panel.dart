@@ -87,6 +87,142 @@ class RecordingDiagnosticsQuickAction {
   final bool isLoading;
 }
 
+class RecordingDiagnosticsBanner {
+  const RecordingDiagnosticsBanner({
+    required this.label,
+    required this.value,
+    required this.level,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final RecordingDiagnosticsNoticeLevel level;
+  final IconData icon;
+}
+
+List<RecordingDiagnosticsBanner> buildRecordingDiagnosticsBanners(
+  RecordingDiagnosticsData data,
+) {
+  final banners = <RecordingDiagnosticsBanner>[];
+  final seen = <String>{};
+
+  void addBanner({
+    required String label,
+    required String? value,
+    required RecordingDiagnosticsNoticeLevel level,
+    required IconData icon,
+  }) {
+    final normalized = (value ?? '').trim();
+    if (normalized.isEmpty) return;
+    final dedupeKey = normalized.toLowerCase();
+    if (!seen.add(dedupeKey)) return;
+    banners.add(
+      RecordingDiagnosticsBanner(
+        label: label,
+        value: normalized,
+        level: level,
+        icon: icon,
+      ),
+    );
+  }
+
+  addBanner(
+    label: 'Problem summary',
+    value: data.problemSummary,
+    level: data.problemSummaryLevel,
+    icon: switch (data.problemSummaryLevel) {
+      RecordingDiagnosticsNoticeLevel.error => Icons.error_outline,
+      RecordingDiagnosticsNoticeLevel.warning => Icons.warning_amber_outlined,
+      RecordingDiagnosticsNoticeLevel.info => Icons.check_circle_outline,
+    },
+  );
+
+  addBanner(
+    label: 'Next step',
+    value: data.nextStep,
+    level: data.nextStepLevel,
+    icon: switch (data.nextStepLevel) {
+      RecordingDiagnosticsNoticeLevel.error => Icons.arrow_forward,
+      RecordingDiagnosticsNoticeLevel.warning => Icons.double_arrow_outlined,
+      RecordingDiagnosticsNoticeLevel.info => Icons.play_arrow_outlined,
+    },
+  );
+
+  final detailCandidates = <RecordingDiagnosticsBanner>[];
+  final preferOutputDetail = (data.problemSummary ?? '').trim().isNotEmpty ||
+      (data.nextStep ?? '').trim().isNotEmpty;
+
+  void addOutputDetail() {
+    if ((data.lastOutputStatus ?? '').trim().isEmpty) return;
+    detailCandidates.add(
+      RecordingDiagnosticsBanner(
+        label: 'Output file',
+        value: data.lastOutputStatus!.trim(),
+        level: data.lastOutputStatusLevel,
+        icon: data.lastOutputStatusLevel == RecordingDiagnosticsNoticeLevel.info
+            ? Icons.check_circle_outline
+            : data.lastOutputStatusLevel ==
+                    RecordingDiagnosticsNoticeLevel.warning
+                ? Icons.warning_amber_outlined
+                : Icons.error_outline,
+      ),
+    );
+  }
+
+  void addLastResultDetail() {
+    if ((data.lastResult ?? '').trim().isEmpty) return;
+    detailCandidates.add(
+      RecordingDiagnosticsBanner(
+        label: 'Last result',
+        value: data.lastResult!.trim(),
+        level: data.lastResultLevel,
+        icon: switch (data.lastResultLevel) {
+          RecordingDiagnosticsNoticeLevel.error => Icons.error_outline,
+          RecordingDiagnosticsNoticeLevel.warning =>
+            Icons.warning_amber_outlined,
+          RecordingDiagnosticsNoticeLevel.info => Icons.info_outline,
+        },
+      ),
+    );
+  }
+
+  void addAdviceDetail() {
+    if ((data.advice ?? '').trim().isEmpty) return;
+    detailCandidates.add(
+      RecordingDiagnosticsBanner(
+        label: 'Advice',
+        value: data.advice!.trim(),
+        level: data.screenRecordingGranted
+            ? RecordingDiagnosticsNoticeLevel.warning
+            : RecordingDiagnosticsNoticeLevel.error,
+        icon: Icons.tips_and_updates_outlined,
+      ),
+    );
+  }
+
+  if (preferOutputDetail) {
+    addOutputDetail();
+    addLastResultDetail();
+    addAdviceDetail();
+  } else {
+    addLastResultDetail();
+    addAdviceDetail();
+    addOutputDetail();
+  }
+
+  for (final candidate in detailCandidates) {
+    final normalized = candidate.value.trim().toLowerCase();
+    if (seen.contains(normalized)) {
+      continue;
+    }
+    banners.add(candidate);
+    break;
+  }
+
+  return banners;
+}
+
 Future<String> copyRecordingDiagnosticsToClipboard(
   RecordingDiagnosticsData data, {
   required bool brief,
@@ -294,43 +430,13 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
             value: data.installStatus,
             valueColor: installOk ? Colors.green : theme.colorScheme.error,
           ),
-          if ((data.problemSummary ?? '').isNotEmpty)
+          for (final banner in buildRecordingDiagnosticsBanners(data))
             _noticeBanner(
               context,
-              icon: switch (data.problemSummaryLevel) {
-                RecordingDiagnosticsNoticeLevel.error => Icons.error_outline,
-                RecordingDiagnosticsNoticeLevel.warning =>
-                  Icons.warning_amber_outlined,
-                RecordingDiagnosticsNoticeLevel.info =>
-                  Icons.check_circle_outline,
-              },
-              label: 'Problem summary',
-              value: data.problemSummary!,
-              level: data.problemSummaryLevel,
-            ),
-          if ((data.nextStep ?? '').isNotEmpty)
-            _noticeBanner(
-              context,
-              icon: switch (data.nextStepLevel) {
-                RecordingDiagnosticsNoticeLevel.error => Icons.arrow_forward,
-                RecordingDiagnosticsNoticeLevel.warning =>
-                  Icons.double_arrow_outlined,
-                RecordingDiagnosticsNoticeLevel.info =>
-                  Icons.play_arrow_outlined,
-              },
-              label: 'Next step',
-              value: data.nextStep!,
-              level: data.nextStepLevel,
-            ),
-          if ((data.advice ?? '').isNotEmpty)
-            _noticeBanner(
-              context,
-              icon: Icons.tips_and_updates_outlined,
-              label: 'Advice',
-              value: data.advice!,
-              level: data.screenRecordingGranted
-                  ? RecordingDiagnosticsNoticeLevel.warning
-                  : RecordingDiagnosticsNoticeLevel.error,
+              icon: banner.icon,
+              label: banner.label,
+              value: banner.value,
+              level: banner.level,
             ),
           if ((data.engine ?? '').isNotEmpty)
             _diagnosticRow(
@@ -367,19 +473,6 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
             label: 'Logs',
             value: data.logsDir,
           ),
-          if ((data.lastResult ?? '').isNotEmpty)
-            _noticeBanner(
-              context,
-              icon: switch (data.lastResultLevel) {
-                RecordingDiagnosticsNoticeLevel.error => Icons.error_outline,
-                RecordingDiagnosticsNoticeLevel.warning =>
-                  Icons.warning_amber_outlined,
-                RecordingDiagnosticsNoticeLevel.info => Icons.info_outline,
-              },
-              label: 'Last result',
-              value: data.lastResult!,
-              level: data.lastResultLevel,
-            ),
           if ((data.lastFailureKind ?? '').isNotEmpty)
             _diagnosticRow(
               context,
@@ -396,20 +489,6 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
               icon: Icons.terminal,
               label: 'Exit status',
               value: data.lastExitStatus.toString(),
-            ),
-          if ((data.lastOutputStatus ?? '').isNotEmpty)
-            _noticeBanner(
-              context,
-              icon: data.lastOutputStatusLevel ==
-                      RecordingDiagnosticsNoticeLevel.info
-                  ? Icons.check_circle_outline
-                  : data.lastOutputStatusLevel ==
-                          RecordingDiagnosticsNoticeLevel.warning
-                      ? Icons.warning_amber_outlined
-                      : Icons.error_outline,
-              label: 'Output file',
-              value: data.lastOutputStatus!,
-              level: data.lastOutputStatusLevel,
             ),
           if ((data.lastOutputPath ?? '').isNotEmpty)
             _diagnosticRow(
