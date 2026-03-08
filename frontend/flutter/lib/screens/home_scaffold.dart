@@ -79,7 +79,7 @@ class HomeScaffoldState extends State<HomeScaffold> {
       body: Column(
         children: [
           if (showBanner) _ConnectionBanner(state: connectionState),
-          if (!showBanner && _hasPermissionIssues(permissionStatus))
+          if (_hasPermissionIssues(permissionStatus))
             _PermissionBanner(status: permissionStatus!),
           Expanded(
             child: IndexedStack(

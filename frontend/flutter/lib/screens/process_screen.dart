@@ -90,22 +90,30 @@ class _ProcessScreenState extends State<ProcessScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    final appState = context.read<AppState>();
+    final api = appState.processApi;
+
+    List<ProcessSession> nextSessions = _sessions;
+    TrackingStatus? nextStatus = _trackingStatus;
+
     try {
-      final appState = context.read<AppState>();
-      final api = appState.processApi;
-      final list = await api.getSessions();
-      final status = await appState.loadTrackingStatusForUi();
-      context.read<AppState>().updateFloatingBallTracking(status.isTracking);
-      if (mounted) {
-        setState(() {
-          _sessions = list;
-          _trackingStatus = status;
-          _loading = false;
-        });
-        if (status.isTracking) _startTrackingPoll();
+      nextSessions = await api.getSessions();
+    } catch (_) {}
+
+    try {
+      nextStatus = await appState.loadTrackingStatusForUi();
+      appState.updateFloatingBallTracking(nextStatus.isTracking);
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        _sessions = nextSessions;
+        _trackingStatus = nextStatus;
+        _loading = false;
+      });
+      if (nextStatus?.isTracking == true) {
+        _startTrackingPoll();
       }
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
