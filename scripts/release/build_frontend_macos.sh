@@ -282,15 +282,6 @@ PY
 ensure_python_module "httpx" "httpx>=0.27.0"
 ensure_python_module "ollama" "ollama>=0.5.0"
 
-# Best-effort audio runtime support for packaged app.
-# Keep startup resilient: audio extras failing should not block recording/video usage.
-if ! "${VENV_DIR}/bin/python" -c "import pyaudio" >/dev/null 2>&1; then
-  echo "[backend-bootstrap] installing optional audio dependency: pyaudio"
-  if ! "${VENV_DIR}/bin/python" -m pip install pyaudio; then
-    echo "[backend-bootstrap] warning: optional pyaudio install failed; audio capture may be unavailable"
-  fi
-fi
-
 if [[ -n "$CURRENT_SOURCE_SHA" ]]; then
   echo "$CURRENT_SOURCE_SHA" > "$SOURCE_SHA_FILE"
 fi
