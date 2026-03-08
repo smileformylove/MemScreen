@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../api/recording_api.dart';
+import '../build_info.dart';
 import '../app_state.dart';
 import '../api/api_client.dart';
 import '../services/floating_ball_service.dart';
@@ -708,6 +710,50 @@ class _RecordingScreenState extends State<RecordingScreen> {
     return '${screen.name} (${screen.width}x${screen.height})';
   }
 
+  String _buildDiagnosticsReport(AppState appState) {
+    final status = _status;
+    final lines = <String>[
+      'MemScreen recording diagnostics',
+      'commit: ${BuildInfo.commit}',
+      'built_at_utc: ${BuildInfo.builtAtUtc}',
+      'channel: ${BuildInfo.buildChannel}',
+      'app_path: ${BuildInfo.detectAppBundlePath() ?? 'unknown'}',
+      'engine: ${_recordingEngineLabel(appState)}',
+      'screen_recording_permission: ${appState.hasScreenRecordingPermission ? 'granted' : 'missing'}',
+      'target: ${_recordingTargetLabel()}',
+      'output_dir: ${(status?.outputDir ?? '').isNotEmpty ? status!.outputDir : '${Platform.environment['HOME'] ?? '~'}/.memscreen/videos'}',
+      'is_recording: ${status?.isRecording ?? false}',
+    ];
+    if ((status?.lastFailureKind ?? '').isNotEmpty) {
+      lines.add('last_failure_kind: ${status!.lastFailureKind}');
+    }
+    if ((status?.lastFailureMessage ?? '').isNotEmpty) {
+      lines.add('last_failure_message: ${status!.lastFailureMessage}');
+    }
+    if ((status?.lastTerminationStatus?.toString() ?? '').isNotEmpty) {
+      lines.add('last_exit_status: ${status!.lastTerminationStatus}');
+    }
+    if ((status?.lastOutputPath ?? '').isNotEmpty) {
+      lines.add('last_output_path: ${status!.lastOutputPath}');
+    }
+    if ((status?.lastOutputFileSize?.toString() ?? '').isNotEmpty) {
+      lines.add('last_output_file_size: ${status!.lastOutputFileSize}');
+    }
+    if ((_recordingNotice ?? '').isNotEmpty) {
+      lines.add('last_notice: ${_recordingNotice!}');
+    }
+    return lines.join('\n');
+  }
+
+  Future<void> _copyDiagnostics(AppState appState) async {
+    final report = _buildDiagnosticsReport(appState);
+    await Clipboard.setData(ClipboardData(text: report));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Recording diagnostics copied')),
+    );
+  }
+
   Widget _buildDiagnosticRow(
     BuildContext context, {
     required IconData icon,
@@ -774,6 +820,12 @@ class _RecordingScreenState extends State<RecordingScreen> {
               TextButton(
                 onPressed: _runningSmokeCheck
                     ? null
+                    : () => _copyDiagnostics(appState),
+                child: const Text('Copy'),
+              ),
+              TextButton(
+                onPressed: _runningSmokeCheck
+                    ? null
                     : () async {
                         await appState.refreshPermissionStatus();
                         await _load();
@@ -781,6 +833,12 @@ class _RecordingScreenState extends State<RecordingScreen> {
                 child: const Text('Check again'),
               ),
             ],
+          ),
+          _buildDiagnosticRow(
+            context,
+            icon: Icons.commit,
+            label: 'Build',
+            value: '${BuildInfo.commit} · ${BuildInfo.buildChannel}',
           ),
           _buildDiagnosticRow(
             context,
