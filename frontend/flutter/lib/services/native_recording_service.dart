@@ -165,6 +165,12 @@ class NativeRecordingService {
       region: region,
       screenIndex: map['screenIndex'] as int?,
       screenDisplayId: map['screenDisplayId'] as int?,
+      lastFailureKind: map['lastFailureKind'] as String?,
+      lastFailureMessage: map['lastFailureMessage'] as String?,
+      lastOutputPath: map['lastOutputPath'] as String?,
+      lastOutputFileSize: (map['lastOutputFileSize'] as num?)?.toInt(),
+      lastTerminationStatus: (map['lastTerminationStatus'] as num?)?.toInt(),
+      lastNotice: map['lastNotice'] as String?,
     );
   }
 }

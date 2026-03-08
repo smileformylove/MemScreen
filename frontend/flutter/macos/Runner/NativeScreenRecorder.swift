@@ -15,6 +15,12 @@ final class NativeScreenRecorder {
     private var requestedInterval: Double = 2.0
     private var stderrPipe: Pipe?
     private var stdoutPipe: Pipe?
+    private var lastFailureKind: String?
+    private var lastFailureMessage: String?
+    private var lastOutputPath: String?
+    private var lastOutputFileSize: Int64 = 0
+    private var lastTerminationStatus: Int32 = 0
+    private var lastNotice: String?
     var onRecordingFinished: (([String: Any]) -> Void)?
 
     func start(arguments: [String: Any]) -> [String: Any] {
@@ -40,6 +46,9 @@ final class NativeScreenRecorder {
         var args = ["-x", "-v"]
         audioSourceUsed = "none"
         notice = nil
+        lastFailureKind = nil
+        lastFailureMessage = nil
+        lastNotice = nil
 
         if requestedAudio == "microphone" || requestedAudio == "mixed" {
             args.append("-g")
@@ -191,6 +200,13 @@ final class NativeScreenRecorder {
             )
         }
 
+        lastFailureKind = failureKind
+        lastFailureMessage = errorText
+        lastOutputPath = filename
+        lastOutputFileSize = fileSize
+        lastTerminationStatus = terminationStatus
+        lastNotice = mergedNotice
+
         return [
             "ok": ok,
             "filename": filename as Any,
@@ -223,6 +239,12 @@ final class NativeScreenRecorder {
             "region": region as Any,
             "screenIndex": screenIndex as Any,
             "screenDisplayId": screenDisplayId as Any,
+            "lastFailureKind": lastFailureKind as Any,
+            "lastFailureMessage": lastFailureMessage as Any,
+            "lastOutputPath": lastOutputPath as Any,
+            "lastOutputFileSize": lastOutputFileSize,
+            "lastTerminationStatus": lastTerminationStatus,
+            "lastNotice": lastNotice as Any,
         ]
     }
 

@@ -770,6 +770,28 @@ class _RecordingScreenState extends State<RecordingScreen> {
                 _RecordingNoticeLevel.info => theme.colorScheme.onSurface,
               },
             ),
+          if ((_status?.lastFailureKind ?? '').isNotEmpty)
+            _buildDiagnosticRow(
+              context,
+              icon: Icons.bug_report_outlined,
+              label: 'Failure kind',
+              value: _status!.lastFailureKind!,
+              valueColor: theme.colorScheme.error,
+            ),
+          if ((_status?.lastTerminationStatus?.toString() ?? '').isNotEmpty)
+            _buildDiagnosticRow(
+              context,
+              icon: Icons.terminal,
+              label: 'Exit status',
+              value: _status!.lastTerminationStatus.toString(),
+            ),
+          if ((_status?.lastOutputPath ?? '').isNotEmpty)
+            _buildDiagnosticRow(
+              context,
+              icon: Icons.insert_drive_file_outlined,
+              label: 'Last output',
+              value: _status!.lastOutputPath!,
+            ),
           if (Theme.of(context).platform == TargetPlatform.macOS &&
               !hasPermission) ...[
             const SizedBox(height: 12),

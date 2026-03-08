@@ -64,6 +64,12 @@ class RecordingApi {
       region: region,
       screenIndex: m['screen_index'] as int?,
       screenDisplayId: m['screen_display_id'] as int?,
+      lastFailureKind: m['last_failure_kind'] as String?,
+      lastFailureMessage: m['last_failure_message'] as String?,
+      lastOutputPath: m['last_output_path'] as String?,
+      lastOutputFileSize: m['last_output_file_size'] as int?,
+      lastTerminationStatus: m['last_termination_status'] as int?,
+      lastNotice: m['last_notice'] as String?,
     );
   }
 
@@ -128,6 +134,12 @@ class RecordingStatus {
     this.region,
     this.screenIndex,
     this.screenDisplayId,
+    this.lastFailureKind,
+    this.lastFailureMessage,
+    this.lastOutputPath,
+    this.lastOutputFileSize,
+    this.lastTerminationStatus,
+    this.lastNotice,
   });
   final bool isRecording;
   final int duration;
@@ -139,6 +151,12 @@ class RecordingStatus {
   final List<double>? region;
   final int? screenIndex;
   final int? screenDisplayId;
+  final String? lastFailureKind;
+  final String? lastFailureMessage;
+  final String? lastOutputPath;
+  final int? lastOutputFileSize;
+  final int? lastTerminationStatus;
+  final String? lastNotice;
 }
 
 class AudioDiagnosis {
