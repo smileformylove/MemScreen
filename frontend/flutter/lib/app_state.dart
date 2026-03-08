@@ -268,6 +268,24 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<int> deleteProcessSessionForUi(int sessionId) async {
+    var deleted = 0;
+    try {
+      deleted = await _processApi.deleteSession(sessionId.toString());
+    } catch (_) {}
+    deleted += await _localProcessSessionStore?.deleteSession(sessionId) ?? 0;
+    return deleted;
+  }
+
+  Future<int> deleteAllProcessSessionsForUi() async {
+    var deleted = 0;
+    try {
+      deleted = await _processApi.deleteAllSessions();
+    } catch (_) {}
+    deleted += await _localProcessSessionStore?.deleteAllSessions() ?? 0;
+    return deleted;
+  }
+
   Future<void> startInputTracking() async {
     if (useNativeMacOSTracking) {
       await _nativeInputTrackingService!.start();

@@ -227,7 +227,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
 
   Future<void> _deleteSession(int id) async {
     try {
-      await context.read<AppState>().processApi.deleteSession(id.toString());
+      await context.read<AppState>().deleteProcessSessionForUi(id);
       _load();
     } catch (_) {}
   }
@@ -251,7 +251,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
     );
     if (ok == true) {
       try {
-        await context.read<AppState>().processApi.deleteAllSessions();
+        await context.read<AppState>().deleteAllProcessSessionsForUi();
         _load();
       } catch (_) {}
     }

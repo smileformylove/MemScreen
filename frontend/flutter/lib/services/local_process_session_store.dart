@@ -69,6 +69,21 @@ class LocalProcessSessionStore {
     await _writeAll(items);
   }
 
+  Future<int> deleteSession(int sessionId) async {
+    final items = await _readAll();
+    final before = items.length;
+    items.removeWhere((item) => (item['id'] as int?) == sessionId);
+    await _writeAll(items);
+    return before - items.length;
+  }
+
+  Future<int> deleteAllSessions() async {
+    final items = await _readAll();
+    final count = items.length;
+    await _writeAll(<Map<String, dynamic>>[]);
+    return count;
+  }
+
   Future<List<ProcessSession>> listSessions() async {
     final items = await _readAll();
     final sessions = items.map(_sessionFromMap).toList();
