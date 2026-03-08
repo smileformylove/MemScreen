@@ -500,6 +500,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 fontSize: 12,
               ),
             ),
+            if (appState.connectionState.status == ConnectionStatus.error &&
+                (appState.connectionState.message?.isNotEmpty ?? false)) ...[
+              const SizedBox(height: 8),
+              Text(
+                appState.connectionState.message!,
+                style: TextStyle(
+                  color: theme.colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: isStarting

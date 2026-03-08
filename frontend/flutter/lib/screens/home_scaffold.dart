@@ -97,8 +97,11 @@ class HomeScaffoldState extends State<HomeScaffold> {
     final connectionState = appState.connectionState;
     final permissionStatus = appState.permissionStatus;
     final backendHeavyTab = _index == 3 || _index == 4;
+    final showBackendHeavyBanner = backendHeavyTab &&
+        (connectionState.status == ConnectionStatus.connecting ||
+            appState.hasRequestedBackendActivation);
     final showBanner = connectionState.status != ConnectionStatus.connected &&
-        (!appState.supportsLocalFirstCoreFeatures || backendHeavyTab);
+        (!appState.supportsLocalFirstCoreFeatures || showBackendHeavyBanner);
 
     return Scaffold(
       body: Column(

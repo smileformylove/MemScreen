@@ -388,6 +388,17 @@ class _ChatScreenState extends State<ChatScreen> {
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium,
             ),
+            if (appState.connectionState.status == ConnectionStatus.error &&
+                (appState.connectionState.message?.isNotEmpty ?? false)) ...[
+              const SizedBox(height: 12),
+              Text(
+                appState.connectionState.message!,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: isStarting

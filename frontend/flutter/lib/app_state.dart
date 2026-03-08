@@ -164,7 +164,9 @@ class AppState extends ChangeNotifier {
   bool _backendCheckInFlight = false;
   DateTime? _lastBackendCheckAt;
   bool _nativeRuntimeBootstrapRequested = false;
+  bool _backendActivationRequestedByUser = false;
   Map<String, dynamic>? get permissionStatus => _permissionStatus;
+  bool get hasRequestedBackendActivation => _backendActivationRequestedByUser;
 
   late ChatApi _chatApi;
   late ProcessApi _processApi;
@@ -480,6 +482,7 @@ class AppState extends ChangeNotifier {
 
   /// Retry with optional new base URL (replaces config and client).
   Future<void> reconnectWithBaseUrl(String baseUrl) async {
+    _backendActivationRequestedByUser = true;
     _connectionState = _connectingState(message: 'Connecting to backend...');
     notifyListeners();
     final state = await _connection.reconnectWithBaseUrl(baseUrl);
@@ -511,6 +514,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> ensureBackendConnection({bool force = false}) async {
+    if (force) {
+      _backendActivationRequestedByUser = true;
+    }
     if (!force && _connectionState.status == ConnectionStatus.connected) {
       return;
     }
