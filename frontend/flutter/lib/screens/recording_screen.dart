@@ -664,7 +664,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
           const SizedBox(height: 12),
           if (_mode == 'fullscreen')
             DropdownButtonFormField<int>(
-              value: _screenIndex ?? -1,
+              initialValue: _screenIndex ?? -1,
               decoration: const InputDecoration(
                 labelText: 'Display target',
                 contentPadding:
@@ -1023,7 +1023,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading && _status == null) {
-      return Scaffold(
+      return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
