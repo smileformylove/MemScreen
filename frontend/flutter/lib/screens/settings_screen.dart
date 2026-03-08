@@ -25,6 +25,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _loadingPermissions = false;
   bool _requestedModelHydration = false;
   String? _downloadingModelName;
+  String? _switchingChatModelName;
 
   @override
   void initState() {
@@ -142,7 +143,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!appState.isBackendConnected) {
         return;
       }
-      final catalog = await appState.modelApi.getCatalog();
+      final catalog = await appState.loadLocalModelCatalogForUi();
       if (!mounted) return;
       setState(() => _modelCatalog = catalog);
     } catch (e) {
@@ -159,11 +160,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  bool _isChatCapableModel(String modelName) {
+    final normalized = modelName.toLowerCase();
+    return !normalized.contains('embed') &&
+        !normalized.contains('embedding') &&
+        !normalized.contains('nomic-embed') &&
+        !normalized.contains('mxbai-embed');
+  }
+
+  bool _isCurrentChatModel(LocalModelCatalog? catalog, LocalModelEntry entry) {
+    final current = (catalog?.currentChatModel ?? '').trim();
+    if (current.isEmpty) {
+      return false;
+    }
+    return current == entry.name || current == (entry.installedName ?? '');
+  }
+
+  Future<void> _setChatModel(LocalModelEntry entry) async {
+    if (_switchingChatModelName != null) return;
+    setState(() => _switchingChatModelName = entry.name);
+    try {
+      await context
+          .read<AppState>()
+          .setChatModelForUi(entry.installedName ?? entry.name);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content:
+                Text('Chat model set to ${entry.installedName ?? entry.name}')),
+      );
+      await _loadModelCatalog();
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e is ApiException ? e.message : e.toString();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to switch chat model: $msg')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _switchingChatModelName = null);
+      }
+    }
+  }
+
   Future<void> _downloadModel(LocalModelEntry entry) async {
     if (_downloadingModelName != null) return;
     setState(() => _downloadingModelName = entry.name);
     try {
-      await context.read<AppState>().modelApi.downloadModel(entry.name);
+      await context.read<AppState>().downloadLocalModelForUi(entry.name);
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -561,6 +605,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final statusColor = runtimeReady ? Colors.green : theme.colorScheme.error;
     final modelsDir = catalog?.modelsDir;
     final modelsDirExternal = catalog?.modelsDirExternal ?? false;
+    final currentChatModel = catalog?.currentChatModel;
     final models = catalog?.models ?? const <LocalModelEntry>[];
     final disableDownloads = _loadingModelCatalog;
 
@@ -615,6 +660,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ],
+          if ((currentChatModel ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Current chat model: $currentChatModel',
+              style: TextStyle(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
+          ],
           if (catalog?.modelsDisabled == true) ...[
             const SizedBox(height: 8),
             Text(
@@ -640,7 +695,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (models.isNotEmpty) ...[
             const SizedBox(height: 8),
             for (var i = 0; i < models.length; i++) ...[
-              _modelRow(models[i], disableDownloads: disableDownloads),
+              _modelRow(
+                models[i],
+                catalog: catalog,
+                disableDownloads: disableDownloads,
+                runtimeReady: runtimeReady,
+              ),
               if (i != models.length - 1) const Divider(height: 14),
             ],
           ],
@@ -651,21 +711,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _modelRow(
     LocalModelEntry entry, {
+    required LocalModelCatalog? catalog,
     required bool disableDownloads,
+    required bool runtimeReady,
   }) {
     final theme = Theme.of(context);
     final downloading = _downloadingModelName == entry.name;
 
+    final isCurrentChatModel = _isCurrentChatModel(catalog, entry);
+    final canUseForChat = entry.installed && _isChatCapableModel(entry.name);
+
     Widget trailing;
     if (entry.installed) {
-      trailing = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: const [
-          Icon(Icons.check_circle, size: 16, color: Colors.green),
-          SizedBox(width: 4),
-          Text('Installed'),
-        ],
-      );
+      if (canUseForChat && isCurrentChatModel) {
+        trailing = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.check_circle, size: 16, color: Colors.green),
+            SizedBox(width: 6),
+            Text('Chat default'),
+          ],
+        );
+      } else if (canUseForChat) {
+        trailing = TextButton(
+          onPressed: (!runtimeReady || _switchingChatModelName != null)
+              ? null
+              : () => _setChatModel(entry),
+          child: _switchingChatModelName == entry.name
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Use for Chat'),
+        );
+      } else {
+        trailing = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.check_circle, size: 16, color: Colors.green),
+            SizedBox(width: 4),
+            Text('Installed'),
+          ],
+        );
+      }
     } else if (downloading) {
       trailing = const SizedBox(
         width: 16,

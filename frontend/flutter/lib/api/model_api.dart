@@ -26,6 +26,12 @@ class ModelApi {
       baseUrl: m['base_url'] as String? ?? '',
       modelsDir: m['models_dir'] as String?,
       modelsDirExternal: m['models_dir_external'] as bool? ?? false,
+      currentChatModel: m['current_chat_model'] as String?,
+      availableChatModels: (m['available_chat_models'] is List)
+          ? (m['available_chat_models'] as List)
+              .map((e) => e.toString())
+              .toList()
+          : const <String>[],
       runtimeReady: m['runtime_ready'] as bool? ?? false,
       runtimeError: m['runtime_error'] as String?,
       modelsDisabled: m['models_disabled'] as bool? ?? false,
@@ -53,6 +59,8 @@ class LocalModelCatalog {
     required this.baseUrl,
     required this.modelsDir,
     required this.modelsDirExternal,
+    required this.currentChatModel,
+    required this.availableChatModels,
     required this.runtimeReady,
     required this.runtimeError,
     required this.modelsDisabled,
@@ -62,6 +70,8 @@ class LocalModelCatalog {
   final String baseUrl;
   final String? modelsDir;
   final bool modelsDirExternal;
+  final String? currentChatModel;
+  final List<String> availableChatModels;
   final bool runtimeReady;
   final String? runtimeError;
   final bool modelsDisabled;

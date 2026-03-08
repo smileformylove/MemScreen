@@ -117,11 +117,26 @@ async def models_catalog():
             }
         )
 
+    current_chat_model = None
+    available_chat_models = []
+    try:
+        from memscreen.api.deps import get_chat_presenter
+
+        chat_presenter = get_chat_presenter()
+        if chat_presenter is not None:
+            current_chat_model = chat_presenter.get_current_model()
+            available_chat_models = chat_presenter.get_available_models()
+    except Exception:
+        current_chat_model = None
+        available_chat_models = []
+
     models_dir = resolve_ollama_models_dir()
     return {
         "base_url": base_url,
         "models_dir": models_dir,
         "models_dir_external": is_external_models_dir(models_dir),
+        "current_chat_model": current_chat_model,
+        "available_chat_models": available_chat_models,
         "models_disabled": disable_models,
         "runtime_ready": runtime_ready,
         "runtime_error": runtime_error,

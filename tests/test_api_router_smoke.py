@@ -240,6 +240,8 @@ class ApiRouterSmokeTest(unittest.TestCase):
     payload = response.json()
     self.assertEqual(payload['models_dir'], '/Volumes/TestDrive/models/ollama')
     self.assertTrue(payload['models_dir_external'])
+    self.assertEqual(payload['current_chat_model'], 'm1')
+    self.assertEqual(payload['available_chat_models'], ['m1', 'm2'])
     names = {item['name'] for item in payload['models']}
     self.assertIn('qwen3.5:0.8b', names)
     self.assertIn('qwen3.5:2b', names)

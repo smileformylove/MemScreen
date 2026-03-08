@@ -301,6 +301,21 @@ class AppState extends ChangeNotifier {
     return result;
   }
 
+  Future<LocalModelCatalog> loadLocalModelCatalogForUi() async {
+    return _modelApi.getCatalog();
+  }
+
+  Future<void> downloadLocalModelForUi(
+    String modelName, {
+    Duration timeout = const Duration(minutes: 45),
+  }) async {
+    await _modelApi.downloadModel(modelName, timeout: timeout);
+  }
+
+  Future<void> setChatModelForUi(String modelName) async {
+    await _chatApi.setModel(modelName);
+  }
+
   Future<List<VideoItem>> loadVideosForUi() async {
     final localList = await _localVideoCatalog?.list() ?? const <VideoItem>[];
     if (!isBackendConnected) {
