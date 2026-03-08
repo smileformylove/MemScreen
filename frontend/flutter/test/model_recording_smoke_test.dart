@@ -70,6 +70,16 @@ class FakeRecordingAppState extends AppState {
   String? consumePendingRecordingNotice() {
     return null;
   }
+
+  @override
+  Future<String> runRecordingSmokeCheck({
+    int? screenIndex,
+    int? screenDisplayId,
+  }) async {
+    markRecordingSmokeCheckStarted();
+    const summary = 'Smoke check: 2-second recording test started.';
+    return summary;
+  }
 }
 
 void main() {

@@ -70,6 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _loadingPermissions = false;
   RecordingStatus? _recordingStatus;
   bool _loadingRecordingDiagnostics = false;
+  int _lastRecordingStatusVersion = -1;
 
   SettingsModelSection? get _modelSection => _modelUiState.section;
   LocalModelCatalog? get _modelCatalog => _modelSection?.catalog;
@@ -90,6 +91,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final appState = context.read<AppState>();
     _modelUiState = _modelUiState.copyWith(
         lastRefreshVersion: appState.chatModelRefreshVersion);
+    _lastRecordingStatusVersion = appState.recordingStatusVersion;
     _durationController.text = appState.recordingDurationSec.toString();
     _intervalController.text = appState.recordingIntervalSec.toString();
     if (appState.isBackendConnected) {
@@ -211,6 +213,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
+  void _maybeRefreshRecordingDiagnostics(AppState appState) {
+    if (_loadingRecordingDiagnostics) {
+      return;
+    }
+    if (_lastRecordingStatusVersion == appState.recordingStatusVersion) {
+      return;
+    }
+    _lastRecordingStatusVersion = appState.recordingStatusVersion;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _loadRecordingDiagnostics();
+    });
+  }
+
   Future<void> _loadModelCatalog(
       {bool showError = false, bool forceRefresh = false}) async {
     if (!mounted) return;
@@ -315,6 +333,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _loadingRecordingDiagnostics = true);
     try {
       final appState = context.read<AppState>();
+      _lastRecordingStatusVersion = appState.recordingStatusVersion;
       if (refreshPermissions) {
         await appState.refreshPermissionStatus();
       }
@@ -381,6 +400,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final hasPermission = Theme.of(context).platform != TargetPlatform.macOS ||
         appState.hasScreenRecordingPermission;
     final diagnostics = _buildSettingsRecordingDiagnosticsData(appState);
+    final smokeCheckRunning = appState.recordingSmokeCheckInProgress;
     return RecordingDiagnosticsPanel(
       title: 'Recording diagnostics',
       data: diagnostics,
@@ -399,6 +419,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ],
       quickActions: [
+        RecordingDiagnosticsQuickAction(
+          label: smokeCheckRunning ? 'Running check...' : 'Run smoke check',
+          icon: Icons.science_outlined,
+          onPressed:
+              smokeCheckRunning || (_recordingStatus?.isRecording ?? false)
+                  ? null
+                  : () async {
+                      final summary = await appState.runRecordingSmokeCheck();
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(summary)),
+                      );
+                      if (appState.recordingSmokeCheckInProgress) {
+                        await _loadRecordingDiagnostics();
+                      }
+                    },
+          isLoading: smokeCheckRunning,
+        ),
         RecordingDiagnosticsQuickAction(
           label: 'Open output',
           icon: Icons.video_library_outlined,
@@ -428,6 +466,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final appState = context.watch<AppState>();
     _maybeHydrateAfterBackendConnect(appState);
     _maybeRefreshModelState(appState);
+    _maybeRefreshRecordingDiagnostics(appState);
     final durationText = appState.recordingDurationSec.toString();
     final intervalText = appState.recordingIntervalSec.toString();
     if (!_durationFocusNode.hasFocus &&

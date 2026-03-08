@@ -756,6 +756,61 @@ class AppState extends ChangeNotifier {
     requestRecordingStatusRefresh();
   }
 
+  String describeRecordingStartError(Object error) {
+    final raw = error is ApiException ? error.message : error.toString();
+    final lower = raw.toLowerCase();
+    if (lower.contains('screen recording permission')) {
+      return 'Screen Recording permission is missing. In macOS System Settings, allow both MemScreen.app and ~/.memscreen/runtime/.venv/bin/python under Screen Recording, then restart the app.';
+    }
+    if (lower.contains('accessibility') || lower.contains('input monitoring')) {
+      return 'Keyboard/Mouse permission is missing. Allow ~/.memscreen/runtime/.venv/bin/python in Accessibility and Input Monitoring, then restart the app.';
+    }
+    return 'Failed to start recording: $raw';
+  }
+
+  Future<String> runRecordingSmokeCheck({
+    int? screenIndex,
+    int? screenDisplayId,
+  }) async {
+    if (_recordingSmokeCheckInProgress) {
+      return _lastRecordingSmokeCheckSummary ??
+          'Running 2-second smoke check...';
+    }
+    if (Platform.isMacOS && !hasScreenRecordingPermission) {
+      await promptScreenRecordingPermissionFlow();
+      const summary =
+          'Permission: Screen Recording is still not active, so the smoke check cannot start.';
+      markRecordingSmokeCheckStarted();
+      markRecordingSmokeCheckFinished(summary: summary);
+      _recordingTrackingState.pendingRecordingNotice = summary;
+      return summary;
+    }
+
+    markRecordingSmokeCheckStarted();
+    try {
+      final smokeMode =
+          screenIndex == null ? 'fullscreen' : 'fullscreen-single';
+      await startRecording(
+        duration: 2,
+        interval: recordingIntervalSec,
+        mode: smokeMode,
+        screenIndex: screenIndex,
+        screenDisplayId: screenDisplayId,
+      );
+      const summary =
+          'Smoke check: A 2-second recording test has started. Wait for it to finish and review Last result below.';
+      _recordingTrackingState.pendingRecordingNotice = summary;
+      requestRecordingStatusRefresh();
+      return summary;
+    } catch (e) {
+      final summary =
+          'Smoke check failed to start: ${describeRecordingStartError(e)}';
+      markRecordingSmokeCheckFinished(summary: summary);
+      _recordingTrackingState.pendingRecordingNotice = summary;
+      return summary;
+    }
+  }
+
   void requestChatModelRefresh({
     bool notify = true,
     bool invalidateCache = true,

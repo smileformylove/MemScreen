@@ -8,7 +8,6 @@ import 'package:provider/provider.dart';
 import '../api/recording_api.dart';
 import '../build_info.dart';
 import '../app_state.dart';
-import '../api/api_client.dart';
 import '../services/floating_ball_service.dart';
 import '../widgets/recording_diagnostics_panel.dart';
 
@@ -53,7 +52,6 @@ class _RecordingScreenState extends State<RecordingScreen> {
   String? _screenshotPath;
   bool _capturing = false;
   bool _wasRecording = false;
-  bool _runningSmokeCheck = false;
   String? _recordingNotice;
   _RecordingNoticeLevel _recordingNoticeLevel = _RecordingNoticeLevel.info;
   AppState? _appState;
@@ -343,49 +341,27 @@ class _RecordingScreenState extends State<RecordingScreen> {
   }
 
   Future<void> _runSmokeCheck() async {
-    if (_runningSmokeCheck || (_status?.isRecording ?? false)) {
+    final appState = context.read<AppState>();
+    if (appState.recordingSmokeCheckInProgress ||
+        (_status?.isRecording ?? false)) {
       return;
     }
-    final appState = context.read<AppState>();
     _clearRecordingNotice();
-    appState.markRecordingSmokeCheckStarted();
-    setState(() => _runningSmokeCheck = true);
     try {
-      if (Theme.of(context).platform == TargetPlatform.macOS &&
-          !appState.hasScreenRecordingPermission) {
-        await appState.promptScreenRecordingPermissionFlow();
-        final summary =
-            'Permission: Screen Recording is still not active, so the smoke check cannot start.';
-        appState.markRecordingSmokeCheckFinished(summary: summary);
-        _showRecordingNotice(summary, showSnackBar: true);
-        return;
-      }
-
-      final smokeMode =
-          _screenIndex == null ? 'fullscreen' : 'fullscreen-single';
-      await appState.startRecording(
-        duration: 2,
-        interval: appState.recordingIntervalSec,
-        mode: smokeMode,
+      final summary = await appState.runRecordingSmokeCheck(
         screenIndex: _screenIndex,
         screenDisplayId: _screenDisplayId,
       );
-      _showRecordingNotice(
-        'Smoke check: A 2-second recording test has started. Wait for it to finish and review Last result below.',
-        showSnackBar: true,
-      );
-      _wasRecording = true;
-      await _load();
+      _showRecordingNotice(summary, showSnackBar: true);
+      if (appState.recordingSmokeCheckInProgress) {
+        _wasRecording = true;
+        await _load();
+      }
     } catch (e) {
       if (mounted) {
-        final summary =
-            'Smoke check failed to start: ${_friendlyRecordingStartError(e)}';
-        appState.markRecordingSmokeCheckFinished(summary: summary);
+        final summary = 'Smoke check failed to start: '
+            '${appState.describeRecordingStartError(e)}';
         _showRecordingNotice(summary, showSnackBar: true);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _runningSmokeCheck = false);
       }
     }
   }
@@ -485,15 +461,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
   }
 
   String _friendlyRecordingStartError(Object error) {
-    final raw = error is ApiException ? error.message : error.toString();
-    final lower = raw.toLowerCase();
-    if (lower.contains('screen recording permission')) {
-      return 'Screen Recording permission is missing. In macOS System Settings, allow both MemScreen.app and ~/.memscreen/runtime/.venv/bin/python under Screen Recording, then restart the app.';
-    }
-    if (lower.contains('accessibility') || lower.contains('input monitoring')) {
-      return 'Keyboard/Mouse permission is missing. Allow ~/.memscreen/runtime/.venv/bin/python in Accessibility and Input Monitoring, then restart the app.';
-    }
-    return 'Failed to start recording: $raw';
+    return context.read<AppState>().describeRecordingStartError(error);
   }
 
   String _resolveAudioSource(bool useSystem, bool useMic) {
@@ -796,6 +764,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
   Widget _buildDiagnosticsCard(AppState appState) {
     final hasPermission = Theme.of(context).platform != TargetPlatform.macOS ||
         appState.hasScreenRecordingPermission;
+    final smokeCheckRunning = appState.recordingSmokeCheckInProgress;
     return RecordingDiagnosticsPanel(
       title: 'Recording diagnostics',
       data: _buildDiagnosticsData(appState),
@@ -803,11 +772,11 @@ class _RecordingScreenState extends State<RecordingScreen> {
         RecordingDiagnosticsHeaderAction(
           label: 'Copy',
           onPressed:
-              _runningSmokeCheck ? null : () => _copyDiagnostics(appState),
+              smokeCheckRunning ? null : () => _copyDiagnostics(appState),
         ),
         RecordingDiagnosticsHeaderAction(
           label: 'Check again',
-          onPressed: _runningSmokeCheck
+          onPressed: smokeCheckRunning
               ? null
               : () async {
                   await appState.refreshPermissionStatus();
@@ -817,12 +786,12 @@ class _RecordingScreenState extends State<RecordingScreen> {
       ],
       quickActions: [
         RecordingDiagnosticsQuickAction(
-          label: _runningSmokeCheck ? 'Running check...' : 'Run smoke check',
+          label: smokeCheckRunning ? 'Running check...' : 'Run smoke check',
           icon: Icons.science_outlined,
-          onPressed: _runningSmokeCheck || (_status?.isRecording ?? false)
+          onPressed: smokeCheckRunning || (_status?.isRecording ?? false)
               ? null
               : _runSmokeCheck,
-          isLoading: _runningSmokeCheck,
+          isLoading: smokeCheckRunning,
         ),
         RecordingDiagnosticsQuickAction(
           label: 'Open output',

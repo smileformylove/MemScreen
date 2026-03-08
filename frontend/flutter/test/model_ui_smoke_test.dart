@@ -231,6 +231,16 @@ class FakeAppState extends AppState {
     notifyListeners();
     return _catalog;
   }
+
+  @override
+  Future<String> runRecordingSmokeCheck({
+    int? screenIndex,
+    int? screenDisplayId,
+  }) async {
+    markRecordingSmokeCheckStarted();
+    const summary = 'Smoke check: 2-second recording test started.';
+    return summary;
+  }
 }
 
 Widget wrapWithScaffold(AppState appState, Widget child) {
@@ -395,6 +405,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('Recording diagnostics'), findsOneWidget);
+    expect(find.text('Run smoke check'), findsOneWidget);
     expect(find.text('Open output'), findsOneWidget);
     expect(find.text('Open logs'), findsOneWidget);
     expect(find.text('Copy'), findsWidgets);
