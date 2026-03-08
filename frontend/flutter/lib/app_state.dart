@@ -111,6 +111,8 @@ class AppState extends ChangeNotifier {
   // Desired tab index from floating ball (null = no change requested)
   int? _desiredTabIndex;
   int? get desiredTabIndex => _desiredTabIndex;
+  int _currentTabIndex = 0;
+  int get currentTabIndex => _currentTabIndex;
   int _videoRefreshVersion = 0;
   int get videoRefreshVersion => _videoRefreshVersion;
   int _recordingStatusVersion = 0;
@@ -576,6 +578,14 @@ class AppState extends ChangeNotifier {
 
   void setDesiredTabIndex(int index) {
     _desiredTabIndex = index;
+    notifyListeners();
+  }
+
+  void setCurrentTabIndex(int index) {
+    if (_currentTabIndex == index) {
+      return;
+    }
+    _currentTabIndex = index;
     notifyListeners();
   }
 

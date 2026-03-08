@@ -19,6 +19,7 @@ class _VideoScreenState extends State<VideoScreen> {
   bool _loading = true;
   late AppState _appState;
   int _lastVideoRefreshVersion = 0;
+  int _lastCurrentTabIndex = 0;
   Timer? _autoRefreshTimer;
   final ScrollController _timelineScrollController = ScrollController();
   String? _latestTimelineVideoFilename;
@@ -42,6 +43,7 @@ class _VideoScreenState extends State<VideoScreen> {
     super.initState();
     _appState = context.read<AppState>();
     _lastVideoRefreshVersion = _appState.videoRefreshVersion;
+    _lastCurrentTabIndex = _appState.currentTabIndex;
     _appState.addListener(_onAppStateChange);
     _timelineScrollController.addListener(_onTimelineScroll);
     _load(showLoading: true, autoScrollIfNew: true);
@@ -62,13 +64,22 @@ class _VideoScreenState extends State<VideoScreen> {
   void _startAutoRefresh() {
     _autoRefreshTimer?.cancel();
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (!mounted || _loading) return;
+      if (!mounted || _loading || _appState.currentTabIndex != 1) {
+        return;
+      }
       _load(showLoading: false, autoScrollIfNew: true);
     });
   }
 
   void _onAppStateChange() {
     if (!mounted) return;
+
+    if (_appState.currentTabIndex != _lastCurrentTabIndex) {
+      _lastCurrentTabIndex = _appState.currentTabIndex;
+      if (_lastCurrentTabIndex == 1) {
+        _load(showLoading: false, autoScrollIfNew: false);
+      }
+    }
 
     if (_appState.videoRefreshVersion != _lastVideoRefreshVersion) {
       _lastVideoRefreshVersion = _appState.videoRefreshVersion;

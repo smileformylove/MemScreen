@@ -77,6 +77,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
   Timer? _trackingPollTimer;
   AppState? _appState;
   int _lastProcessRefreshVersion = -1;
+  int _lastCurrentTabIndex = -1;
 
   @override
   void initState() {
@@ -86,6 +87,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
       if (!mounted) return;
       _appState = context.read<AppState>();
       _lastProcessRefreshVersion = _appState!.processRefreshVersion;
+      _lastCurrentTabIndex = _appState!.currentTabIndex;
       _appState!.addListener(_onAppStateChanged);
     });
   }
@@ -99,6 +101,15 @@ class _ProcessScreenState extends State<ProcessScreen> {
 
   void _onAppStateChanged() {
     if (!mounted || _appState == null) return;
+    final currentTabIndex = _appState!.currentTabIndex;
+    if (currentTabIndex != _lastCurrentTabIndex) {
+      _lastCurrentTabIndex = currentTabIndex;
+      if (currentTabIndex == 2) {
+        _load();
+      } else {
+        _trackingPollTimer?.cancel();
+      }
+    }
     final currentVersion = _appState!.processRefreshVersion;
     if (currentVersion != _lastProcessRefreshVersion) {
       _lastProcessRefreshVersion = currentVersion;
@@ -139,8 +150,11 @@ class _ProcessScreenState extends State<ProcessScreen> {
   void _startTrackingPoll() {
     _trackingPollTimer?.cancel();
     _trackingPollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      final appState = _appState;
+      if (appState == null || !mounted || appState.currentTabIndex != 2) {
+        return;
+      }
       try {
-        final appState = context.read<AppState>();
         final status = await appState.loadTrackingStatusForUi();
         appState.updateFloatingBallTracking(status.isTracking);
         if (mounted &&

@@ -29,6 +29,7 @@ class HomeScaffoldState extends State<HomeScaffold> {
     // Listen for tab changes from AppState (triggered by floating ball)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final appState = context.read<AppState>();
+      appState.setCurrentTabIndex(_index);
       appState.addListener(_onAppStateChange);
     });
   }
@@ -46,6 +47,7 @@ class HomeScaffoldState extends State<HomeScaffold> {
         _ensureTabLoaded(appState.desiredTabIndex!);
         _index = appState.desiredTabIndex!;
       });
+      appState.setCurrentTabIndex(_index);
       // Clear the desired tab after consuming it
       appState.clearDesiredTab();
     }
@@ -130,6 +132,7 @@ class HomeScaffoldState extends State<HomeScaffold> {
             _ensureTabLoaded(i);
             _index = i;
           });
+          context.read<AppState>().setCurrentTabIndex(i);
         },
         destinations: _tabs
             .map((t) =>
