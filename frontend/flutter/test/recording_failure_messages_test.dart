@@ -20,6 +20,21 @@ void main() {
     expect(message, 'Recorder error: screencapture exited with status 1');
   });
 
+  test('formatRecordingFailureKind returns human-readable labels', () {
+    expect(
+      formatRecordingFailureKind('permission_denied'),
+      'Permission missing (permission_denied)',
+    );
+    expect(
+      formatRecordingFailureKind('cancelled'),
+      'Recording cancelled (cancelled)',
+    );
+  });
+
+  test('recordingFailureKindIsWarning marks cancellations as warning', () {
+    expect(recordingFailureKindIsWarning('cancelled'), isTrue);
+    expect(recordingFailureKindIsWarning('permission_denied'), isFalse);
+  });
   test('describeNativeRecordingFailure falls back to generic message', () {
     final message = describeNativeRecordingFailure();
 

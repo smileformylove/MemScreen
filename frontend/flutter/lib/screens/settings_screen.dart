@@ -350,10 +350,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _openDiagnosticPath(String path, {required String label}) async {
+  Future<void> _openDiagnosticPath(
+    String path, {
+    required String label,
+    bool revealInFinder = false,
+  }) async {
     try {
       if (Platform.isMacOS) {
-        final result = await Process.run('open', [path]);
+        final args = revealInFinder ? ['-R', path] : [path];
+        final result = await Process.run('open', args);
         if (result.exitCode != 0) {
           throw Exception((result.stderr ?? '').toString().trim());
         }
@@ -463,6 +468,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : () => _openDiagnosticPath(
                 diagnostics.lastOutputPath!,
                 label: 'last output file',
+              ),
+      onRevealLastOutput: (diagnostics.lastOutputPath ?? '').trim().isEmpty
+          ? null
+          : () => _openDiagnosticPath(
+                diagnostics.lastOutputPath!,
+                label: 'last output file in Finder',
+                revealInFinder: true,
               ),
       onOpenScreenRecording: () =>
           appState.openPermissionSettings('screen_recording'),

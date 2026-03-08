@@ -20,3 +20,34 @@ String describeNativeRecordingFailure({
       return raw.isNotEmpty ? raw : 'Native macOS recording failed.';
   }
 }
+
+String recordingFailureKindLabel(String? failureKind) {
+  switch ((failureKind ?? '').trim()) {
+    case 'permission_denied':
+      return 'Permission missing';
+    case 'cancelled':
+      return 'Recording cancelled';
+    case 'empty_output':
+      return 'Empty output file';
+    case 'no_output':
+      return 'No output file';
+    case 'recorder_error':
+      return 'Recorder error';
+    default:
+      final raw = (failureKind ?? '').trim();
+      return raw.isEmpty ? 'Unknown failure' : raw;
+  }
+}
+
+String formatRecordingFailureKind(String? failureKind) {
+  final raw = (failureKind ?? '').trim();
+  if (raw.isEmpty) {
+    return '';
+  }
+  final label = recordingFailureKindLabel(raw);
+  return label == raw ? raw : '$label ($raw)';
+}
+
+bool recordingFailureKindIsWarning(String? failureKind) {
+  return (failureKind ?? '').trim() == 'cancelled';
+}

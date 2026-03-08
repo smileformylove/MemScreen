@@ -112,6 +112,7 @@ void main() {
     expect(find.text('Open output'), findsOneWidget);
     expect(find.text('Open logs'), findsOneWidget);
     expect(find.text('Open last output'), findsOneWidget);
+    expect(find.text('Reveal in Finder'), findsOneWidget);
     expect(find.text('Copy'), findsOneWidget);
     expect(find.byIcon(Icons.install_desktop_outlined), findsWidgets);
   });

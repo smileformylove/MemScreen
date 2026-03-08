@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../services/recording_failure_messages.dart';
+
 enum RecordingDiagnosticsNoticeLevel { info, warning, error }
 
 class RecordingDiagnosticsData {
@@ -130,6 +132,7 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
     this.quickActions = const <RecordingDiagnosticsQuickAction>[],
     this.showPermissionShortcut = false,
     this.onOpenLastOutput,
+    this.onRevealLastOutput,
     this.onOpenScreenRecording,
   });
 
@@ -139,6 +142,7 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
   final List<RecordingDiagnosticsQuickAction> quickActions;
   final bool showPermissionShortcut;
   final VoidCallback? onOpenLastOutput;
+  final VoidCallback? onRevealLastOutput;
   final VoidCallback? onOpenScreenRecording;
 
   @override
@@ -254,8 +258,10 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
               context,
               icon: Icons.bug_report_outlined,
               label: 'Failure kind',
-              value: data.lastFailureKind!,
-              valueColor: theme.colorScheme.error,
+              value: formatRecordingFailureKind(data.lastFailureKind),
+              valueColor: recordingFailureKindIsWarning(data.lastFailureKind)
+                  ? theme.colorScheme.onTertiaryContainer
+                  : theme.colorScheme.error,
             ),
           if (data.lastExitStatus != null)
             _diagnosticRow(
@@ -302,6 +308,12 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
                   onPressed: onOpenLastOutput,
                   icon: const Icon(Icons.play_circle_outline),
                   label: const Text('Open last output'),
+                ),
+              if (lastOutputAvailable)
+                OutlinedButton.icon(
+                  onPressed: onRevealLastOutput,
+                  icon: const Icon(Icons.folder_open),
+                  label: const Text('Reveal in Finder'),
                 ),
               if (showPermissionShortcut)
                 OutlinedButton.icon(

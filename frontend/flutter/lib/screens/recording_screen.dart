@@ -663,10 +663,15 @@ class _RecordingScreenState extends State<RecordingScreen> {
     return 'Backend recorder';
   }
 
-  Future<void> _openPath(String path, {required String label}) async {
+  Future<void> _openPath(
+    String path, {
+    required String label,
+    bool revealInFinder = false,
+  }) async {
     try {
       if (Platform.isMacOS) {
-        final result = await Process.run('open', [path]);
+        final args = revealInFinder ? ['-R', path] : [path];
+        final result = await Process.run('open', args);
         if (result.exitCode != 0) {
           throw Exception((result.stderr ?? '').toString().trim());
         }
