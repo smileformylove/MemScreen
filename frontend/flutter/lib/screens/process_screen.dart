@@ -379,9 +379,9 @@ class _ProcessScreenState extends State<ProcessScreen> {
   }
 
   Future<void> _openAnalysis(BuildContext context, int sessionId) async {
-    final api = context.read<AppState>().processApi;
+    final appState = context.read<AppState>();
     try {
-      final analysis = await api.getSessionAnalysis(sessionId.toString());
+      final analysis = await appState.loadProcessAnalysisForUi(sessionId);
       if (!context.mounted) return;
       if (analysis == null) {
         if (context.mounted) {

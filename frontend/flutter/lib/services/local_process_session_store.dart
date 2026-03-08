@@ -63,17 +63,44 @@ class LocalProcessSessionStore {
 
   Future<List<ProcessSession>> listSessions() async {
     final items = await _readAll();
-    final sessions = items.map((item) {
-      return ProcessSession(
-        id: item['id'] as int? ?? 0,
-        startTime: item['start_time'] as String? ?? '',
-        endTime: item['end_time'] as String? ?? '',
-        eventCount: item['event_count'] as int? ?? 0,
-        keystrokes: item['keystrokes'] as int? ?? 0,
-        clicks: item['clicks'] as int? ?? 0,
-      );
-    }).toList();
+    final sessions = items.map(_sessionFromMap).toList();
     sessions.sort((a, b) => b.startTime.compareTo(a.startTime));
     return sessions;
+  }
+
+  Future<ProcessAnalysis?> getAnalysis(int sessionId) async {
+    final items = await _readAll();
+    final item = items.cast<Map<String, dynamic>?>().firstWhere(
+          (entry) => (entry?['id'] as int?) == sessionId,
+          orElse: () => null,
+        );
+    if (item == null) return null;
+
+    return ProcessAnalysis(
+      categories: {
+        'keypress': item['keystrokes'] as int? ?? 0,
+        'click': item['clicks'] as int? ?? 0,
+      },
+      patterns: {
+        'source': 'local-native',
+        'note': 'Detailed backend analysis is unavailable offline.',
+      },
+      eventCount: item['event_count'] as int? ?? 0,
+      keystrokes: item['keystrokes'] as int? ?? 0,
+      clicks: item['clicks'] as int? ?? 0,
+      startTime: item['start_time'] as String? ?? '',
+      endTime: item['end_time'] as String? ?? '',
+    );
+  }
+
+  ProcessSession _sessionFromMap(Map<String, dynamic> item) {
+    return ProcessSession(
+      id: item['id'] as int? ?? 0,
+      startTime: item['start_time'] as String? ?? '',
+      endTime: item['end_time'] as String? ?? '',
+      eventCount: item['event_count'] as int? ?? 0,
+      keystrokes: item['keystrokes'] as int? ?? 0,
+      clicks: item['clicks'] as int? ?? 0,
+    );
   }
 }

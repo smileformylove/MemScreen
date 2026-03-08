@@ -232,6 +232,14 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<ProcessAnalysis?> loadProcessAnalysisForUi(int sessionId) async {
+    try {
+      return await _processApi.getSessionAnalysis(sessionId.toString());
+    } catch (_) {
+      return await _localProcessSessionStore?.getAnalysis(sessionId);
+    }
+  }
+
   Future<void> startInputTracking() async {
     if (useNativeMacOSTracking) {
       await _nativeInputTrackingService!.start();
