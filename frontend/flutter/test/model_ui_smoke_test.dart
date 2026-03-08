@@ -168,11 +168,9 @@ class FakeAppState extends AppState {
     return buildChatModelSelection(_catalog);
   }
 
-  @override
   Future<List<String>> loadChatModelsForUi() async =>
       _catalog.availableChatModels;
 
-  @override
   Future<String?> loadCurrentChatModelForUi() async =>
       _catalog.currentChatModel;
 

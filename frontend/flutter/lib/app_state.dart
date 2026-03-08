@@ -399,22 +399,6 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  Future<List<String>> loadChatModelsForUi() async {
-    final catalog = await loadLocalModelCatalogForUi();
-    if (catalog.availableChatModels.isNotEmpty) {
-      return catalog.availableChatModels;
-    }
-    return _chatApi.getModels();
-  }
-
-  Future<String?> loadCurrentChatModelForUi() async {
-    final catalog = await loadLocalModelCatalogForUi();
-    if ((catalog.currentChatModel ?? '').isNotEmpty) {
-      return catalog.currentChatModel;
-    }
-    return _chatApi.getCurrentModel();
-  }
-
   Future<LocalModelCatalog> setChatModelForUi(String modelName) async {
     await _chatApi.setModel(modelName);
     _cacheCurrentChatModel(modelName);
