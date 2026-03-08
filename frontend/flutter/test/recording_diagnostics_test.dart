@@ -249,6 +249,69 @@ void main() {
     );
   });
 
+  test('ordered action labels prioritize screen permission first', () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: false,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastFailureKind: 'permission_denied',
+    );
+
+    final labels = orderedRecordingDiagnosticsActionLabels(
+      data,
+      availableActionLabels: const [
+        'Run smoke check',
+        'Open logs',
+        'Open Screen Recording',
+      ],
+    );
+
+    expect(labels.first, 'Open Screen Recording');
+  });
+
+  test('ordered action labels prioritize last output playback when relevant',
+      () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+      lastOutputFileSize: 1536,
+    );
+
+    final labels = orderedRecordingDiagnosticsActionLabels(
+      data,
+      availableActionLabels: const [
+        'Run smoke check',
+        'Open last output',
+        'Open logs',
+      ],
+    );
+
+    expect(labels.first, 'Open last output');
+  });
+
+  test('ordered action labels prioritize logs for native recorder failures',
+      () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastFailureKind: 'recorder_error',
+      lastExitStatus: 1,
+    );
+
+    final labels = orderedRecordingDiagnosticsActionLabels(
+      data,
+      availableActionLabels: const [
+        'Run smoke check',
+        'Open logs',
+        'Open output',
+      ],
+    );
+
+    expect(labels.first, 'Open logs');
+  });
   test('recording diagnostics brief prioritizes summary and next step', () {
     final data = buildRecordingDiagnosticsData(
       screenRecordingGranted: false,

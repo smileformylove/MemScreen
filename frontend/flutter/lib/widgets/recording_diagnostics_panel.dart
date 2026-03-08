@@ -103,6 +103,52 @@ String buildRecordingDiagnosticsBrief(RecordingDiagnosticsData data) {
   return parts.join(' | ');
 }
 
+List<String> orderedRecordingDiagnosticsActionLabels(
+  RecordingDiagnosticsData data, {
+  required Iterable<String> availableActionLabels,
+}) {
+  final labels = availableActionLabels.toList();
+  final next = (data.nextStep ?? '').toLowerCase();
+  final advice = (data.advice ?? '').toLowerCase();
+  final outputStatus = (data.lastOutputStatus ?? '').toLowerCase();
+  final indexed = labels.indexed.toList();
+  int priorityFor(String label) {
+    switch (label) {
+      case 'Open Screen Recording':
+        return data.screenRecordingGranted ? 90 : 0;
+      case 'Run smoke check':
+        if (next.contains('smoke check')) return 1;
+        return 20;
+      case 'Open last output':
+        if (next.contains('last output') || next.contains('plays back')) {
+          return 1;
+        }
+        return 30;
+      case 'Reveal in Finder':
+        if (next.contains('finder') || next.contains('delete')) return 2;
+        if (outputStatus.contains('zero-byte')) return 3;
+        return 31;
+      case 'Open logs':
+        if (next.contains('open logs') || advice.contains('open logs')) {
+          return 2;
+        }
+        return 40;
+      case 'Open output':
+        return 50;
+      default:
+        return 60;
+    }
+  }
+
+  indexed.sort((a, b) {
+    final pa = priorityFor(a.$2);
+    final pb = priorityFor(b.$2);
+    if (pa != pb) return pa.compareTo(pb);
+    return a.$1.compareTo(b.$1);
+  });
+  return indexed.map((entry) => entry.$2).toList(growable: false);
+}
+
 String buildRecordingDiagnosticsReport(RecordingDiagnosticsData data) {
   final lines = <String>[
     'MemScreen recording diagnostics',
@@ -368,41 +414,56 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
                   : '${data.smokeCheckSummary!} · ${data.smokeCheckAt!}',
             ),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final action in quickActions)
-                OutlinedButton.icon(
-                  onPressed: action.isLoading ? null : action.onPressed,
-                  icon: action.isLoading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(action.icon),
-                  label: Text(action.label),
-                ),
-              if (lastOutputAvailable)
-                OutlinedButton.icon(
+          Builder(
+            builder: (context) {
+              final actionMap = <String, RecordingDiagnosticsQuickAction>{
+                for (final action in quickActions) action.label: action,
+              };
+              if (lastOutputAvailable) {
+                actionMap['Open last output'] = RecordingDiagnosticsQuickAction(
+                  label: 'Open last output',
+                  icon: Icons.play_circle_outline,
                   onPressed: onOpenLastOutput,
-                  icon: const Icon(Icons.play_circle_outline),
-                  label: const Text('Open last output'),
-                ),
-              if (lastOutputAvailable)
-                OutlinedButton.icon(
+                );
+                actionMap['Reveal in Finder'] = RecordingDiagnosticsQuickAction(
+                  label: 'Reveal in Finder',
+                  icon: Icons.folder_open,
                   onPressed: onRevealLastOutput,
-                  icon: const Icon(Icons.folder_open),
-                  label: const Text('Reveal in Finder'),
-                ),
-              if (showPermissionShortcut)
-                OutlinedButton.icon(
+                );
+              }
+              if (showPermissionShortcut) {
+                actionMap['Open Screen Recording'] =
+                    RecordingDiagnosticsQuickAction(
+                  label: 'Open Screen Recording',
+                  icon: Icons.open_in_new,
                   onPressed: onOpenScreenRecording,
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('Open Screen Recording'),
-                ),
-            ],
+                );
+              }
+              final orderedLabels = orderedRecordingDiagnosticsActionLabels(
+                data,
+                availableActionLabels: actionMap.keys,
+              );
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final label in orderedLabels)
+                    OutlinedButton.icon(
+                      onPressed: actionMap[label]!.isLoading
+                          ? null
+                          : actionMap[label]!.onPressed,
+                      icon: actionMap[label]!.isLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(actionMap[label]!.icon),
+                      label: Text(actionMap[label]!.label),
+                    ),
+                ],
+              );
+            },
           ),
         ],
       ),
