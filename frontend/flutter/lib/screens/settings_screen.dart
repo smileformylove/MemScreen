@@ -393,13 +393,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _copyRecordingDiagnostics(AppState appState) async {
+  Future<void> _copyRecordingDiagnostics(
+    AppState appState, {
+    required bool brief,
+  }) async {
     final diagnostics = _buildSettingsRecordingDiagnosticsData(appState);
-    final report = buildRecordingDiagnosticsReport(diagnostics);
-    await Clipboard.setData(ClipboardData(text: report));
+    final text = brief
+        ? buildRecordingDiagnosticsBrief(diagnostics)
+        : buildRecordingDiagnosticsReport(diagnostics);
+    await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Recording diagnostics copied')),
+      SnackBar(
+        content: Text(
+          brief
+              ? 'Recording diagnostics brief copied'
+              : 'Recording diagnostics report copied',
+        ),
+      ),
     );
   }
 
@@ -413,10 +424,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       data: diagnostics,
       headerActions: [
         RecordingDiagnosticsHeaderAction(
-          label: 'Copy',
+          label: 'Copy brief',
           onPressed: _loadingRecordingDiagnostics
               ? null
-              : () => _copyRecordingDiagnostics(appState),
+              : () => _copyRecordingDiagnostics(appState, brief: true),
+        ),
+        RecordingDiagnosticsHeaderAction(
+          label: 'Copy full',
+          onPressed: _loadingRecordingDiagnostics
+              ? null
+              : () => _copyRecordingDiagnostics(appState, brief: false),
         ),
         RecordingDiagnosticsHeaderAction(
           label: 'Refresh',
