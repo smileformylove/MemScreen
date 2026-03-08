@@ -44,6 +44,7 @@ class AppState extends ChangeNotifier {
   ];
   static const Duration _backendStartupPollInterval = Duration(seconds: 1);
   static const int _backendStartupPollAttempts = 8;
+  static const Duration _modelCatalogCacheTtl = Duration(seconds: 10);
 
   AppState() {
     _connection = ConnectionService(config: _config);
@@ -121,6 +122,8 @@ class AppState extends ChangeNotifier {
   int get processRefreshVersion => _processRefreshVersion;
   int _chatModelRefreshVersion = 0;
   int get chatModelRefreshVersion => _chatModelRefreshVersion;
+  LocalModelCatalog? _cachedLocalModelCatalog;
+  DateTime? _cachedLocalModelCatalogAt;
   int _recordingDurationSec = 9999;
   int get recordingDurationSec => _recordingDurationSec;
   double _recordingIntervalSec = 2.0;
@@ -303,8 +306,25 @@ class AppState extends ChangeNotifier {
     return result;
   }
 
-  Future<LocalModelCatalog> loadLocalModelCatalogForUi() async {
-    return _modelApi.getCatalog();
+  void _invalidateModelCatalogCache() {
+    _cachedLocalModelCatalog = null;
+    _cachedLocalModelCatalogAt = null;
+  }
+
+  Future<LocalModelCatalog> loadLocalModelCatalogForUi({
+    bool forceRefresh = false,
+  }) async {
+    final now = DateTime.now();
+    if (!forceRefresh &&
+        _cachedLocalModelCatalog != null &&
+        _cachedLocalModelCatalogAt != null &&
+        now.difference(_cachedLocalModelCatalogAt!) <= _modelCatalogCacheTtl) {
+      return _cachedLocalModelCatalog!;
+    }
+    final catalog = await _modelApi.getCatalog();
+    _cachedLocalModelCatalog = catalog;
+    _cachedLocalModelCatalogAt = now;
+    return catalog;
   }
 
   Future<void> downloadLocalModelForUi(
@@ -312,19 +332,29 @@ class AppState extends ChangeNotifier {
     Duration timeout = const Duration(minutes: 45),
   }) async {
     await _modelApi.downloadModel(modelName, timeout: timeout);
+    _invalidateModelCatalogCache();
     requestChatModelRefresh();
   }
 
   Future<List<String>> loadChatModelsForUi() async {
+    final catalog = await loadLocalModelCatalogForUi();
+    if (catalog.availableChatModels.isNotEmpty) {
+      return catalog.availableChatModels;
+    }
     return _chatApi.getModels();
   }
 
   Future<String?> loadCurrentChatModelForUi() async {
+    final catalog = await loadLocalModelCatalogForUi();
+    if ((catalog.currentChatModel ?? '').isNotEmpty) {
+      return catalog.currentChatModel;
+    }
     return _chatApi.getCurrentModel();
   }
 
   Future<void> setChatModelForUi(String modelName) async {
     await _chatApi.setModel(modelName);
+    _invalidateModelCatalogCache();
     requestChatModelRefresh();
   }
 
@@ -659,6 +689,7 @@ class AppState extends ChangeNotifier {
   }
 
   void requestChatModelRefresh({bool notify = true}) {
+    _invalidateModelCatalogCache();
     _chatModelRefreshVersion += 1;
     if (notify) {
       notifyListeners();
