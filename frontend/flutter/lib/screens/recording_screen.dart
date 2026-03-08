@@ -16,6 +16,8 @@ class RecordingScreen extends StatefulWidget {
   State<RecordingScreen> createState() => _RecordingScreenState();
 }
 
+enum _RecordingNoticeLevel { info, warning, error }
+
 class _RecordingScreenState extends State<RecordingScreen> {
   RecordingStatus? _status;
   List<RecordingScreenInfo> _screens = [];
@@ -49,6 +51,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
   bool _capturing = false;
   bool _wasRecording = false;
   String? _recordingNotice;
+  _RecordingNoticeLevel _recordingNoticeLevel = _RecordingNoticeLevel.info;
   AppState? _appState;
   int _lastRecordingStatusVersion = -1;
   int _lastCurrentTabIndex = -1;
@@ -112,15 +115,48 @@ class _RecordingScreenState extends State<RecordingScreen> {
     });
   }
 
+  _RecordingNoticeLevel _classifyNoticeLevel(String notice) {
+    final lower = notice.toLowerCase();
+    if (lower.contains('permission') ||
+        lower.contains('failed') ||
+        lower.contains('did not') ||
+        lower.contains('cancelled') ||
+        lower.contains('without creating')) {
+      return _RecordingNoticeLevel.error;
+    }
+    if (lower.contains('without audio') || lower.contains('microphone only')) {
+      return _RecordingNoticeLevel.warning;
+    }
+    return _RecordingNoticeLevel.info;
+  }
+
   void _showRecordingNotice(String notice, {bool showSnackBar = true}) {
     final trimmed = notice.trim();
     if (trimmed.isEmpty || !mounted) {
       return;
     }
-    setState(() => _recordingNotice = trimmed);
+    final level = _classifyNoticeLevel(trimmed);
+    setState(() {
+      _recordingNotice = trimmed;
+      _recordingNoticeLevel = level;
+    });
     if (showSnackBar) {
+      final colorScheme = Theme.of(context).colorScheme;
+      final snackColor = switch (level) {
+        _RecordingNoticeLevel.error => colorScheme.errorContainer,
+        _RecordingNoticeLevel.warning => colorScheme.tertiaryContainer,
+        _RecordingNoticeLevel.info => colorScheme.surfaceContainerHighest,
+      };
+      final textColor = switch (level) {
+        _RecordingNoticeLevel.error => colorScheme.onErrorContainer,
+        _RecordingNoticeLevel.warning => colorScheme.onTertiaryContainer,
+        _RecordingNoticeLevel.info => colorScheme.onSurface,
+      };
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(trimmed)),
+        SnackBar(
+          backgroundColor: snackColor,
+          content: Text(trimmed, style: TextStyle(color: textColor)),
+        ),
       );
     }
   }
@@ -129,7 +165,10 @@ class _RecordingScreenState extends State<RecordingScreen> {
     if (!mounted) {
       return;
     }
-    setState(() => _recordingNotice = null);
+    setState(() {
+      _recordingNotice = null;
+      _recordingNoticeLevel = _RecordingNoticeLevel.info;
+    });
   }
 
   void _consumePendingRecordingNotice({bool showSnackBar = true}) {
@@ -691,41 +730,56 @@ class _RecordingScreenState extends State<RecordingScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if ((_recordingNotice ?? '').isNotEmpty) ...[
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.tertiaryContainer,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          color:
-                              Theme.of(context).colorScheme.onTertiaryContainer,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            _recordingNotice!,
-                            style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onTertiaryContainer,
+                  Builder(builder: (context) {
+                    final colorScheme = Theme.of(context).colorScheme;
+                    final bgColor = switch (_recordingNoticeLevel) {
+                      _RecordingNoticeLevel.error => colorScheme.errorContainer,
+                      _RecordingNoticeLevel.warning =>
+                        colorScheme.tertiaryContainer,
+                      _RecordingNoticeLevel.info =>
+                        colorScheme.surfaceContainerHighest,
+                    };
+                    final fgColor = switch (_recordingNoticeLevel) {
+                      _RecordingNoticeLevel.error =>
+                        colorScheme.onErrorContainer,
+                      _RecordingNoticeLevel.warning =>
+                        colorScheme.onTertiaryContainer,
+                      _RecordingNoticeLevel.info => colorScheme.onSurface,
+                    };
+                    final icon = switch (_recordingNoticeLevel) {
+                      _RecordingNoticeLevel.error => Icons.error_outline,
+                      _RecordingNoticeLevel.warning =>
+                        Icons.warning_amber_outlined,
+                      _RecordingNoticeLevel.info => Icons.info_outline,
+                    };
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: bgColor,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(icon, color: fgColor),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _recordingNotice!,
+                              style: TextStyle(color: fgColor),
                             ),
                           ),
-                        ),
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          onPressed: _clearRecordingNotice,
-                          icon: const Icon(Icons.close),
-                          tooltip: 'Dismiss',
-                        ),
-                      ],
-                    ),
-                  ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            onPressed: _clearRecordingNotice,
+                            icon: Icon(Icons.close, color: fgColor),
+                            tooltip: 'Dismiss',
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
                 ],
                 ..._buildModeSelection(),
                 ..._buildActionBar(),
