@@ -61,6 +61,14 @@ class LocalProcessSessionStore {
     await _writeAll(items);
   }
 
+  Future<void> reconcileWithRemote(List<ProcessSession> remoteSessions) async {
+    if (remoteSessions.isEmpty) return;
+    final remoteKeys = remoteSessions.map(_mergeKeyForSession).toSet();
+    final items = await _readAll();
+    items.removeWhere((item) => remoteKeys.contains(_mergeKeyForMap(item)));
+    await _writeAll(items);
+  }
+
   Future<List<ProcessSession>> listSessions() async {
     final items = await _readAll();
     final sessions = items.map(_sessionFromMap).toList();
@@ -102,5 +110,13 @@ class LocalProcessSessionStore {
       keystrokes: item['keystrokes'] as int? ?? 0,
       clicks: item['clicks'] as int? ?? 0,
     );
+  }
+
+  String _mergeKeyForSession(ProcessSession session) {
+    return '${session.startTime}|${session.endTime}|${session.eventCount}|${session.keystrokes}|${session.clicks}';
+  }
+
+  String _mergeKeyForMap(Map<String, dynamic> item) {
+    return '${item['start_time'] ?? ''}|${item['end_time'] ?? ''}|${item['event_count'] ?? 0}|${item['keystrokes'] ?? 0}|${item['clicks'] ?? 0}';
   }
 }

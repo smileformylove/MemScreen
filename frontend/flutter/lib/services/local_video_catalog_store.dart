@@ -27,18 +27,33 @@ class LocalVideoCatalogStore {
     }
   }
 
-  Future<void> upsert(Map<String, dynamic> item) async {
+  Future<void> _writeAll(List<Map<String, dynamic>> items) async {
     try {
-      final items = await load();
-      final filename = (item['filename'] ?? '').toString();
-      items.removeWhere(
-          (entry) => (entry['filename'] ?? '').toString() == filename);
-      items.add(item);
       final file = File(_filePath);
       await file.parent.create(recursive: true);
       await file.writeAsString(jsonEncode(items));
     } catch (e) {
       debugPrint('[LocalVideoCatalogStore] Failed to update cache: $e');
     }
+  }
+
+  Future<void> upsert(Map<String, dynamic> item) async {
+    final items = await load();
+    final filename = (item['filename'] ?? '').toString();
+    items.removeWhere(
+      (entry) => (entry['filename'] ?? '').toString() == filename,
+    );
+    items.add(item);
+    await _writeAll(items);
+  }
+
+  Future<void> reconcileSyncedFilenames(List<String> filenames) async {
+    if (filenames.isEmpty) return;
+    final filenameSet = filenames.toSet();
+    final items = await load();
+    items.removeWhere(
+      (entry) => filenameSet.contains((entry['filename'] ?? '').toString()),
+    );
+    await _writeAll(items);
   }
 }

@@ -239,6 +239,7 @@ class AppState extends ChangeNotifier {
       for (final session in remote) {
         byKey[_processSessionMergeKey(session)] = session;
       }
+      await _localProcessSessionStore?.reconcileWithRemote(remote);
       final merged = byKey.values.toList()
         ..sort((a, b) => b.startTime.compareTo(a.startTime));
       return merged;

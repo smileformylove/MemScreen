@@ -166,6 +166,7 @@ class _VideoScreenState extends State<VideoScreen> {
       final localList = await _localCatalog.list();
       try {
         final remoteList = await context.read<AppState>().videoApi.getList();
+        await _localCatalog.reconcileWithRemote(remoteList);
         final byFilename = <String, VideoItem>{
           for (final item in localList) item.filename: item,
         };

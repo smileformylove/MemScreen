@@ -12,14 +12,19 @@ class LocalVideoCatalog {
   final String _videosDir;
   final LocalVideoCatalogStore _store;
 
+  Future<void> reconcileWithRemote(List<VideoItem> remoteItems) async {
+    await _store.reconcileSyncedFilenames(
+      remoteItems.map((item) => item.filename).toList(),
+    );
+  }
+
   Future<List<VideoItem>> list() async {
     final dir = Directory(_videosDir);
     if (!await dir.exists()) return const [];
 
     final cacheRows = await _store.load();
     final cacheByFilename = <String, Map<String, dynamic>>{
-      for (final row in cacheRows)
-        (row['filename'] ?? '').toString(): row,
+      for (final row in cacheRows) (row['filename'] ?? '').toString(): row,
     };
 
     final entries = await dir
@@ -27,13 +32,12 @@ class LocalVideoCatalog {
         .where((entity) => entity is File)
         .cast<File>()
         .where((file) {
-          final lower = file.path.toLowerCase();
-          return lower.endsWith('.mp4') ||
-              lower.endsWith('.mov') ||
-              lower.endsWith('.mkv') ||
-              lower.endsWith('.avi');
-        })
-        .toList();
+      final lower = file.path.toLowerCase();
+      return lower.endsWith('.mp4') ||
+          lower.endsWith('.mov') ||
+          lower.endsWith('.mkv') ||
+          lower.endsWith('.avi');
+    }).toList();
 
     final items = <VideoItem>[];
     for (final file in entries) {
