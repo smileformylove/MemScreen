@@ -139,6 +139,7 @@ class AppState extends ChangeNotifier {
   late final RecordingTrackingCoordinator _recordingTrackingCoordinator;
   late final RecordingLifecycleCoordinator _recordingLifecycleCoordinator;
   late final RecordingSettingsStore _recordingSettingsStore;
+  Timer? _nativeRecordingMonitorTimer;
   NativeRecordingService? _nativeRecordingService;
   NativeRecordingImportQueue? _nativeRecordingImportQueue;
   NativeInputTrackingService? _nativeInputTrackingService;
@@ -474,9 +475,36 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  void _startNativeRecordingMonitor() {
+    _nativeRecordingMonitorTimer?.cancel();
+    _nativeRecordingMonitorTimer =
+        Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (!useNativeMacOSRecording) return;
+      try {
+        final status = await _nativeRecordingService!.getStatus();
+        if (status.isRecording) {
+          return;
+        }
+        final finished =
+            await _nativeRecordingService!.consumeFinishedRecordingIfNeeded();
+        if (finished != null) {
+          await _handleFinishedNativeRecording(finished);
+        }
+      } catch (e) {
+        debugPrint('[AppState] Native recording monitor failed: $e');
+      }
+    });
+  }
+
+  void _stopNativeRecordingMonitor() {
+    _nativeRecordingMonitorTimer?.cancel();
+    _nativeRecordingMonitorTimer = null;
+  }
+
   Future<void> _handleFinishedNativeRecording(
     NativeRecordingStopResult result,
   ) async {
+    _stopNativeRecordingMonitor();
     updateFloatingBallState(false);
     requestRecordingStatusRefresh();
     if ((result.notice ?? '').isNotEmpty) {
@@ -740,6 +768,7 @@ class AppState extends ChangeNotifier {
       }
       updateFloatingBallState(true);
       requestRecordingStatusRefresh();
+      _startNativeRecordingMonitor();
       return;
     }
 
@@ -928,6 +957,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _stopNativeRecordingMonitor();
     _recordingLifecycleCoordinator.dispose(_recordingLifecycleState);
     super.dispose();
   }
