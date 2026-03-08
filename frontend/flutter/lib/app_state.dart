@@ -436,7 +436,7 @@ class AppState extends ChangeNotifier {
           endTime: payload.endTime,
           events: payload.events,
         );
-        requestVideoRefresh();
+        requestProcessRefresh();
         return result;
       } catch (e) {
         if (_nativeTrackingSessionQueue != null) {
@@ -1167,7 +1167,7 @@ class AppState extends ChangeNotifier {
             try {
               final result = await saveTrackingSessionForUi();
               if (result.eventsSaved > 0) {
-                requestVideoRefresh();
+                requestProcessRefresh();
               }
             } catch (e) {
               debugPrint('[AppState] Error saving tracking session: $e');
