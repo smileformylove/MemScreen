@@ -54,29 +54,59 @@ String? recordingInstallAdvice() {
 
 String? recordingDiagnosticsAdvice({
   required bool screenRecordingGranted,
+  String? statusNotice,
   String? lastFailureKind,
   String? lastFailureMessage,
+  int? lastExitStatus,
+  int? lastOutputFileSize,
+  String? lastOutputPath,
 }) {
   final installAdvice = recordingInstallAdvice();
   if (installAdvice != null) {
     return installAdvice;
   }
+
+  final normalizedNotice = (statusNotice ?? '').trim();
+  if (normalizedNotice.startsWith('Import warning:')) {
+    return 'The recording file was saved locally. Reconnect the backend or open Videos later to let import retry.';
+  }
+
   if (!screenRecordingGranted || lastFailureKind == 'permission_denied') {
     return 'Grant Screen Recording permission, then fully quit and reopen MemScreen before trying again.';
   }
+
+  final hasOutputPath = (lastOutputPath ?? '').trim().isNotEmpty;
+  final hasZeroByteOutput =
+      lastOutputFileSize != null && lastOutputFileSize <= 0 && hasOutputPath;
+
   switch ((lastFailureKind ?? '').trim()) {
     case 'cancelled':
       return 'The recording was cancelled before a file was written. Retry the smoke check and avoid dismissing the system capture flow.';
     case 'empty_output':
+      if (hasZeroByteOutput) {
+        return 'A zero-byte file was created at the last output path. Delete that file if needed, then retry the smoke check and inspect logs if it happens again.';
+      }
       return 'A zero-byte file was created. Retry the smoke check, then inspect the output folder and logs if it happens again.';
     case 'no_output':
+      if (lastExitStatus == 0) {
+        return 'Native capture exited with status 0 but no playable file was created. Run the smoke check again and compare the output folder and last output path.';
+      }
+      if (lastExitStatus != null) {
+        return 'No playable video file was created. Exit status $lastExitStatus suggests native capture failed before writing output. Open logs and retry.';
+      }
       return 'No playable video file was created. Run the smoke check again and compare the exit status and last output path.';
     case 'recorder_error':
+      if (lastExitStatus != null) {
+        return 'Recorder error detected (exit status $lastExitStatus). Open logs and check the native failure details before retrying.';
+      }
       if ((lastFailureMessage ?? '').trim().isNotEmpty) {
         return 'Recorder error detected. Open logs and check the native failure details before retrying.';
       }
       return 'Recorder error detected. Open logs before retrying.';
     default:
+      if (hasZeroByteOutput) {
+        return 'A zero-byte file exists at the last output path. Retry the smoke check and inspect logs if the file stays empty.';
+      }
       return null;
   }
 }
@@ -200,8 +230,12 @@ RecordingDiagnosticsData buildRecordingDiagnosticsData({
     smokeCheckSummary: smokeCheckSummary,
     advice: recordingDiagnosticsAdvice(
       screenRecordingGranted: screenRecordingGranted,
+      statusNotice: statusNotice,
       lastFailureKind: lastFailureKind,
       lastFailureMessage: lastFailureMessage,
+      lastExitStatus: lastExitStatus,
+      lastOutputFileSize: lastOutputFileSize,
+      lastOutputPath: lastOutputPath,
     ),
   );
 }

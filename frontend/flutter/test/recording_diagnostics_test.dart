@@ -72,6 +72,45 @@ void main() {
     expect(data.advice, contains('zero-byte file'));
   });
 
+  test('recording diagnostics advice explains import warnings separately', () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      statusNotice:
+          'Import warning: Recording saved locally, but adding it to Videos failed.',
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+    );
+
+    expect(data.advice, contains('saved locally'));
+  });
+
+  test('recording diagnostics advice uses exit status for no-output failures',
+      () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastFailureKind: 'no_output',
+      lastExitStatus: 1,
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+    );
+
+    expect(data.advice, contains('Exit status 1'));
+  });
+
+  test('recording diagnostics advice highlights zero-byte output paths', () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastFailureKind: 'empty_output',
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+      lastOutputFileSize: 0,
+    );
+
+    expect(data.advice, contains('last output path'));
+  });
   test('recording diagnostics summary falls back to native failure mapping',
       () {
     final summary = recordingDiagnosticsSummary(
