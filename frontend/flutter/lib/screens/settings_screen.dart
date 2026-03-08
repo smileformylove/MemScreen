@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
@@ -6,6 +9,7 @@ import '../build_info.dart';
 import '../app_state.dart';
 import '../api/api_client.dart';
 import '../api/model_api.dart';
+import '../api/recording_api.dart';
 import '../connection/connection_state.dart';
 import '../services/model_catalog_groups.dart';
 import '../widgets/backend_required_panel.dart';
@@ -62,6 +66,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final FocusNode _intervalFocusNode = FocusNode();
   _SettingsModelUiState _modelUiState = const _SettingsModelUiState();
   bool _loadingPermissions = false;
+  RecordingStatus? _recordingStatus;
+  bool _loadingRecordingDiagnostics = false;
 
   SettingsModelSection? get _modelSection => _modelUiState.section;
   LocalModelCatalog? get _modelCatalog => _modelSection?.catalog;
@@ -89,6 +95,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _loadModelCatalog();
     }
     _loadPermissionStatus();
+    _loadRecordingDiagnostics();
   }
 
   @override
@@ -300,6 +307,179 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  String _settingsLogsDirPath() {
+    return '${Platform.environment['HOME'] ?? '~'}/.memscreen/logs';
+  }
+
+  String _settingsOutputDir() {
+    final outputDir = (_recordingStatus?.outputDir ?? '').trim();
+    if (outputDir.isNotEmpty) {
+      return outputDir;
+    }
+    return '${Platform.environment['HOME'] ?? '~'}/.memscreen/videos';
+  }
+
+  String _settingsInstallStatusLabel() {
+    final appPath = BuildInfo.detectAppBundlePath() ?? '';
+    if (appPath.isEmpty) {
+      return 'Unknown';
+    }
+    return appPath.startsWith('/Applications/')
+        ? 'Applications'
+        : 'Nonstandard path';
+  }
+
+  Future<void> _loadRecordingDiagnostics(
+      {bool refreshPermissions = false}) async {
+    if (!mounted) return;
+    setState(() => _loadingRecordingDiagnostics = true);
+    try {
+      final appState = context.read<AppState>();
+      if (refreshPermissions) {
+        await appState.refreshPermissionStatus();
+      }
+      final status = await appState.loadRecordingStatusForUi();
+      if (!mounted) return;
+      setState(() => _recordingStatus = status);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _recordingStatus = null);
+    } finally {
+      if (mounted) {
+        setState(() => _loadingRecordingDiagnostics = false);
+      }
+    }
+  }
+
+  Future<void> _openDiagnosticPath(String path, {required String label}) async {
+    try {
+      if (Platform.isMacOS) {
+        final result = await Process.run('open', [path]);
+        if (result.exitCode != 0) {
+          throw Exception((result.stderr ?? '').toString().trim());
+        }
+      } else {
+        throw Exception('Open path is only implemented for macOS right now.');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to open $label: $e')),
+      );
+    }
+  }
+
+  Future<void> _copyRecordingDiagnostics(AppState appState) async {
+    final status = _recordingStatus;
+    final lines = <String>[
+      'MemScreen recording diagnostics',
+      'commit: ${BuildInfo.commit}',
+      'built_at_utc: ${BuildInfo.builtAtUtc}',
+      'channel: ${BuildInfo.buildChannel}',
+      'app_path: ${BuildInfo.detectAppBundlePath() ?? 'unknown'}',
+      'install_status: ${_settingsInstallStatusLabel()}',
+      'screen_recording_permission: ${appState.hasScreenRecordingPermission ? 'granted' : 'missing'}',
+      'output_dir: ${_settingsOutputDir()}',
+      'logs_dir: ${_settingsLogsDirPath()}',
+      'is_recording: ${status?.isRecording ?? false}',
+    ];
+    if ((status?.lastFailureKind ?? '').isNotEmpty) {
+      lines.add('last_failure_kind: ${status!.lastFailureKind}');
+    }
+    if ((status?.lastFailureMessage ?? '').isNotEmpty) {
+      lines.add('last_failure_message: ${status!.lastFailureMessage}');
+    }
+    if ((status?.lastTerminationStatus?.toString() ?? '').isNotEmpty) {
+      lines.add('last_exit_status: ${status!.lastTerminationStatus}');
+    }
+    if ((status?.lastOutputPath ?? '').isNotEmpty) {
+      lines.add('last_output_path: ${status!.lastOutputPath}');
+    }
+    await Clipboard.setData(ClipboardData(text: lines.join('\n')));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Recording diagnostics copied')),
+    );
+  }
+
+  Widget _recordingDiagnosticsCard(AppState appState) {
+    final theme = Theme.of(context);
+    final hasPermission = Theme.of(context).platform != TargetPlatform.macOS ||
+        appState.hasScreenRecordingPermission;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(child: Text('Recording diagnostics')),
+              TextButton(
+                onPressed: _loadingRecordingDiagnostics
+                    ? null
+                    : () => _copyRecordingDiagnostics(appState),
+                child: const Text('Copy'),
+              ),
+              TextButton(
+                onPressed: _loadingRecordingDiagnostics
+                    ? null
+                    : () => _loadRecordingDiagnostics(refreshPermissions: true),
+                child: const Text('Refresh'),
+              ),
+            ],
+          ),
+          _kv(context, 'Build',
+              '${BuildInfo.commit} · ${BuildInfo.buildChannel}'),
+          _kv(context, 'Install', _settingsInstallStatusLabel()),
+          _kv(context, 'Screen Rec', hasPermission ? 'Granted' : 'Missing'),
+          if ((_recordingStatus?.lastFailureKind ?? '').isNotEmpty)
+            _kv(context, 'Failure', _recordingStatus!.lastFailureKind!),
+          if ((_recordingStatus?.lastTerminationStatus?.toString() ?? '')
+              .isNotEmpty)
+            _kv(context, 'Exit',
+                _recordingStatus!.lastTerminationStatus.toString()),
+          if ((_recordingStatus?.lastOutputPath ?? '').isNotEmpty)
+            _kv(context, 'Last Output', _recordingStatus!.lastOutputPath!),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => _openDiagnosticPath(_settingsOutputDir(),
+                    label: 'output folder'),
+                icon: const Icon(Icons.video_library_outlined),
+                label: const Text('Open output'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _openDiagnosticPath(_settingsLogsDirPath(),
+                    label: 'logs folder'),
+                icon: const Icon(Icons.folder_open_outlined),
+                label: const Text('Open logs'),
+              ),
+              if (Theme.of(context).platform == TargetPlatform.macOS &&
+                  !hasPermission)
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      appState.openPermissionSettings('screen_recording'),
+                  icon: const Icon(Icons.open_in_new),
+                  label: const Text('Open Screen Recording'),
+                ),
+            ],
+          ),
+          if (_loadingRecordingDiagnostics) ...[
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(minHeight: 2),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
@@ -333,6 +513,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _recordingDefaultsCard(appState),
               const SizedBox(height: 12),
               _permissionsCard(),
+              const SizedBox(height: 12),
+              _recordingDiagnosticsCard(appState),
               const SizedBox(height: 12),
               _modelsCard(),
               const SizedBox(height: 12),

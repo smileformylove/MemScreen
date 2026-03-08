@@ -303,10 +303,12 @@ void main() {
 
     final appState = FakeAppState(catalog: catalog, backendConnected: true);
     await tester.pumpWidget(wrapAsHome(appState, const SettingsScreen()));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     await tester.drag(find.byType(ListView).first, const Offset(0, -600));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('Recommended chat model: qwen3.5:4b'), findsOneWidget);
     expect(find.text('Use recommended'), findsOneWidget);
@@ -314,8 +316,12 @@ void main() {
     expect(find.text('Fast / Light'), findsOneWidget);
     expect(find.textContaining('Model storage (external):'), findsOneWidget);
 
-    await tester.tap(find.text('Use recommended').first);
-    await tester.pumpAndSettle();
+    final useRecommended = find.text('Use recommended').first;
+    await tester.ensureVisible(useRecommended);
+    await tester.pump();
+    await tester.tap(useRecommended, warnIfMissed: false);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('Current chat model: qwen3.5:4b'), findsOneWidget);
   });
