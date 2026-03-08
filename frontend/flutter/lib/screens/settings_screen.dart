@@ -23,7 +23,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   LocalModelCatalog? _modelCatalog;
   bool _loadingModelCatalog = false;
   bool _loadingPermissions = false;
-  Map<String, dynamic>? _permissionStatus;
+  bool _requestedModelHydration = false;
   String? _downloadingModelName;
 
   @override
@@ -34,6 +34,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _durationController.text = appState.recordingDurationSec.toString();
     _intervalController.text = appState.recordingIntervalSec.toString();
     if (appState.isBackendConnected) {
+      _requestedModelHydration = true;
       _loadModelCatalog();
     }
     _loadPermissionStatus();
@@ -97,11 +98,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() => _loadingPermissions = true);
     try {
-      final result = await context.read<AppState>().client.get(
-            '/permissions/status?prompt=${promptSystem ? 'true' : 'false'}',
+      await context.read<AppState>().refreshPermissionStatus(
+            promptSystem: promptSystem,
           );
-      if (!mounted) return;
-      setState(() => _permissionStatus = result);
     } catch (e) {
       if (showError && mounted) {
         final msg = e is ApiException ? e.message : e.toString();
@@ -114,6 +113,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() => _loadingPermissions = false);
       }
     }
+  }
+
+  void _maybeHydrateAfterBackendConnect(AppState appState) {
+    if (!appState.isBackendConnected) {
+      _requestedModelHydration = false;
+      return;
+    }
+    if (_requestedModelHydration ||
+        _loadingModelCatalog ||
+        _modelCatalog != null) {
+      return;
+    }
+    _requestedModelHydration = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _loadModelCatalog();
+    });
   }
 
   Future<void> _loadModelCatalog({bool showError = false}) async {
@@ -169,6 +187,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
+    _maybeHydrateAfterBackendConnect(appState);
     final durationText = appState.recordingDurationSec.toString();
     final intervalText = appState.recordingIntervalSec.toString();
     if (!_durationFocusNode.hasFocus &&
@@ -349,7 +368,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _permissionsCard() {
     final theme = Theme.of(context);
-    final permissionStatus = _permissionStatus;
+    final permissionStatus = context.watch<AppState>().permissionStatus;
     final runtimePath = (permissionStatus?['runtime_executable'] ??
             '~/.memscreen/runtime/.venv/bin/python')
         .toString();

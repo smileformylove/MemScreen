@@ -23,6 +23,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String _currentReply = '';
   String _activeThreadId = '';
   bool _loading = false;
+  bool _requestedInitialHydration = false;
   StreamSubscription? _streamSub;
   Timer? _thinkingTimer;
   int _thinkingStep = 0;
@@ -37,6 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     if (context.read<AppState>().isBackendConnected) {
+      _requestedInitialHydration = true;
       _loadThreads();
     }
   }
@@ -79,6 +81,23 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = raw.replaceFirst('T', ' ');
     if (text.length >= 16) return text.substring(0, 16);
     return text;
+  }
+
+  void _maybeHydrateAfterBackendConnect(AppState appState) {
+    if (!appState.isBackendConnected) {
+      _requestedInitialHydration = false;
+      return;
+    }
+    if (_requestedInitialHydration || _loading) {
+      return;
+    }
+    _requestedInitialHydration = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _loadThreads();
+    });
   }
 
   Future<void> _loadThreads({bool refreshHistory = true}) async {
@@ -425,6 +444,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
+    _maybeHydrateAfterBackendConnect(appState);
     if (!appState.isBackendConnected && _history.isEmpty && !_loading) {
       return _buildBackendPlaceholder(context);
     }
