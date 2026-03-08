@@ -35,7 +35,9 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _loadThreads();
+    if (context.read<AppState>().isBackendConnected) {
+      _loadThreads();
+    }
   }
 
   @override
@@ -80,7 +82,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadThreads({bool refreshHistory = true}) async {
     final appState = context.read<AppState>();
-    await appState.ensureBackendConnection();
+    if (!appState.isBackendConnected) {
+      return;
+    }
     final api = appState.chatApi;
     try {
       final state = await api.getThreads();

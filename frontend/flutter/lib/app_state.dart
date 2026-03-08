@@ -1033,7 +1033,7 @@ class AppState extends ChangeNotifier {
         requestRecordingStatusRefresh();
         return <String, dynamic>{'ok': true};
 
-      case 'nativeTrackingChanged':
+      case 'nativeTrackingStateChanged':
         final args = call.arguments is Map
             ? Map<String, dynamic>.from(call.arguments as Map)
             : const <String, dynamic>{};

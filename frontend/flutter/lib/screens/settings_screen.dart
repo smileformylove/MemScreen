@@ -32,7 +32,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final appState = context.read<AppState>();
     _durationController.text = appState.recordingDurationSec.toString();
     _intervalController.text = appState.recordingIntervalSec.toString();
-    _loadModelCatalog();
+    if (appState.isBackendConnected) {
+      _loadModelCatalog();
+    }
     _loadPermissionStatus();
   }
 
@@ -118,7 +120,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _loadingModelCatalog = true);
     try {
       final appState = context.read<AppState>();
-      await appState.ensureBackendConnection();
       if (!appState.isBackendConnected) {
         return;
       }
@@ -500,7 +501,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             FilledButton.icon(
               onPressed: () async {
                 await appState.ensureBackendConnection(force: true);
-                await _loadModelCatalog(showError: true);
+                if (appState.isBackendConnected) {
+                  await _loadModelCatalog(showError: true);
+                }
               },
               icon: const Icon(Icons.play_arrow),
               label: const Text('Start Backend'),
