@@ -6,7 +6,6 @@ import 'package:video_player/video_player.dart';
 
 import '../api/video_api.dart';
 import '../app_state.dart';
-import '../services/local_video_catalog.dart';
 
 class VideoScreen extends StatefulWidget {
   const VideoScreen({super.key});
@@ -27,7 +26,6 @@ class _VideoScreenState extends State<VideoScreen> {
   bool _loadInFlight = false;
   VideoPlayerController? _controller;
   VideoItem? _currentVideo;
-  final LocalVideoCatalog _localCatalog = LocalVideoCatalog();
   bool _usingLocalFallback = false;
 
   String _positionLabel = '0:00';
@@ -161,23 +159,9 @@ class _VideoScreenState extends State<VideoScreen> {
     final previousLatest = _latestTimelineVideoFilename;
 
     try {
-      List<VideoItem> list;
-      var usingLocalFallback = false;
-      final localList = await _localCatalog.list();
-      try {
-        final remoteList = await context.read<AppState>().videoApi.getList();
-        await _localCatalog.reconcileWithRemote(remoteList);
-        final byFilename = <String, VideoItem>{
-          for (final item in localList) item.filename: item,
-        };
-        for (final item in remoteList) {
-          byFilename[item.filename] = item;
-        }
-        list = byFilename.values.toList();
-      } catch (_) {
-        list = localList;
-        usingLocalFallback = true;
-      }
+      final appState = context.read<AppState>();
+      final list = await appState.loadVideosForUi();
+      final usingLocalFallback = !appState.isBackendConnected;
       final timelineSorted = _sortedByTimestampAscending(list);
       final latestFilename =
           timelineSorted.isNotEmpty ? timelineSorted.last.filename : null;

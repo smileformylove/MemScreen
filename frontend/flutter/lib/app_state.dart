@@ -16,6 +16,7 @@ import 'connection/connection_service.dart';
 import 'services/floating_ball_commands.dart';
 import 'services/floating_ball_service.dart';
 import 'services/local_process_session_store.dart';
+import 'services/local_video_catalog.dart';
 import 'services/local_video_catalog_store.dart';
 import 'services/native_input_tracking_service.dart';
 import 'services/native_permission_service.dart';
@@ -65,6 +66,7 @@ class AppState extends ChangeNotifier {
       _nativePermissionService = NativePermissionService();
       _nativeTrackingSessionQueue = NativeTrackingSessionQueue();
       _localVideoCatalogStore = LocalVideoCatalogStore();
+      _localVideoCatalog = LocalVideoCatalog(store: _localVideoCatalogStore);
       _localProcessSessionStore = LocalProcessSessionStore();
     }
     _recordingTrackingCoordinator = RecordingTrackingCoordinator(
@@ -98,6 +100,9 @@ class AppState extends ChangeNotifier {
     status: ConnectionStatus.unknown,
   );
   ApiConnectionState get connectionState => _connectionState;
+
+  bool get isBackendConnected =>
+      _connectionState.status == ConnectionStatus.connected;
 
   // Desired tab index from floating ball (null = no change requested)
   int? _desiredTabIndex;
@@ -146,6 +151,7 @@ class AppState extends ChangeNotifier {
   NativePermissionService? _nativePermissionService;
   NativeTrackingSessionQueue? _nativeTrackingSessionQueue;
   LocalVideoCatalogStore? _localVideoCatalogStore;
+  LocalVideoCatalog? _localVideoCatalog;
   LocalProcessSessionStore? _localProcessSessionStore;
   Map<String, dynamic>? _permissionStatus;
   Map<String, dynamic>? get permissionStatus => _permissionStatus;
@@ -215,6 +221,26 @@ class AppState extends ChangeNotifier {
     return _recordingApi.getScreens();
   }
 
+  Future<List<VideoItem>> loadVideosForUi() async {
+    final localList = await _localVideoCatalog?.list() ?? const <VideoItem>[];
+    if (!isBackendConnected) {
+      return localList;
+    }
+    try {
+      final remoteList = await _videoApi.getList();
+      await _localVideoCatalog?.reconcileWithRemote(remoteList);
+      final byFilename = <String, VideoItem>{
+        for (final item in localList) item.filename: item,
+      };
+      for (final item in remoteList) {
+        byFilename[item.filename] = item;
+      }
+      return byFilename.values.toList();
+    } catch (_) {
+      return localList;
+    }
+  }
+
   Future<TrackingStatus> loadTrackingStatusForUi() async {
     if (useNativeMacOSTracking) {
       final status = await _nativeInputTrackingService!.getStatus();
@@ -243,6 +269,9 @@ class AppState extends ChangeNotifier {
       {int limit = 20}) async {
     final local = await _localProcessSessionStore?.listSessions() ??
         const <ProcessSession>[];
+    if (!isBackendConnected) {
+      return local;
+    }
     try {
       final remote = await _processApi.getSessions(limit: limit);
       final byKey = <String, ProcessSession>{
@@ -261,6 +290,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<ProcessAnalysis?> loadProcessAnalysisForUi(int sessionId) async {
+    if (!isBackendConnected) {
+      return await _localProcessSessionStore?.getAnalysis(sessionId);
+    }
     try {
       return await _processApi.getSessionAnalysis(sessionId.toString());
     } catch (_) {
