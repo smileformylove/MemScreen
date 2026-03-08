@@ -18,7 +18,7 @@ class HomeScaffold extends StatefulWidget {
 
 /// Public state class for external access
 class HomeScaffoldState extends State<HomeScaffold> {
-  int _index = 3;
+  int _index = 0;
 
   @override
   void initState() {
@@ -42,6 +42,10 @@ class HomeScaffoldState extends State<HomeScaffold> {
       setState(() {
         _index = appState.desiredTabIndex!;
       });
+      if ((_index == 3 || _index == 4) &&
+          appState.connectionState.status != ConnectionStatus.connected) {
+        appState.checkConnection();
+      }
       // Clear the desired tab after consuming it
       appState.clearDesiredTab();
     }
@@ -101,7 +105,14 @@ class HomeScaffoldState extends State<HomeScaffold> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) {
+          setState(() => _index = i);
+          final appState = context.read<AppState>();
+          if ((i == 3 || i == 4) &&
+              appState.connectionState.status != ConnectionStatus.connected) {
+            appState.checkConnection();
+          }
+        },
         destinations: _tabs
             .map((t) =>
                 NavigationDestination(icon: Icon(t.icon), label: t.label))

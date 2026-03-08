@@ -39,6 +39,7 @@ class _HomeWrapper extends StatefulWidget {
 
 class _HomeWrapperState extends State<_HomeWrapper> {
   Timer? _connectionRetryTimer;
+  Timer? _initialConnectionTimer;
   int _connectionRetryCount = 0;
 
   @override
@@ -47,8 +48,11 @@ class _HomeWrapperState extends State<_HomeWrapper> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final appState = context.read<AppState>();
       appState.refreshPermissionStatus();
-      appState.checkConnection();
-      _startConnectionRetryLoop();
+      _initialConnectionTimer = Timer(const Duration(seconds: 5), () {
+        if (!mounted) return;
+        appState.checkConnection();
+        _startConnectionRetryLoop();
+      });
     });
   }
 
@@ -72,6 +76,7 @@ class _HomeWrapperState extends State<_HomeWrapper> {
 
   @override
   void dispose() {
+    _initialConnectionTimer?.cancel();
     _connectionRetryTimer?.cancel();
     super.dispose();
   }
