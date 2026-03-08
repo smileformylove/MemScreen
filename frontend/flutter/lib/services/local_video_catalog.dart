@@ -22,6 +22,7 @@ class LocalVideoCatalog {
     final dir = Directory(_videosDir);
     if (!await dir.exists()) return const [];
 
+    await _store.pruneMissingFiles();
     final cacheRows = await _store.load();
     final cacheByFilename = <String, Map<String, dynamic>>{
       for (final row in cacheRows) (row['filename'] ?? '').toString(): row,

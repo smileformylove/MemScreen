@@ -232,6 +232,22 @@ class AppState extends ChangeNotifier {
     return _recordingApi.getScreens();
   }
 
+  Future<void> deleteVideoForUi(String filename) async {
+    try {
+      final normalized = filename.startsWith('/')
+          ? filename
+          : '${Platform.environment['HOME'] ?? ''}/.memscreen/videos/$filename';
+      final file = File(normalized);
+      if (await file.exists()) {
+        await file.delete();
+      }
+      await _localVideoCatalogStore?.deleteByFilename(normalized);
+      requestVideoRefresh();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   Future<List<VideoItem>> loadVideosForUi() async {
     final localList = await _localVideoCatalog?.list() ?? const <VideoItem>[];
     if (!isBackendConnected) {

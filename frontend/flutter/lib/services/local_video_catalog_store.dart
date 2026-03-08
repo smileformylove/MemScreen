@@ -47,6 +47,25 @@ class LocalVideoCatalogStore {
     await _writeAll(items);
   }
 
+  Future<int> deleteByFilename(String filename) async {
+    final items = await load();
+    final before = items.length;
+    items.removeWhere(
+      (entry) => (entry['filename'] ?? '').toString() == filename,
+    );
+    await _writeAll(items);
+    return before - items.length;
+  }
+
+  Future<void> pruneMissingFiles() async {
+    final items = await load();
+    items.removeWhere((entry) {
+      final filename = (entry['filename'] ?? '').toString();
+      return filename.isEmpty || !File(filename).existsSync();
+    });
+    await _writeAll(items);
+  }
+
   Future<void> reconcileSyncedFilenames(List<String> filenames) async {
     if (filenames.isEmpty) return;
     final filenameSet = filenames.toSet();

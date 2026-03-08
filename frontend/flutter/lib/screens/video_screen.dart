@@ -1462,13 +1462,7 @@ class _VideoScreenState extends State<VideoScreen> {
     if (confirmed == true && mounted) {
       try {
         //
-        final path = video.filename.startsWith('/')
-            ? video.filename
-            : '/Users/jixiangluo/.memscreen/videos/${video.filename}';
-        final file = File(path);
-        if (await file.exists()) {
-          await file.delete();
-        }
+        await context.read<AppState>().deleteVideoForUi(video.filename);
 
         //
         if (_currentVideo?.filename == video.filename) {
