@@ -42,6 +42,8 @@ class AppState extends ChangeNotifier {
     'mp3',
     'aac',
   ];
+  static const Duration _backendStartupPollInterval = Duration(seconds: 1);
+  static const int _backendStartupPollAttempts = 8;
 
   AppState() {
     _connection = ConnectionService(config: _config);
@@ -194,6 +196,28 @@ class AppState extends ChangeNotifier {
 
   bool get supportsLocalFirstCoreFeatures =>
       useNativeMacOSRecording && useNativeMacOSTracking;
+
+  bool get _usesLocalEmbeddedBackend {
+    final uri = Uri.tryParse(_config.baseUrl);
+    final host = uri?.host.toLowerCase();
+    return host == '127.0.0.1' || host == 'localhost' || host == '::1';
+  }
+
+  ApiConnectionState _connectingState({String? message}) => ApiConnectionState(
+        status: ConnectionStatus.connecting,
+        message: message,
+        health: _connectionState.health,
+        config: _connectionState.config ?? _config,
+      );
+
+  Future<void> _handleConnectedState(ApiConnectionState state) async {
+    _connectionState = state;
+    notifyListeners();
+    _nativeRuntimeBootstrapRequested = false;
+    await refreshPermissionStatus();
+    await _flushPendingNativeImports();
+    await _flushPendingTrackingSessions();
+  }
 
   bool _permissionGranted(String key) {
     final section = _permissionStatus?[key];
@@ -440,28 +464,23 @@ class AppState extends ChangeNotifier {
 
   /// Check connection (e.g. on startup or retry).
   Future<void> checkConnection() async {
-    _connectionState = _connectionState.copyWith(
-      status: ConnectionStatus.connecting,
-    );
+    _connectionState = _connectingState();
     notifyListeners();
     final state = await _connection.check();
-    _connectionState = state;
-    notifyListeners();
     if (state.status == ConnectionStatus.connected) {
-      _nativeRuntimeBootstrapRequested = false;
-      await refreshPermissionStatus();
-      await _flushPendingNativeImports();
-      await _flushPendingTrackingSessions();
+      await _handleConnectedState(state);
     } else {
-      await _ensureNativeBackendBootstrap();
+      _connectionState = state;
+      notifyListeners();
+      if (_usesLocalEmbeddedBackend) {
+        await _ensureNativeBackendBootstrap();
+      }
     }
   }
 
   /// Retry with optional new base URL (replaces config and client).
   Future<void> reconnectWithBaseUrl(String baseUrl) async {
-    _connectionState = _connectionState.copyWith(
-      status: ConnectionStatus.connecting,
-    );
+    _connectionState = _connectingState(message: 'Connecting to backend...');
     notifyListeners();
     final state = await _connection.reconnectWithBaseUrl(baseUrl);
     if (state.config != null) {
@@ -475,15 +494,14 @@ class AppState extends ChangeNotifier {
       _configApi = ConfigApi(_client);
       _modelApi = ModelApi(_client);
     }
-    _connectionState = state;
-    notifyListeners();
     if (state.status == ConnectionStatus.connected) {
-      _nativeRuntimeBootstrapRequested = false;
-      await refreshPermissionStatus();
-      await _flushPendingNativeImports();
-      await _flushPendingTrackingSessions();
+      await _handleConnectedState(state);
     } else {
-      await _ensureNativeBackendBootstrap();
+      _connectionState = state;
+      notifyListeners();
+      if (_usesLocalEmbeddedBackend) {
+        await _ensureNativeBackendBootstrap();
+      }
     }
   }
 
@@ -508,7 +526,11 @@ class AppState extends ChangeNotifier {
     _backendCheckInFlight = true;
     _lastBackendCheckAt = now;
     try {
-      await checkConnection();
+      if (force && _usesLocalEmbeddedBackend && useNativeMacOSRuntime) {
+        await _connectOrBootstrapLocalBackend();
+      } else {
+        await checkConnection();
+      }
     } finally {
       _backendCheckInFlight = false;
     }
@@ -590,8 +612,46 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> _connectOrBootstrapLocalBackend() async {
+    final initialState = await _connection.check();
+    if (initialState.status == ConnectionStatus.connected) {
+      await _handleConnectedState(initialState);
+      return;
+    }
+
+    _connectionState = _connectingState(message: 'Starting local backend...');
+    notifyListeners();
+    await _ensureNativeBackendBootstrap();
+
+    for (var attempt = 0; attempt < _backendStartupPollAttempts; attempt += 1) {
+      if (attempt > 0) {
+        await Future<void>.delayed(_backendStartupPollInterval);
+      }
+      final polledState = await _connection.check();
+      if (polledState.status == ConnectionStatus.connected) {
+        await _handleConnectedState(polledState);
+        return;
+      }
+      if (attempt < _backendStartupPollAttempts - 1) {
+        _connectionState = _connectingState(
+          message: 'Starting local backend...',
+        );
+        notifyListeners();
+      }
+    }
+
+    _connectionState = ApiConnectionState(
+      status: ConnectionStatus.error,
+      message: 'Local backend is still starting. Retry in a few seconds.',
+      config: _config,
+    );
+    notifyListeners();
+  }
+
   Future<void> _ensureNativeBackendBootstrap() async {
-    if (!useNativeMacOSRuntime || _nativeRuntimeBootstrapRequested) {
+    if (!useNativeMacOSRuntime ||
+        !_usesLocalEmbeddedBackend ||
+        _nativeRuntimeBootstrapRequested) {
       return;
     }
     _nativeRuntimeBootstrapRequested = true;

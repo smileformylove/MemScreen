@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../api/chat_api.dart';
 import '../app_state.dart';
+import '../connection/connection_state.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -367,6 +368,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildBackendPlaceholder(BuildContext context) {
     final theme = Theme.of(context);
+    final appState = context.watch<AppState>();
+    final isStarting =
+        appState.connectionState.status == ConnectionStatus.connecting;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -386,10 +390,20 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: () =>
-                  context.read<AppState>().ensureBackendConnection(force: true),
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Start Backend'),
+              onPressed: isStarting
+                  ? null
+                  : () => appState.ensureBackendConnection(force: true),
+              icon: isStarting
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.onPrimary,
+                      ),
+                    )
+                  : const Icon(Icons.play_arrow),
+              label: Text(isStarting ? 'Starting Backend...' : 'Start Backend'),
             ),
           ],
         ),

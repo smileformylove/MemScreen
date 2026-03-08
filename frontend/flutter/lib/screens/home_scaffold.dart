@@ -196,7 +196,7 @@ class _ConnectionBanner extends StatelessWidget {
               Expanded(
                 child: Text(
                   isConnecting
-                      ? 'Connecting to backend...'
+                      ? (state.message ?? 'Connecting to backend...')
                       : (useSoftWarning
                           ? 'Backend features are unavailable. Recording, Videos, and Process still work locally.'
                           : (state.message ?? 'Backend not connected')),

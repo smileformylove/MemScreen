@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../api/api_client.dart';
 import '../api/model_api.dart';
+import '../connection/connection_state.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -479,6 +480,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final theme = Theme.of(context);
 
     if (!appState.isBackendConnected) {
+      final isStarting =
+          appState.connectionState.status == ConnectionStatus.connecting;
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -499,14 +502,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: () async {
-                await appState.ensureBackendConnection(force: true);
-                if (appState.isBackendConnected) {
-                  await _loadModelCatalog(showError: true);
-                }
-              },
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Start Backend'),
+              onPressed: isStarting
+                  ? null
+                  : () async {
+                      await appState.ensureBackendConnection(force: true);
+                      if (appState.isBackendConnected) {
+                        await _loadModelCatalog(showError: true);
+                      }
+                    },
+              icon: isStarting
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.onPrimary,
+                      ),
+                    )
+                  : const Icon(Icons.play_arrow),
+              label: Text(isStarting ? 'Starting Backend...' : 'Start Backend'),
             ),
           ],
         ),
