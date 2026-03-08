@@ -25,6 +25,7 @@ import 'services/native_recording_import_queue.dart';
 import 'services/native_tracking_session_queue.dart';
 import 'services/native_recording_service.dart';
 import 'services/native_runtime_service.dart';
+import 'services/recording_failure_messages.dart';
 import 'services/recording_lifecycle_coordinator.dart';
 import 'services/recording_settings_store.dart';
 import 'services/recording_tracking_coordinator.dart';
@@ -963,23 +964,10 @@ class AppState extends ChangeNotifier {
   }
 
   String _describeNativeRecordingFailure(NativeRecordingStopResult result) {
-    final raw = (result.error ?? '').trim();
-    switch (result.failureKind) {
-      case 'permission_denied':
-        return 'Permission: Screen Recording access is still not active. Reopen MemScreen after allowing access in System Settings.';
-      case 'cancelled':
-        return 'Cancelled: Recording was cancelled before a video file was saved.';
-      case 'empty_output':
-        return 'No file: Recording ended, but the saved file was empty.';
-      case 'no_output':
-        return 'No file: Recording ended without creating a playable video file.';
-      case 'recorder_error':
-        return raw.isNotEmpty
-            ? 'Recorder error: $raw'
-            : 'Recorder error: Native macOS recording failed.';
-      default:
-        return raw.isNotEmpty ? raw : 'Native macOS recording failed.';
-    }
+    return describeNativeRecordingFailure(
+      failureKind: result.failureKind,
+      error: result.error,
+    );
   }
 
   Future<void> _handleFinishedNativeRecording(
