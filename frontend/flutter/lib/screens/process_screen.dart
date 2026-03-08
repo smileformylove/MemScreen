@@ -75,17 +75,35 @@ class _ProcessScreenState extends State<ProcessScreen> {
   TrackingStatus? _trackingStatus;
   bool _loading = true;
   Timer? _trackingPollTimer;
+  AppState? _appState;
+  int _lastProcessRefreshVersion = -1;
 
   @override
   void initState() {
     super.initState();
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _appState = context.read<AppState>();
+      _lastProcessRefreshVersion = _appState!.processRefreshVersion;
+      _appState!.addListener(_onAppStateChanged);
+    });
   }
 
   @override
   void dispose() {
+    _appState?.removeListener(_onAppStateChanged);
     _trackingPollTimer?.cancel();
     super.dispose();
+  }
+
+  void _onAppStateChanged() {
+    if (!mounted || _appState == null) return;
+    final currentVersion = _appState!.processRefreshVersion;
+    if (currentVersion != _lastProcessRefreshVersion) {
+      _lastProcessRefreshVersion = currentVersion;
+      _load();
+    }
   }
 
   Future<void> _load() async {

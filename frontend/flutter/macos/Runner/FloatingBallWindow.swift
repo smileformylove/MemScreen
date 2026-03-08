@@ -145,6 +145,9 @@ class FloatingBallWindow: NSPanel {
     // Callbacks
     var onClick: (() -> Void)?
     var onQuit: (() -> Void)?
+    var onRequestStartRecording: (([String: Any], @escaping (Bool, String?) -> Void) -> Void)?
+    var onRequestStopRecording: ((@escaping (Bool, String?) -> Void) -> Void)?
+    var onRequestToggleTracking: ((@escaping (Bool, String?) -> Void) -> Void)?
 
     init(contentRect: NSRect, flutterChannel: FlutterMethodChannel?, parentWindow: NSWindow?) {
         super.init(
@@ -569,8 +572,20 @@ class FloatingBallWindow: NSPanel {
     private func toggleRecordingFromToolbar() {
         if isRecording {
             toolbarPanel?.showStatus("Status: Stopping recording...", color: NSColor.systemOrange)
-            flutterChannel?.invokeMethod("stopRecording", arguments: nil)
-            collapseToolbar()
+            if let onRequestStopRecording = onRequestStopRecording {
+                onRequestStopRecording { [weak self] ok, errorText in
+                    guard let self = self else { return }
+                    if ok {
+                        self.collapseToolbar()
+                    } else {
+                        let reason = (errorText?.isEmpty == false) ? errorText! : "Unknown error"
+                        self.toolbarPanel?.showStatus("Status: Stop failed (\(reason)).", color: NSColor.systemOrange)
+                    }
+                }
+            } else {
+                flutterChannel?.invokeMethod("stopRecording", arguments: nil)
+                collapseToolbar()
+            }
             return
         }
 
@@ -651,7 +666,17 @@ class FloatingBallWindow: NSPanel {
         } else {
             toolbarPanel?.showStatus("Status: Starting input tracking...", color: NSColor.systemBlue)
         }
-        flutterChannel?.invokeMethod("toggleTracking", arguments: nil)
+        if let onRequestToggleTracking = onRequestToggleTracking {
+            onRequestToggleTracking { [weak self] ok, errorText in
+                guard let self = self else { return }
+                if !ok {
+                    let reason = (errorText?.isEmpty == false) ? errorText! : "Unknown error"
+                    self.toolbarPanel?.showStatus("Status: Tracking failed (\(reason)).", color: NSColor.systemOrange)
+                }
+            }
+        } else {
+            flutterChannel?.invokeMethod("toggleTracking", arguments: nil)
+        }
     }
 
     private func installKeyboardShortcuts() {
@@ -721,6 +746,12 @@ class FloatingBallWindow: NSPanel {
         }
         if let windowTitle = windowTitle, !windowTitle.isEmpty {
             args["windowTitle"] = windowTitle
+        }
+        if let onRequestStartRecording = onRequestStartRecording {
+            onRequestStartRecording(args) { ok, errorText in
+                onResult?(ok, errorText)
+            }
+            return
         }
         guard let channel = flutterChannel else {
             onResult?(false, "Flutter channel unavailable")

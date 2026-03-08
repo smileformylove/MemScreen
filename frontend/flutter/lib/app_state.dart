@@ -113,6 +113,8 @@ class AppState extends ChangeNotifier {
   int get videoRefreshVersion => _videoRefreshVersion;
   int _recordingStatusVersion = 0;
   int get recordingStatusVersion => _recordingStatusVersion;
+  int _processRefreshVersion = 0;
+  int get processRefreshVersion => _processRefreshVersion;
   int _recordingDurationSec = 9999;
   int get recordingDurationSec => _recordingDurationSec;
   double _recordingIntervalSec = 2.0;
@@ -531,6 +533,13 @@ class AppState extends ChangeNotifier {
 
   void requestRecordingStatusRefresh({bool notify = true}) {
     _recordingStatusVersion += 1;
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  void requestProcessRefresh({bool notify = true}) {
+    _processRefreshVersion += 1;
     if (notify) {
       notifyListeners();
     }
@@ -996,6 +1005,49 @@ class AppState extends ChangeNotifier {
           return <String, dynamic>{'ok': true};
         } catch (e) {
           debugPrint('[AppState] Error handling native recording finish: $e');
+          return <String, dynamic>{'ok': false, 'error': '$e'};
+        }
+
+      case 'nativeRecordingStateChanged':
+        final args = call.arguments is Map
+            ? Map<String, dynamic>.from(call.arguments as Map)
+            : const <String, dynamic>{};
+        final isRecording = args['isRecording'] as bool? ?? false;
+        updateFloatingBallState(isRecording);
+        requestRecordingStatusRefresh();
+        return <String, dynamic>{'ok': true};
+
+      case 'nativeTrackingChanged':
+        final args = call.arguments is Map
+            ? Map<String, dynamic>.from(call.arguments as Map)
+            : const <String, dynamic>{};
+        final isTracking = args['isTracking'] as bool? ?? false;
+        updateFloatingBallTracking(isTracking);
+        requestProcessRefresh();
+        return <String, dynamic>{'ok': true};
+
+      case 'nativeTrackingEnded':
+        try {
+          final args = call.arguments is Map
+              ? Map<String, dynamic>.from(call.arguments as Map)
+              : const <String, dynamic>{};
+          if ((args['ok'] as bool? ?? false) == true) {
+            final events = (args['events'] as List? ?? const [])
+                .map((entry) => Map<String, dynamic>.from(entry as Map))
+                .toList();
+            final startTime = args['startTime'] as String? ?? '';
+            final endTime = args['endTime'] as String? ?? startTime;
+            await saveProcessSessionForUi(
+              events: events,
+              startTime: startTime,
+              endTime: endTime,
+            );
+          }
+          updateFloatingBallTracking(false);
+          requestProcessRefresh();
+          return <String, dynamic>{'ok': true};
+        } catch (e) {
+          debugPrint('[AppState] Error handling native tracking finish: $e');
           return <String, dynamic>{'ok': false, 'error': '$e'};
         }
 

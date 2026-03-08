@@ -244,6 +244,19 @@ class AppDelegate: FlutterAppDelegate {
         floatingBall?.onQuit = { [weak self] in
             self?.forceQuit()
         }
+        floatingBall?.onRequestStartRecording = { [weak self] args, completion in
+            self?.handleNativeFloatingBallStartRecording(args: args, completion: completion)
+        }
+        floatingBall?.onRequestStopRecording = { [weak self] completion in
+            self?.handleNativeFloatingBallStopRecording { ok, errorText in
+                completion(ok, errorText)
+            }
+        }
+        floatingBall?.onRequestToggleTracking = { [weak self] completion in
+            self?.handleNativeFloatingBallToggleTracking { ok, errorText in
+                completion(ok, errorText)
+            }
+        }
 
         // Show floating ball above everything
         floatingBall?.orderFront(nil)
@@ -457,6 +470,64 @@ class AppDelegate: FlutterAppDelegate {
         guard let window = findFlutterWindow() else { return }
         if !window.isMiniaturized {
             window.miniaturize(nil)
+        }
+    }
+
+    private func handleNativeFloatingBallStartRecording(
+        args: [String: Any],
+        completion: @escaping (Bool, String?) -> Void
+    ) {
+        let status = nativePermissionManager.status(prompt: false)
+        if let screen = status["screen_recording"] as? [String: Any],
+           (screen["granted"] as? Bool) != true {
+            _ = nativePermissionManager.openSettings(area: "screen_recording")
+            completion(false, "Screen Recording permission is required")
+            return
+        }
+        let result = nativeScreenRecorder.start(arguments: args)
+        let ok = (result["ok"] as? Bool) ?? false
+        if ok {
+            floatingBall?.setRecordingState(true)
+            methodChannel?.invokeMethod("nativeRecordingStateChanged", arguments: ["isRecording": true])
+            completion(true, nil)
+        } else {
+            completion(false, result["error"] as? String)
+        }
+    }
+
+    private func handleNativeFloatingBallStopRecording(
+        completion: @escaping (Bool, String?) -> Void
+    ) {
+        let result = nativeScreenRecorder.stop()
+        floatingBall?.setRecordingState(false)
+        methodChannel?.invokeMethod("nativeRecordingEnded", arguments: result)
+        methodChannel?.invokeMethod("nativeRecordingStateChanged", arguments: ["isRecording": false])
+        completion((result["ok"] as? Bool) ?? false, result["error"] as? String)
+    }
+
+    private func handleNativeFloatingBallToggleTracking(
+        completion: @escaping (Bool, String?) -> Void
+    ) {
+        let status = nativeInputTracker.status()
+        let isTracking = (status["isTracking"] as? Bool) ?? false
+        if isTracking {
+            _ = nativeInputTracker.stop()
+            floatingBall?.setTrackingState(false)
+            let payload = nativeInputTracker.saveSession()
+            methodChannel?.invokeMethod("nativeTrackingEnded", arguments: payload)
+            methodChannel?.invokeMethod("nativeTrackingStateChanged", arguments: ["isTracking": false])
+            completion(true, nil)
+            return
+        }
+
+        let startResult = nativeInputTracker.start()
+        let ok = (startResult["ok"] as? Bool) ?? false
+        if ok {
+            floatingBall?.setTrackingState(true)
+            methodChannel?.invokeMethod("nativeTrackingStateChanged", arguments: ["isTracking": true])
+            completion(true, nil)
+        } else {
+            completion(false, startResult["error"] as? String)
         }
     }
 
