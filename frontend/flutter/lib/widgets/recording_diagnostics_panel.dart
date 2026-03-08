@@ -365,6 +365,7 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
     required this.data,
     this.headerActions = const <RecordingDiagnosticsHeaderAction>[],
     this.quickActions = const <RecordingDiagnosticsQuickAction>[],
+    this.compactMode = false,
     this.showPermissionShortcut = false,
     this.onOpenLastOutput,
     this.onRevealLastOutput,
@@ -375,6 +376,7 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
   final RecordingDiagnosticsData data;
   final List<RecordingDiagnosticsHeaderAction> headerActions;
   final List<RecordingDiagnosticsQuickAction> quickActions;
+  final bool compactMode;
   final bool showPermissionShortcut;
   final VoidCallback? onOpenLastOutput;
   final VoidCallback? onRevealLastOutput;
@@ -385,6 +387,7 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
     final theme = Theme.of(context);
     final installOk = data.installStatus == 'Applications';
     final lastOutputAvailable = (data.lastOutputPath ?? '').trim().isNotEmpty;
+    final showFullMetadata = !compactMode;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -410,13 +413,14 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
                 ),
             ],
           ),
-          _diagnosticRow(
-            context,
-            icon: Icons.commit,
-            label: 'Build',
-            value: data.buildLabel,
-          ),
-          if ((data.appPath ?? '').isNotEmpty)
+          if (showFullMetadata)
+            _diagnosticRow(
+              context,
+              icon: Icons.commit,
+              label: 'Build',
+              value: data.buildLabel,
+            ),
+          if (showFullMetadata && (data.appPath ?? '').isNotEmpty)
             _diagnosticRow(
               context,
               icon: Icons.apps_outlined,
@@ -438,7 +442,7 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
               value: banner.value,
               level: banner.level,
             ),
-          if ((data.engine ?? '').isNotEmpty)
+          if (showFullMetadata && (data.engine ?? '').isNotEmpty)
             _diagnosticRow(
               context,
               icon: Icons.videocam_outlined,
@@ -454,25 +458,27 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
                 ? Colors.green
                 : theme.colorScheme.error,
           ),
-          if ((data.target ?? '').isNotEmpty)
+          if (showFullMetadata && (data.target ?? '').isNotEmpty)
             _diagnosticRow(
               context,
               icon: Icons.filter_center_focus_outlined,
               label: 'Target',
               value: data.target!,
             ),
-          _diagnosticRow(
-            context,
-            icon: Icons.folder_open_outlined,
-            label: 'Output',
-            value: data.outputDir,
-          ),
-          _diagnosticRow(
-            context,
-            icon: Icons.receipt_long_outlined,
-            label: 'Logs',
-            value: data.logsDir,
-          ),
+          if (showFullMetadata)
+            _diagnosticRow(
+              context,
+              icon: Icons.folder_open_outlined,
+              label: 'Output',
+              value: data.outputDir,
+            ),
+          if (showFullMetadata)
+            _diagnosticRow(
+              context,
+              icon: Icons.receipt_long_outlined,
+              label: 'Logs',
+              value: data.logsDir,
+            ),
           if ((data.lastFailureKind ?? '').isNotEmpty)
             _diagnosticRow(
               context,

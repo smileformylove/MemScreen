@@ -421,6 +421,8 @@ void main() {
     expect(find.text('Copy brief'), findsWidgets);
     expect(find.text('Copy full'), findsWidgets);
     expect(find.text('Refresh'), findsOneWidget);
+    expect(find.byIcon(Icons.commit), findsNothing);
+    expect(find.byIcon(Icons.videocam_outlined), findsNothing);
     expect(find.byIcon(Icons.install_desktop_outlined), findsWidgets);
     expect(find.byIcon(Icons.bug_report_outlined), findsWidgets);
   });

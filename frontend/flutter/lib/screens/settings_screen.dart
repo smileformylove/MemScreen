@@ -415,6 +415,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return RecordingDiagnosticsPanel(
       title: 'Recording diagnostics',
       data: diagnostics,
+      compactMode: true,
       headerActions: [
         RecordingDiagnosticsHeaderAction(
           label: 'Copy brief',
