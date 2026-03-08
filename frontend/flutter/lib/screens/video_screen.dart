@@ -661,6 +661,7 @@ class _VideoScreenState extends State<VideoScreen> {
                 _buildOrganizationBar(),
                 _buildSearchBar(),
                 _buildTagFilterBar(),
+                _buildLibraryModeBanner(),
                 Expanded(
                   child: _currentVideo != null
                       ? _buildVideoPlayer()
@@ -735,6 +736,51 @@ class _VideoScreenState extends State<VideoScreen> {
     );
   }
 
+  Widget _buildLibraryModeBanner() {
+    if (!_usingLocalFallback) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.offline_bolt_outlined,
+            size: 18,
+            color: theme.colorScheme.onSecondaryContainer,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Local library mode',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSecondaryContainer,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Showing locally cached videos only. Playback and delete still work; reanalysis needs the backend.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSecondaryContainer,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
@@ -798,7 +844,7 @@ class _VideoScreenState extends State<VideoScreen> {
     }
 
     return Container(
-      height: 34,
+      height: 52,
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
         border: Border(
@@ -1151,6 +1197,7 @@ class _VideoScreenState extends State<VideoScreen> {
     final isPlaying = _currentVideo?.filename == v.filename;
     final isReanalyzing = _reanalyzingFiles.contains(v.filename);
     final statusLabel = _analysisStatusLabel(v);
+    final canReanalyze = !_usingLocalFallback && !isReanalyzing;
     return Container(
       decoration: BoxDecoration(
         color: isPlaying
@@ -1219,10 +1266,18 @@ class _VideoScreenState extends State<VideoScreen> {
                         color: theme.colorScheme.primary,
                       ),
                     )
-                  : Icon(Icons.auto_fix_high, color: theme.colorScheme.primary),
-              onPressed: isReanalyzing ? null : () => _reanalyzeVideo(v),
-              tooltip:
-                  isReanalyzing ? 'Reanalyzing...' : 'Reanalyze content tags',
+                  : Icon(
+                      Icons.auto_fix_high,
+                      color: canReanalyze
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+              onPressed: canReanalyze ? () => _reanalyzeVideo(v) : null,
+              tooltip: isReanalyzing
+                  ? 'Reanalyzing...'
+                  : _usingLocalFallback
+                      ? 'Reanalysis needs backend'
+                      : 'Reanalyze content tags',
             ),
             IconButton(
               icon: Icon(
