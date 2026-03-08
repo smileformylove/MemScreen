@@ -171,11 +171,12 @@ async def recording_screens():
 @router.post("/import")
 async def recording_import(body: RecordingImportBody):
     """Import a recording file created natively into the local video catalog."""
-    presenter = deps.get_recording_presenter()
-    if not presenter:
-        raise HTTPException(status_code=503, detail="Recording not available")
+    from memscreen.config import get_config
+    from memscreen.services.recording_import import RecordingImportService
+
+    service = RecordingImportService(str(get_config().db_path))
     result = await run_in_threadpool(
-        presenter.import_recording_file,
+        service.import_file,
         body.filename,
         duration_sec=body.duration_sec,
         recording_mode=body.mode,
