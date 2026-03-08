@@ -6,6 +6,7 @@ import 'package:video_player/video_player.dart';
 
 import '../api/video_api.dart';
 import '../app_state.dart';
+import '../services/local_video_catalog.dart';
 
 class VideoScreen extends StatefulWidget {
   const VideoScreen({super.key});
@@ -26,6 +27,8 @@ class _VideoScreenState extends State<VideoScreen> {
   bool _loadInFlight = false;
   VideoPlayerController? _controller;
   VideoItem? _currentVideo;
+  final LocalVideoCatalog _localCatalog = LocalVideoCatalog();
+  bool _usingLocalFallback = false;
 
   String _positionLabel = '0:00';
   double _sliderValue = 0.0;
@@ -158,12 +161,20 @@ class _VideoScreenState extends State<VideoScreen> {
     final previousLatest = _latestTimelineVideoFilename;
 
     try {
-      final list = await context.read<AppState>().videoApi.getList();
+      List<VideoItem> list;
+      var usingLocalFallback = false;
+      try {
+        list = await context.read<AppState>().videoApi.getList();
+      } catch (_) {
+        list = await _localCatalog.list();
+        usingLocalFallback = true;
+      }
       final timelineSorted = _sortedByTimestampAscending(list);
       final latestFilename =
           timelineSorted.isNotEmpty ? timelineSorted.last.filename : null;
       if (mounted) {
-        final listChanged = !_isSameVideoList(_videos, list);
+        final listChanged = !_isSameVideoList(_videos, list) ||
+            _usingLocalFallback != usingLocalFallback;
         final latestChanged = previousLatest != latestFilename;
         if (listChanged ||
             latestChanged ||
@@ -171,6 +182,7 @@ class _VideoScreenState extends State<VideoScreen> {
             _latestTimelineVideoFilename == null) {
           setState(() {
             _videos = list;
+            _usingLocalFallback = usingLocalFallback;
             _latestTimelineVideoFilename = latestFilename;
             _loading = false;
           });
@@ -523,10 +535,13 @@ class _VideoScreenState extends State<VideoScreen> {
     var path = v.filename.startsWith('/')
         ? v.filename
         : '/Users/jixiangluo/.memscreen/videos/${v.filename}';
-    try {
-      path = await context.read<AppState>().videoApi.resolvePlayablePath(path);
-    } catch (_) {
-      // Fallback to original source file when playable-path resolution fails.
+    if (!_usingLocalFallback) {
+      try {
+        path =
+            await context.read<AppState>().videoApi.resolvePlayablePath(path);
+      } catch (_) {
+        // Fallback to original source file when playable-path resolution fails.
+      }
     }
     final file = File(path);
 
@@ -566,6 +581,16 @@ class _VideoScreenState extends State<VideoScreen> {
   }
 
   Future<void> _reanalyzeVideo(VideoItem v) async {
+    if (_usingLocalFallback) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Video analysis requires backend connection.'),
+          ),
+        );
+      }
+      return;
+    }
     if (_reanalyzingFiles.contains(v.filename)) return;
     setState(() => _reanalyzingFiles.add(v.filename));
     try {
