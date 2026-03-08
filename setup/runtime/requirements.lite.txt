@@ -14,5 +14,3 @@ psutil>=6.0.0
 # macOS multi-screen + window APIs
 
 # Optional but recommended: audio/video merge path for recordings
-moviepy>=1.0.3
-imageio-ffmpeg>=0.6.0

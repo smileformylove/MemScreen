@@ -17,6 +17,17 @@ class VideoApi {
   }
 
   Future<String> resolvePlayablePath(String filename) async {
+    var path = filename.trim();
+    if (path.startsWith('~')) {
+      final home = Platform.environment['HOME'] ?? '';
+      path = path.replaceFirst('~', home);
+    }
+    final lower = path.toLowerCase();
+    if ((lower.endsWith('.mp4') || lower.endsWith('.mov')) &&
+        File(path).existsSync()) {
+      return path;
+    }
+
     final m =
         await client.post('/video/playable', body: {'filename': filename});
     final resolved = m['filename'] as String?;
