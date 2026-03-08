@@ -123,6 +123,12 @@ class AppState extends ChangeNotifier {
   int get processRefreshVersion => _processRefreshVersion;
   int _chatModelRefreshVersion = 0;
   int get chatModelRefreshVersion => _chatModelRefreshVersion;
+  String? _lastRecordingSmokeCheckAt;
+  String? get lastRecordingSmokeCheckAt => _lastRecordingSmokeCheckAt;
+  String? _lastRecordingSmokeCheckSummary;
+  String? get lastRecordingSmokeCheckSummary => _lastRecordingSmokeCheckSummary;
+  bool _recordingSmokeCheckInProgress = false;
+  bool get recordingSmokeCheckInProgress => _recordingSmokeCheckInProgress;
   LocalModelCatalog? _cachedLocalModelCatalog;
   DateTime? _cachedLocalModelCatalogAt;
   int _recordingDurationSec = 9999;
@@ -736,6 +742,20 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  void markRecordingSmokeCheckStarted() {
+    _recordingSmokeCheckInProgress = true;
+    _lastRecordingSmokeCheckAt = DateTime.now().toIso8601String();
+    _lastRecordingSmokeCheckSummary = 'Running 2-second smoke check...';
+    requestRecordingStatusRefresh();
+  }
+
+  void markRecordingSmokeCheckFinished({required String summary}) {
+    _recordingSmokeCheckInProgress = false;
+    _lastRecordingSmokeCheckAt = DateTime.now().toIso8601String();
+    _lastRecordingSmokeCheckSummary = summary;
+    requestRecordingStatusRefresh();
+  }
+
   void requestChatModelRefresh({
     bool notify = true,
     bool invalidateCache = true,
@@ -913,8 +933,11 @@ class AppState extends ChangeNotifier {
       _recordingTrackingState.pendingRecordingNotice = result.notice;
     }
     if (!result.ok) {
-      _recordingTrackingState.pendingRecordingNotice =
-          _describeNativeRecordingFailure(result);
+      final failureSummary = _describeNativeRecordingFailure(result);
+      _recordingTrackingState.pendingRecordingNotice = failureSummary;
+      if (_recordingSmokeCheckInProgress) {
+        markRecordingSmokeCheckFinished(summary: failureSummary);
+      }
       return;
     }
     final filename = result.filename;
@@ -937,6 +960,12 @@ class AppState extends ChangeNotifier {
         'mode': result.mode,
         'audio_source': result.audioSourceUsed,
       };
+      if (_recordingSmokeCheckInProgress) {
+        markRecordingSmokeCheckFinished(
+          summary:
+              'Passed: 2-second recording created a playable file successfully.',
+        );
+      }
       try {
         await _client.post('/recording/import', body: payload);
         requestVideoRefresh();
@@ -945,6 +974,12 @@ class AppState extends ChangeNotifier {
         await _nativeRecordingImportQueue?.enqueue(payload);
         _recordingTrackingState.pendingRecordingNotice =
             'Import warning: Recording saved locally, but adding it to Videos failed. It will retry after backend reconnects.';
+        if (_recordingSmokeCheckInProgress) {
+          markRecordingSmokeCheckFinished(
+            summary:
+                'Warning: Smoke check recorded a file, but importing it into Videos failed. See logs for details.',
+          );
+        }
       }
     }
   }

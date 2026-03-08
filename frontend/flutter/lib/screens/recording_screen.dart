@@ -348,15 +348,16 @@ class _RecordingScreenState extends State<RecordingScreen> {
     }
     final appState = context.read<AppState>();
     _clearRecordingNotice();
+    appState.markRecordingSmokeCheckStarted();
     setState(() => _runningSmokeCheck = true);
     try {
       if (Theme.of(context).platform == TargetPlatform.macOS &&
           !appState.hasScreenRecordingPermission) {
         await appState.promptScreenRecordingPermissionFlow();
-        _showRecordingNotice(
-          'Permission: Screen Recording is still not active, so the smoke check cannot start.',
-          showSnackBar: true,
-        );
+        final summary =
+            'Permission: Screen Recording is still not active, so the smoke check cannot start.';
+        appState.markRecordingSmokeCheckFinished(summary: summary);
+        _showRecordingNotice(summary, showSnackBar: true);
         return;
       }
 
@@ -377,10 +378,10 @@ class _RecordingScreenState extends State<RecordingScreen> {
       await _load();
     } catch (e) {
       if (mounted) {
-        _showRecordingNotice(
-          'Smoke check failed to start: ${_friendlyRecordingStartError(e)}',
-          showSnackBar: true,
-        );
+        final summary =
+            'Smoke check failed to start: ${_friendlyRecordingStartError(e)}';
+        appState.markRecordingSmokeCheckFinished(summary: summary);
+        _showRecordingNotice(summary, showSnackBar: true);
       }
     } finally {
       if (mounted) {

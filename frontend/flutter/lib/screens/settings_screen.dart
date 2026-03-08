@@ -362,6 +362,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       lastFailureMessage: status?.lastFailureMessage,
       lastExitStatus: status?.lastTerminationStatus,
       lastOutputPath: status?.lastOutputPath,
+      smokeCheckAt: appState.lastRecordingSmokeCheckAt,
+      smokeCheckSummary: appState.lastRecordingSmokeCheckSummary,
     );
   }
 

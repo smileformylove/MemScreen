@@ -20,6 +20,8 @@ class RecordingDiagnosticsData {
     this.lastExitStatus,
     this.lastOutputPath,
     this.lastOutputFileSize,
+    this.smokeCheckAt,
+    this.smokeCheckSummary,
     this.advice,
   });
 
@@ -39,6 +41,8 @@ class RecordingDiagnosticsData {
   final int? lastExitStatus;
   final String? lastOutputPath;
   final int? lastOutputFileSize;
+  final String? smokeCheckAt;
+  final String? smokeCheckSummary;
   final String? advice;
 }
 
@@ -104,6 +108,12 @@ String buildRecordingDiagnosticsReport(RecordingDiagnosticsData data) {
   }
   if ((data.lastResult ?? '').isNotEmpty) {
     lines.add('last_notice: ${data.lastResult!}');
+  }
+  if ((data.smokeCheckAt ?? '').isNotEmpty) {
+    lines.add('last_smoke_check_at: ${data.smokeCheckAt!}');
+  }
+  if ((data.smokeCheckSummary ?? '').isNotEmpty) {
+    lines.add('last_smoke_check_summary: ${data.smokeCheckSummary!}');
   }
   if ((data.advice ?? '').isNotEmpty) {
     lines.add('advice: ${data.advice!}');
@@ -257,6 +267,15 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
               icon: Icons.insert_drive_file_outlined,
               label: 'Last output',
               value: data.lastOutputPath!,
+            ),
+          if ((data.smokeCheckSummary ?? '').isNotEmpty)
+            _diagnosticRow(
+              context,
+              icon: Icons.science_outlined,
+              label: 'Smoke check',
+              value: data.smokeCheckAt == null
+                  ? data.smokeCheckSummary!
+                  : '${data.smokeCheckSummary!} · ${data.smokeCheckAt!}',
             ),
           const SizedBox(height: 8),
           Wrap(

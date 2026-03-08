@@ -84,6 +84,8 @@ RecordingDiagnosticsData buildRecordingDiagnosticsData({
   int? lastExitStatus,
   String? lastOutputPath,
   int? lastOutputFileSize,
+  String? smokeCheckAt,
+  String? smokeCheckSummary,
 }) {
   return RecordingDiagnosticsData(
     buildLabel: '${BuildInfo.commit} · ${BuildInfo.buildChannel}',
@@ -102,6 +104,8 @@ RecordingDiagnosticsData buildRecordingDiagnosticsData({
     lastExitStatus: lastExitStatus,
     lastOutputPath: lastOutputPath,
     lastOutputFileSize: lastOutputFileSize,
+    smokeCheckAt: smokeCheckAt,
+    smokeCheckSummary: smokeCheckSummary,
     advice: recordingDiagnosticsAdvice(
       screenRecordingGranted: screenRecordingGranted,
       lastFailureKind: lastFailureKind,
