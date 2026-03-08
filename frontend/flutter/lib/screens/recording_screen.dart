@@ -911,61 +911,10 @@ class _RecordingScreenState extends State<RecordingScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildDiagnosticsCard(appState),
-                if ((_recordingNotice ?? '').isNotEmpty) ...[
-                  Builder(builder: (context) {
-                    final colorScheme = Theme.of(context).colorScheme;
-                    final bgColor = switch (_recordingNoticeLevel) {
-                      _RecordingNoticeLevel.error => colorScheme.errorContainer,
-                      _RecordingNoticeLevel.warning =>
-                        colorScheme.tertiaryContainer,
-                      _RecordingNoticeLevel.info =>
-                        colorScheme.surfaceContainerHighest,
-                    };
-                    final fgColor = switch (_recordingNoticeLevel) {
-                      _RecordingNoticeLevel.error =>
-                        colorScheme.onErrorContainer,
-                      _RecordingNoticeLevel.warning =>
-                        colorScheme.onTertiaryContainer,
-                      _RecordingNoticeLevel.info => colorScheme.onSurface,
-                    };
-                    final icon = switch (_recordingNoticeLevel) {
-                      _RecordingNoticeLevel.error => Icons.error_outline,
-                      _RecordingNoticeLevel.warning =>
-                        Icons.warning_amber_outlined,
-                      _RecordingNoticeLevel.info => Icons.info_outline,
-                    };
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: bgColor,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(icon, color: fgColor),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              _recordingNotice!,
-                              style: TextStyle(color: fgColor),
-                            ),
-                          ),
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            onPressed: _clearRecordingNotice,
-                            icon: Icon(Icons.close, color: fgColor),
-                            tooltip: 'Dismiss',
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                ],
                 ..._buildModeSelection(),
                 ..._buildActionBar(),
+                const SizedBox(height: 12),
+                _buildDiagnosticsCard(appState),
               ],
             ),
           ),
