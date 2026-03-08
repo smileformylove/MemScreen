@@ -309,6 +309,35 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> saveProcessSessionForUi({
+    required List<Map<String, dynamic>> events,
+    required String startTime,
+    required String endTime,
+  }) async {
+    var savedRemote = false;
+    if (isBackendConnected) {
+      try {
+        await _processApi.saveSession(
+          events: events,
+          startTime: startTime,
+          endTime: endTime,
+        );
+        savedRemote = true;
+      } catch (_) {}
+    }
+
+    await _localProcessSessionStore?.appendSession(
+      startTime: startTime,
+      endTime: endTime,
+      events: events,
+    );
+
+    if (savedRemote) {
+      final remote = await _processApi.getSessions(limit: 50);
+      await _localProcessSessionStore?.reconcileWithRemote(remote);
+    }
+  }
+
   Future<int> deleteProcessSessionForUi(int sessionId) async {
     var deleted = 0;
     try {

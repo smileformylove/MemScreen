@@ -546,10 +546,10 @@ class _SaveSessionSheetState extends State<_SaveSessionSheet> {
           const SnackBar(content: Text('Please fill in start and end time')));
       return;
     }
-    final api = context.read<AppState>().processApi;
+    final appState = context.read<AppState>();
     final eventsJson = _events.map((e) => e.toJson()).toList();
     try {
-      await api.saveSession(
+      await appState.saveProcessSessionForUi(
         events: eventsJson,
         startTime: startTime,
         endTime: endTime,
