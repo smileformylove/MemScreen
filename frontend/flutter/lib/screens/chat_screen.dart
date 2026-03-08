@@ -8,13 +8,7 @@ import '../api/chat_api.dart';
 import '../api/model_api.dart';
 import '../app_state.dart';
 import '../connection/connection_state.dart';
-
-class _ChatModelGroup {
-  const _ChatModelGroup(this.label, this.models);
-
-  final String label;
-  final List<String> models;
-}
+import '../services/model_catalog_groups.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -221,121 +215,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   LocalModelEntry? _modelDetailsFor(String modelName) {
-    return _availableModelDetails[modelName];
-  }
-
-  double _modelSizeScore(String modelName) {
-    final match =
-        RegExp(r'(\d+(?:\.\d+)?)b', caseSensitive: false).firstMatch(modelName);
-    return double.tryParse(match?.group(1) ?? '') ?? 0.0;
-  }
-
-  bool _isVisionCapableModel(String modelName) {
-    final details = _modelDetailsFor(modelName);
-    if (details != null) {
-      return details.supportsVision;
-    }
-    final normalized = modelName.toLowerCase();
-    return normalized.startsWith('qwen3.5') ||
-        normalized.contains('vl') ||
-        normalized.contains('vision');
-  }
-
-  bool _isFastModel(String modelName) {
-    final details = _modelDetailsFor(modelName);
-    if (details != null) {
-      return details.recommendedUse == 'ultra_light' ||
-          details.recommendedUse == 'fast';
-    }
-    final normalized = modelName.toLowerCase();
-    final size = _modelSizeScore(normalized);
-    return normalized.contains('0.8b') ||
-        normalized.contains('1.7b') ||
-        normalized.contains(':2b') ||
-        (size > 0 && size <= 2.1);
-  }
-
-  int _chatModelPreferenceScore(String modelName) {
-    final details = _modelDetailsFor(modelName);
-    final normalized = modelName.toLowerCase();
-    final size = (_modelSizeScore(normalized) * 10).round();
-    if (details != null) {
-      switch (details.recommendedUse) {
-        case 'advanced':
-          return 500 + size;
-        case 'balanced':
-          return 450 + size;
-        case 'fast':
-          return 420 + size;
-        case 'ultra_light':
-          return 390 + size;
-        case 'vision_fallback':
-          return 320 + size;
-        default:
-          break;
-      }
-    }
-    if (normalized.startsWith('qwen3.5:9b')) return 500 + size;
-    if (normalized.startsWith('qwen3.5:4b')) return 450 + size;
-    if (normalized.startsWith('qwen3.5:2b')) return 420 + size;
-    if (normalized.startsWith('qwen3.5:0.8b')) return 390 + size;
-    if (normalized.startsWith('qwen3-vl')) return 320 + size;
-    if (normalized.startsWith('qwen3:')) return 280 + size;
-    if (normalized.startsWith('qwen2.5vl')) return 240 + size;
-    return size;
-  }
-
-  List<String> _sortedChatModels() {
-    final models = List<String>.from(_availableModels);
-    models.sort((a, b) {
-      final scoreDiff =
-          _chatModelPreferenceScore(b) - _chatModelPreferenceScore(a);
-      if (scoreDiff != 0) {
-        return scoreDiff;
-      }
-      return a.compareTo(b);
-    });
-    return models;
-  }
-
-  List<_ChatModelGroup> _buildChatModelGroups() {
-    final sorted = _sortedChatModels();
-    final recommended = <String>[];
-    final fast = <String>[];
-    final vision = <String>[];
-    final others = <String>[];
-
-    for (final model in sorted) {
-      final details = _modelDetailsFor(model);
-      final recommendedUse = details?.recommendedUse ?? 'general';
-      if (details?.recommendedChatDefault == true ||
-          recommendedUse == 'balanced' ||
-          recommendedUse == 'advanced') {
-        recommended.add(model);
-      } else if (_isFastModel(model)) {
-        fast.add(model);
-      } else if (_isVisionCapableModel(model)) {
-        vision.add(model);
-      } else {
-        others.add(model);
-      }
-    }
-
-    if (recommended.isEmpty && sorted.isNotEmpty) {
-      recommended.add(sorted.first);
-      fast.remove(sorted.first);
-      vision.remove(sorted.first);
-      others.remove(sorted.first);
-    }
-
-    final groups = <_ChatModelGroup>[];
-    if (recommended.isNotEmpty)
-      groups.add(_ChatModelGroup('Recommended', recommended));
-    if (fast.isNotEmpty) groups.add(_ChatModelGroup('Fast / Light', fast));
-    if (vision.isNotEmpty)
-      groups.add(_ChatModelGroup('Vision / Multimodal', vision));
-    if (others.isNotEmpty) groups.add(_ChatModelGroup('Other', others));
-    return groups;
+    return resolveModelDetails(modelName, _availableModelDetails);
   }
 
   Future<void> _openModelSheet() async {
@@ -349,7 +229,8 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
-    final groups = _buildChatModelGroups();
+    final groups =
+        buildChatModelGroups(_availableModels, _availableModelDetails);
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -403,24 +284,10 @@ class _ChatScreenState extends State<ChatScreen> {
                         : const Icon(Icons.smart_toy_outlined),
                     title: Text(model),
                     subtitle: Text(
-                      (() {
-                        final details = _modelDetailsFor(model);
-                        if (details != null) {
-                          final tags = <String>[
-                            if ((details.sizeLabel ?? '').isNotEmpty)
-                              details.sizeLabel!,
-                            if (details.supportsVision) 'Vision',
-                            if (details.recommendedChatDefault) 'Recommended',
-                            details.recommendedUse.replaceAll('_', ' '),
-                          ];
-                          return tags.join(' · ');
-                        }
-                        return _isVisionCapableModel(model)
-                            ? 'Supports multimodal prompts'
-                            : (_isFastModel(model)
-                                ? 'Lower latency option'
-                                : 'General chat model');
-                      })(),
+                      describeChatModel(
+                        model,
+                        details: _modelDetailsFor(model),
+                      ),
                     ),
                     onTap: () async {
                       Navigator.of(sheetContext).pop();

@@ -6,13 +6,7 @@ import '../app_state.dart';
 import '../api/api_client.dart';
 import '../api/model_api.dart';
 import '../connection/connection_state.dart';
-
-class _SettingsModelGroup {
-  const _SettingsModelGroup(this.label, this.entries);
-
-  final String label;
-  final List<LocalModelEntry> entries;
-}
+import '../services/model_catalog_groups.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -185,25 +179,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  String _recommendedUseLabel(LocalModelEntry entry) {
-    switch (entry.recommendedUse) {
-      case 'ultra_light':
-        return 'Ultra-light';
-      case 'fast':
-        return 'Fast';
-      case 'balanced':
-        return 'Balanced';
-      case 'advanced':
-        return 'Advanced';
-      case 'vision_fallback':
-        return 'Vision';
-      case 'embedding':
-        return 'Embedding';
-      default:
-        return 'General';
-    }
-  }
-
   bool _canUseModelForChat(LocalModelCatalog? catalog, LocalModelEntry entry) {
     final available = catalog?.availableChatModels ?? const <String>[];
     if (available.isNotEmpty) {
@@ -236,92 +211,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return null;
   }
 
-  int _modelPriorityScore(LocalModelEntry entry) {
-    switch (entry.recommendedUse) {
-      case 'advanced':
-        return 500;
-      case 'balanced':
-        return 450;
-      case 'fast':
-        return 400;
-      case 'ultra_light':
-        return 350;
-      case 'vision_fallback':
-        return 300;
-      case 'general':
-        return 200;
-      case 'embedding':
-        return 100;
-      default:
-        return 0;
-    }
-  }
-
-  List<LocalModelEntry> _sortedModelEntries(List<LocalModelEntry> entries) {
-    final out = List<LocalModelEntry>.from(entries);
-    out.sort((a, b) {
-      final priority = _modelPriorityScore(b) - _modelPriorityScore(a);
-      if (priority != 0) {
-        return priority;
-      }
-      final aSize =
-          double.tryParse((a.sizeLabel ?? '').replaceAll('b', '')) ?? 0;
-      final bSize =
-          double.tryParse((b.sizeLabel ?? '').replaceAll('b', '')) ?? 0;
-      final sizeCompare = bSize.compareTo(aSize);
-      if (sizeCompare != 0) {
-        return sizeCompare;
-      }
-      return a.name.compareTo(b.name);
-    });
-    return out;
-  }
-
-  List<_SettingsModelGroup> _buildModelGroups(List<LocalModelEntry> entries) {
-    final sorted = _sortedModelEntries(entries);
-    final recommended = <LocalModelEntry>[];
-    final fast = <LocalModelEntry>[];
-    final vision = <LocalModelEntry>[];
-    final other = <LocalModelEntry>[];
-
-    for (final entry in sorted) {
-      if (entry.recommendedChatDefault ||
-          entry.recommendedUse == 'balanced' ||
-          entry.recommendedUse == 'advanced') {
-        recommended.add(entry);
-      } else if (entry.recommendedUse == 'fast' ||
-          entry.recommendedUse == 'ultra_light') {
-        fast.add(entry);
-      } else if (entry.supportsVision) {
-        vision.add(entry);
-      } else {
-        other.add(entry);
-      }
-    }
-
-    if (recommended.isEmpty && sorted.isNotEmpty) {
-      recommended.add(sorted.first);
-      fast.remove(sorted.first);
-      vision.remove(sorted.first);
-      other.remove(sorted.first);
-    }
-
-    final groups = <_SettingsModelGroup>[];
-    if (recommended.isNotEmpty) {
-      groups.add(_SettingsModelGroup('Recommended', recommended));
-    }
-    if (fast.isNotEmpty) {
-      groups.add(_SettingsModelGroup('Fast / Light', fast));
-    }
-    if (vision.isNotEmpty) {
-      groups.add(_SettingsModelGroup('Vision / Multimodal', vision));
-    }
-    if (other.isNotEmpty) {
-      groups.add(_SettingsModelGroup('Other', other));
-    }
-    return groups;
-  }
-
   Future<void> _setChatModel(LocalModelEntry entry) async {
     if (_switchingChatModelName != null) return;
     setState(() => _switchingChatModelName = entry.name);
@@ -332,8 +221,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content:
-                Text('Chat model set to ${entry.installedName ?? entry.name}')),
+          content:
+              Text('Chat model set to ${entry.installedName ?? entry.name}'),
+        ),
       );
       await _loadModelCatalog();
     } catch (e) {
@@ -374,9 +264,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       if (mounted) {
         final msg = e is ApiException ? e.message : e.toString();
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Download failed: $msg')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Download failed: $msg')),
+        );
       }
     } finally {
       if (mounted) {
@@ -884,7 +774,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
           if (models.isNotEmpty) ...[
             const SizedBox(height: 8),
-            for (final group in _buildModelGroups(models)) ...[
+            for (final group in buildCatalogModelGroups(models)) ...[
               Padding(
                 padding: const EdgeInsets.only(top: 8, bottom: 6),
                 child: Align(
@@ -1016,7 +906,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   if ((entry.sizeLabel ?? '').isNotEmpty)
                     _modelTag(theme, entry.sizeLabel!),
-                  _modelTag(theme, _recommendedUseLabel(entry)),
+                  _modelTag(theme, recommendedUseLabel(entry)),
                   if (entry.supportsVision) _modelTag(theme, 'Vision'),
                   if (entry.recommendedChatDefault)
                     _modelTag(theme, 'Recommended'),
