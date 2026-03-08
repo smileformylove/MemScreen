@@ -840,6 +840,13 @@ class _RecordingScreenState extends State<RecordingScreen> {
             label: 'Build',
             value: '${BuildInfo.commit} · ${BuildInfo.buildChannel}',
           ),
+          if ((BuildInfo.detectAppBundlePath() ?? '').isNotEmpty)
+            _buildDiagnosticRow(
+              context,
+              icon: Icons.apps_outlined,
+              label: 'App Path',
+              value: BuildInfo.detectAppBundlePath()!,
+            ),
           _buildDiagnosticRow(
             context,
             icon: Icons.videocam_outlined,
