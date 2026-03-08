@@ -171,9 +171,19 @@ final class NativeScreenRecorder {
         }
 
         let ok = fileExists && fileSize > 0
+        let failureKind = ok
+            ? nil
+            : Self.determineFailureKind(
+                terminationStatus: terminationStatus,
+                stderrText: stderrText,
+                stdoutText: stdoutText,
+                fileExists: fileExists,
+                fileSize: fileSize
+            )
         var errorText: String? = nil
         if !ok {
             errorText = Self.inferRecordingFailure(
+                failureKind: failureKind,
                 terminationStatus: terminationStatus,
                 stderrText: stderrText,
                 stdoutText: stdoutText,
@@ -189,6 +199,7 @@ final class NativeScreenRecorder {
             "audioSourceUsed": audioSourceUsed,
             "notice": mergedNotice as Any,
             "error": errorText as Any,
+            "failureKind": failureKind as Any,
             "terminationStatus": terminationStatus,
             "stderr": stderrText,
             "stdout": stdoutText,
@@ -240,7 +251,39 @@ final class NativeScreenRecorder {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
+    private static func determineFailureKind(
+        terminationStatus: Int32,
+        stderrText: String,
+        stdoutText: String,
+        fileExists: Bool,
+        fileSize: Int64
+    ) -> String {
+        let combined = [stderrText, stdoutText]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = combined.lowercased()
+
+        if lower.contains("permission") || lower.contains("not permitted") {
+            return "permission_denied"
+        }
+        if lower.contains("cancel") {
+            return "cancelled"
+        }
+        if !combined.isEmpty && (lower.contains("failed") || lower.contains("error")) {
+            return "recorder_error"
+        }
+        if fileExists && fileSize == 0 {
+            return "empty_output"
+        }
+        if terminationStatus != 0 {
+            return "no_output"
+        }
+        return "no_output"
+    }
+
     private static func inferRecordingFailure(
+        failureKind: String?,
         terminationStatus: Int32,
         stderrText: String,
         stdoutText: String,
@@ -252,10 +295,10 @@ final class NativeScreenRecorder {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = combined.lowercased()
 
-        if lower.contains("permission") || lower.contains("not permitted") {
+        if failureKind == "permission_denied" {
             return "Screen Recording permission is required. Reopen MemScreen after granting access in System Settings."
         }
-        if lower.contains("cancel") {
+        if failureKind == "cancelled" {
             return "Recording was cancelled before a video file was written."
         }
         if lower.contains("failed") || lower.contains("error") {

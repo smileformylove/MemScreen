@@ -124,7 +124,9 @@ class _RecordingScreenState extends State<RecordingScreen> {
         lower.contains('without creating')) {
       return _RecordingNoticeLevel.error;
     }
-    if (lower.contains('without audio') || lower.contains('microphone only')) {
+    if (lower.contains('without audio') ||
+        lower.contains('microphone only') ||
+        lower.contains('import warning')) {
       return _RecordingNoticeLevel.warning;
     }
     return _RecordingNoticeLevel.info;

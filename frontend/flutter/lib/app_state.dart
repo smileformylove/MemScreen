@@ -883,6 +883,26 @@ class AppState extends ChangeNotifier {
     _nativeRecordingMonitorTimer = null;
   }
 
+  String _describeNativeRecordingFailure(NativeRecordingStopResult result) {
+    final raw = (result.error ?? '').trim();
+    switch (result.failureKind) {
+      case 'permission_denied':
+        return 'Permission: Screen Recording access is still not active. Reopen MemScreen after allowing access in System Settings.';
+      case 'cancelled':
+        return 'Cancelled: Recording was cancelled before a video file was saved.';
+      case 'empty_output':
+        return 'No file: Recording ended, but the saved file was empty.';
+      case 'no_output':
+        return 'No file: Recording ended without creating a playable video file.';
+      case 'recorder_error':
+        return raw.isNotEmpty
+            ? 'Recorder error: $raw'
+            : 'Recorder error: Native macOS recording failed.';
+      default:
+        return raw.isNotEmpty ? raw : 'Native macOS recording failed.';
+    }
+  }
+
   Future<void> _handleFinishedNativeRecording(
     NativeRecordingStopResult result,
   ) async {
@@ -892,8 +912,9 @@ class AppState extends ChangeNotifier {
     if ((result.notice ?? '').isNotEmpty) {
       _recordingTrackingState.pendingRecordingNotice = result.notice;
     }
-    if (!result.ok && (result.error ?? '').isNotEmpty) {
-      _recordingTrackingState.pendingRecordingNotice = result.error;
+    if (!result.ok) {
+      _recordingTrackingState.pendingRecordingNotice =
+          _describeNativeRecordingFailure(result);
       return;
     }
     final filename = result.filename;
@@ -923,7 +944,7 @@ class AppState extends ChangeNotifier {
         debugPrint('[AppState] Failed to import native recording: $e');
         await _nativeRecordingImportQueue?.enqueue(payload);
         _recordingTrackingState.pendingRecordingNotice =
-            'Recording saved locally. It will appear in Videos after backend reconnects.';
+            'Import warning: Recording saved locally, but adding it to Videos failed. It will retry after backend reconnects.';
       }
     }
   }
@@ -1265,6 +1286,7 @@ class AppState extends ChangeNotifier {
             audioSourceUsed: args['audioSourceUsed'] as String?,
             notice: args['notice'] as String?,
             error: args['error'] as String?,
+            failureKind: args['failureKind'] as String?,
             consumedByCallback: args['consumedByCallback'] as bool? ?? true,
           );
           await _handleFinishedNativeRecording(result);
