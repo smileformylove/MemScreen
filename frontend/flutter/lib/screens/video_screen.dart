@@ -163,10 +163,18 @@ class _VideoScreenState extends State<VideoScreen> {
     try {
       List<VideoItem> list;
       var usingLocalFallback = false;
+      final localList = await _localCatalog.list();
       try {
-        list = await context.read<AppState>().videoApi.getList();
+        final remoteList = await context.read<AppState>().videoApi.getList();
+        final byFilename = <String, VideoItem>{
+          for (final item in localList) item.filename: item,
+        };
+        for (final item in remoteList) {
+          byFilename[item.filename] = item;
+        }
+        list = byFilename.values.toList();
       } catch (_) {
-        list = await _localCatalog.list();
+        list = localList;
         usingLocalFallback = true;
       }
       final timelineSorted = _sortedByTimestampAscending(list);

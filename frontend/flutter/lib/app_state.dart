@@ -185,6 +185,10 @@ class AppState extends ChangeNotifier {
   bool get hasInputMonitoringPermission =>
       _permissionGranted('input_monitoring');
 
+  String _processSessionMergeKey(ProcessSession session) {
+    return '\${session.startTime}|\${session.endTime}|\${session.eventCount}|\${session.keystrokes}|\${session.clicks}';
+  }
+
   Future<RecordingStatus> loadRecordingStatusForUi() async {
     if (useNativeMacOSRecording) {
       return _nativeRecordingService!.getStatus();
@@ -225,10 +229,21 @@ class AppState extends ChangeNotifier {
 
   Future<List<ProcessSession>> loadProcessSessionsForUi(
       {int limit = 20}) async {
+    final local = await _localProcessSessionStore?.listSessions() ??
+        const <ProcessSession>[];
     try {
-      return await _processApi.getSessions(limit: limit);
+      final remote = await _processApi.getSessions(limit: limit);
+      final byKey = <String, ProcessSession>{
+        for (final session in local) _processSessionMergeKey(session): session,
+      };
+      for (final session in remote) {
+        byKey[_processSessionMergeKey(session)] = session;
+      }
+      final merged = byKey.values.toList()
+        ..sort((a, b) => b.startTime.compareTo(a.startTime));
+      return merged;
     } catch (_) {
-      return await _localProcessSessionStore?.listSessions() ?? const [];
+      return local;
     }
   }
 
