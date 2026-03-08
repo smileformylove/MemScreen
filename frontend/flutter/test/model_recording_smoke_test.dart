@@ -103,6 +103,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Recording diagnostics'), findsOneWidget);
+    expect(find.text('Capture target'), findsOneWidget);
+    expect(find.text('Start full screen recording'), findsOneWidget);
+    expect(find.text('Pick region'), findsOneWidget);
+    expect(find.text('Pick window'), findsOneWidget);
     expect(find.byIcon(Icons.commit), findsWidgets);
     expect(find.byIcon(Icons.videocam_outlined), findsWidgets);
     expect(find.byIcon(Icons.bug_report_outlined), findsWidgets);

@@ -535,16 +535,96 @@ class _RecordingScreenState extends State<RecordingScreen> {
     }
   }
 
-  List<Widget> _buildModeSelection() {
+  String _selectedModeLabel() {
+    switch (_mode) {
+      case 'region':
+        return 'Region';
+      case 'window':
+        return 'Window';
+      default:
+        return 'Full screen';
+    }
+  }
+
+  String _selectedModeHelpText() {
+    if ((_status?.isRecording ?? false)) {
+      return 'Recording is already active. Stop it before changing capture target.';
+    }
+    switch (_mode) {
+      case 'region':
+        return 'Pick a region from the floating ball, then start recording from the overlay.';
+      case 'window':
+        return 'Pick a window from the floating ball, then confirm recording from the overlay.';
+      default:
+        return 'Choose a display target, then start recording directly from this page.';
+    }
+  }
+
+  String _recordingSetupSummary(AppState appState) {
+    final duration = appState.recordingDurationSec;
+    final interval = appState.recordingIntervalSec;
+    final audio = switch (appState.recordingAudioSource) {
+      'mixed' => 'system + mic',
+      'system_audio' => 'system audio',
+      'microphone' => 'microphone',
+      _ => 'silent',
+    };
+    return 'Duration ${duration}s · Interval ${interval.toStringAsFixed(interval == interval.roundToDouble() ? 0 : 1)}s · Audio $audio';
+  }
+
+  Widget _buildCaptureControlCard(AppState appState) {
     final isRecording = _status?.isRecording ?? false;
-    return [
-      Row(
+    final targetLabel = _recordingTargetLabel();
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: DropdownButtonFormField<int>(
+          Text(
+            'Capture target',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _selectedModeHelpText(),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('Full screen'),
+                selected: _mode == 'fullscreen',
+                onSelected: isRecording
+                    ? null
+                    : (_) => _onFullscreenSelected(_screenIndex ?? -1),
+              ),
+              ChoiceChip(
+                label: const Text('Pick region'),
+                selected: _mode == 'region',
+                onSelected:
+                    isRecording ? null : (_) => _onModeChanged('region'),
+              ),
+              ChoiceChip(
+                label: const Text('Pick window'),
+                selected: _mode == 'window',
+                onSelected:
+                    isRecording ? null : (_) => _onModeChanged('window'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_mode == 'fullscreen')
+            DropdownButtonFormField<int>(
               value: _screenIndex ?? -1,
               decoration: const InputDecoration(
-                labelText: 'Full Screen',
+                labelText: 'Display target',
                 contentPadding:
                     EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
@@ -565,34 +645,61 @@ class _RecordingScreenState extends State<RecordingScreen> {
                       _onFullscreenSelected(v);
                     },
             ),
-          ),
-          const SizedBox(width: 10),
-          FilledButton.tonal(
-            onPressed: isRecording ? null : _start,
-            child: const Text('Screen'),
-          ),
-        ],
-      ),
-      const SizedBox(height: 10),
-      Row(
-        children: [
-          Expanded(
-            child: FilledButton.tonal(
-              onPressed: isRecording ? null : () => _onModeChanged('region'),
-              child: const Text('Region'),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Current target: ${_selectedModeLabel()} · $targetLabel',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _recordingSetupSummary(appState),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: FilledButton.tonal(
-              onPressed: isRecording ? null : () => _onModeChanged('window'),
-              child: const Text('Window'),
+          const SizedBox(height: 12),
+          if (isRecording)
+            FilledButton.icon(
+              onPressed: _stop,
+              icon: const Icon(Icons.stop),
+              label: const Text('Stop recording'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+            )
+          else if (_mode == 'fullscreen')
+            FilledButton.icon(
+              onPressed: _start,
+              icon: const Icon(Icons.fiber_manual_record),
+              label: const Text('Start full screen recording'),
+            )
+          else
+            FilledButton.tonalIcon(
+              onPressed: _mode == 'region'
+                  ? _selectRegionWithFloatingBall
+                  : _selectWindowWithFloatingBall,
+              icon: const Icon(Icons.open_in_new),
+              label: Text(
+                _mode == 'region'
+                    ? 'Continue with floating ball'
+                    : 'Select window from floating ball',
+              ),
             ),
-          ),
         ],
       ),
-      const SizedBox(height: 10),
-    ];
+    );
   }
 
   Future<void> _onModeChanged(String nextMode) async {
@@ -813,74 +920,6 @@ class _RecordingScreenState extends State<RecordingScreen> {
     );
   }
 
-  List<Widget> _buildActionBar() {
-    final isRecording = _status?.isRecording ?? false;
-    if (_mode == 'fullscreen') {
-      if (!isRecording) return const [];
-      return [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            FilledButton.icon(
-              onPressed: _stop,
-              icon: const Icon(Icons.stop),
-              label: const Text('Stop'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-              ),
-            ),
-          ],
-        ),
-      ];
-    }
-    if (_mode == 'region') {
-      if (!isRecording) return const [];
-      return [
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          FilledButton.icon(
-            onPressed: _stop,
-            icon: const Icon(Icons.stop),
-            label: const Text('Stop'),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-          ),
-        ]),
-      ];
-    }
-    if (_mode == 'window') {
-      if (!isRecording) return const [];
-      return [
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          FilledButton.icon(
-            onPressed: _stop,
-            icon: const Icon(Icons.stop),
-            label: const Text('Stop'),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-          ),
-        ]),
-      ];
-    }
-    if (!isRecording) return const [];
-    return [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          FilledButton.icon(
-            onPressed: _stop,
-            icon: const Icon(Icons.stop),
-            label: const Text('Stop'),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-          ),
-        ],
-      ),
-    ];
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_loading && _status == null) {
@@ -911,8 +950,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ..._buildModeSelection(),
-                ..._buildActionBar(),
+                _buildCaptureControlCard(appState),
                 const SizedBox(height: 12),
                 _buildDiagnosticsCard(appState),
               ],
