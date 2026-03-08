@@ -439,3 +439,41 @@ SettingsModelSection buildSettingsModelSection(LocalModelCatalog catalog) {
     recommendedEntry: recommendedEntry,
   );
 }
+
+LocalModelEntry? findCatalogEntryByModelName(
+  LocalModelCatalog catalog,
+  String modelName,
+) {
+  final normalized = modelName.trim();
+  for (final entry in catalog.models) {
+    if (modelNameMatchesEntry(entry, normalized)) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+bool canUseCatalogEntryForChat(
+  LocalModelCatalog catalog,
+  LocalModelEntry entry,
+) {
+  final available = catalog.availableChatModels;
+  if (available.isNotEmpty) {
+    return entry.chatSelectable ||
+        available.contains(entry.name) ||
+        ((entry.installedName ?? '').isNotEmpty &&
+            available.contains(entry.installedName));
+  }
+  return entry.installed && entry.supportsChat;
+}
+
+bool isCurrentCatalogEntry(
+  LocalModelCatalog catalog,
+  LocalModelEntry entry,
+) {
+  final current = (catalog.currentChatModel ?? '').trim();
+  if (current.isEmpty) {
+    return false;
+  }
+  return modelNameMatchesEntry(entry, current);
+}

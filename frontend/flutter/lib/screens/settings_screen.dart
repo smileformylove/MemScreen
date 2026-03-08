@@ -228,25 +228,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  bool _canUseModelForChat(LocalModelCatalog? catalog, LocalModelEntry entry) {
-    final available = catalog?.availableChatModels ?? const <String>[];
-    if (available.isNotEmpty) {
-      return entry.chatSelectable ||
-          available.contains(entry.name) ||
-          ((entry.installedName ?? '').isNotEmpty &&
-              available.contains(entry.installedName));
-    }
-    return entry.installed && entry.supportsChat;
-  }
-
-  bool _isCurrentChatModel(LocalModelCatalog? catalog, LocalModelEntry entry) {
-    final current = (catalog?.currentChatModel ?? '').trim();
-    if (current.isEmpty) {
-      return false;
-    }
-    return current == entry.name || current == (entry.installedName ?? '');
-  }
-
   Future<void> _setChatModel(LocalModelEntry entry) async {
     if (_switchingChatModelName != null) return;
     _setModelUiState(
@@ -873,8 +854,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final theme = Theme.of(context);
     final downloading = _downloadingModelName == entry.name;
 
-    final isCurrentChatModel = _isCurrentChatModel(catalog, entry);
-    final canUseForChat = _canUseModelForChat(catalog, entry);
+    final isCurrentChatModel =
+        catalog != null && isCurrentCatalogEntry(catalog, entry);
+    final canUseForChat =
+        catalog != null && canUseCatalogEntryForChat(catalog, entry);
 
     Widget trailing;
     if (entry.installed) {

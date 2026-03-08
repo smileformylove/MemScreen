@@ -83,7 +83,8 @@ void main() {
     expect(computeRecommendedChatModel(catalog), 'qwen3.5:4b');
   });
 
-  test('markDownloadedModel updates installed and recommended flags locally', () {
+  test('markDownloadedModel updates installed and recommended flags locally',
+      () {
     final catalog = makeCatalog(
       availableChatModels: const ['qwen3.5:2b'],
       models: [
@@ -116,7 +117,8 @@ void main() {
     expect(downloaded.recommendedChatDefault, isTrue);
   });
 
-  test('buildCatalogModelGroups separates recommended fast and vision groups', () {
+  test('buildCatalogModelGroups separates recommended fast and vision groups',
+      () {
     final groups = buildCatalogModelGroups([
       makeEntry(
         name: 'qwen3.5:4b',
@@ -146,18 +148,57 @@ void main() {
       ),
     ]);
 
-    expect(groups.map((g) => g.label), containsAll(<String>[
-      'Recommended',
-      'Fast / Light',
-      'Vision / Multimodal',
-      'Other',
-    ]));
-    expect(groups.firstWhere((g) => g.label == 'Recommended').entries.single.name,
+    expect(
+        groups.map((g) => g.label),
+        containsAll(<String>[
+          'Recommended',
+          'Fast / Light',
+          'Vision / Multimodal',
+          'Other',
+        ]));
+    expect(
+        groups.firstWhere((g) => g.label == 'Recommended').entries.single.name,
         'qwen3.5:4b');
-    expect(groups.firstWhere((g) => g.label == 'Fast / Light').entries.single.name,
+    expect(
+        groups.firstWhere((g) => g.label == 'Fast / Light').entries.single.name,
         'qwen3.5:0.8b');
   });
 
+  test('catalog helper rules resolve current and chat-usable entries', () {
+    final catalog = makeCatalog(
+      currentChatModel: 'qwen3.5:4b',
+      availableChatModels: const ['qwen3.5:4b', 'qwen3.5:2b'],
+      models: [
+        makeEntry(
+          name: 'qwen3.5:4b',
+          installedName: 'qwen3.5:4b',
+          sizeLabel: '4b',
+          recommendedUse: 'balanced',
+          supportsVision: true,
+          recommendedChatDefault: true,
+        ),
+        makeEntry(
+          name: 'mxbai-embed-large',
+          installedName: 'mxbai-embed-large',
+          family: 'embedding',
+          supportsChat: false,
+          supportsVision: false,
+          recommendedUse: 'embedding',
+          chatSelectable: false,
+        ),
+      ],
+    );
+
+    final currentEntry = findCatalogEntryByModelName(catalog, 'qwen3.5:4b');
+    final embeddingEntry =
+        findCatalogEntryByModelName(catalog, 'mxbai-embed-large');
+
+    expect(currentEntry, isNotNull);
+    expect(isCurrentCatalogEntry(catalog, currentEntry!), isTrue);
+    expect(canUseCatalogEntryForChat(catalog, currentEntry), isTrue);
+    expect(embeddingEntry, isNotNull);
+    expect(canUseCatalogEntryForChat(catalog, embeddingEntry!), isFalse);
+  });
   test('buildChatModelSelection maps installed aliases to entry details', () {
     final catalog = makeCatalog(
       currentChatModel: 'qwen3.5:4b',
@@ -178,6 +219,7 @@ void main() {
     final selection = buildChatModelSelection(catalog);
     expect(selection.currentModel, 'qwen3.5:4b');
     expect(selection.recommendedModel, 'qwen3.5:4b');
-    expect(selection.detailsByModel['qwen3.5:4b']?.recommendedChatDefault, isTrue);
+    expect(
+        selection.detailsByModel['qwen3.5:4b']?.recommendedChatDefault, isTrue);
   });
 }
