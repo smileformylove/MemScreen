@@ -528,14 +528,7 @@ class _VideoScreenState extends State<VideoScreen> {
     var path = v.filename.startsWith('/')
         ? v.filename
         : '/Users/jixiangluo/.memscreen/videos/${v.filename}';
-    if (!_usingLocalFallback) {
-      try {
-        path =
-            await context.read<AppState>().videoApi.resolvePlayablePath(path);
-      } catch (_) {
-        // Fallback to original source file when playable-path resolution fails.
-      }
-    }
+    path = await context.read<AppState>().resolvePlayableVideoPathForUi(path);
     final file = File(path);
 
     if (!await file.exists()) {
@@ -574,21 +567,11 @@ class _VideoScreenState extends State<VideoScreen> {
   }
 
   Future<void> _reanalyzeVideo(VideoItem v) async {
-    if (_usingLocalFallback) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Video analysis requires backend connection.'),
-          ),
-        );
-      }
-      return;
-    }
     if (_reanalyzingFiles.contains(v.filename)) return;
     setState(() => _reanalyzingFiles.add(v.filename));
     try {
       final result =
-          await context.read<AppState>().videoApi.reanalyze(v.filename);
+          await context.read<AppState>().reanalyzeVideoForUi(v.filename);
       if (!mounted) return;
       final tags = (result['content_tags'] is List)
           ? (result['content_tags'] as List).whereType<String>().join(', ')
@@ -614,7 +597,6 @@ class _VideoScreenState extends State<VideoScreen> {
           duration: const Duration(seconds: 3),
         ),
       );
-      await _load();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

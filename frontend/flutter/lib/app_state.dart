@@ -274,6 +274,31 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<String> resolvePlayableVideoPathForUi(String filename) async {
+    var normalized = filename.trim();
+    if (normalized.startsWith('~')) {
+      final home = Platform.environment['HOME'] ?? '';
+      normalized = normalized.replaceFirst('~', home);
+    }
+    if (!isBackendConnected) {
+      return normalized;
+    }
+    try {
+      return await _videoApi.resolvePlayablePath(normalized);
+    } catch (_) {
+      return normalized;
+    }
+  }
+
+  Future<Map<String, dynamic>> reanalyzeVideoForUi(String filename) async {
+    if (!isBackendConnected) {
+      throw ApiException('Video analysis requires backend connection.');
+    }
+    final result = await _videoApi.reanalyze(filename);
+    requestVideoRefresh();
+    return result;
+  }
+
   Future<List<VideoItem>> loadVideosForUi() async {
     final localList = await _localVideoCatalog?.list() ?? const <VideoItem>[];
     if (!isBackendConnected) {
