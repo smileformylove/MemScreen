@@ -1,9 +1,20 @@
 import 'dart:io';
 
 import '../build_info.dart';
+import 'recording_failure_messages.dart';
 import '../widgets/recording_diagnostics_panel.dart';
 
 enum RecordingInstallStatus { applications, nonstandard, unknown }
+
+class RecordingDiagnosticsSummary {
+  const RecordingDiagnosticsSummary({
+    required this.message,
+    required this.level,
+  });
+
+  final String message;
+  final RecordingDiagnosticsNoticeLevel level;
+}
 
 String recordingLogsDirPath() {
   return '${Platform.environment['HOME'] ?? '~'}/.memscreen/logs';
@@ -70,15 +81,87 @@ String? recordingDiagnosticsAdvice({
   }
 }
 
+RecordingDiagnosticsSummary? recordingDiagnosticsSummary({
+  required bool isRecording,
+  String? transientNotice,
+  RecordingDiagnosticsNoticeLevel transientNoticeLevel =
+      RecordingDiagnosticsNoticeLevel.info,
+  String? statusNotice,
+  String? lastFailureKind,
+  String? lastFailureMessage,
+  String? smokeCheckSummary,
+}) {
+  final inlineNotice = (transientNotice ?? '').trim();
+  if (inlineNotice.isNotEmpty) {
+    return RecordingDiagnosticsSummary(
+      message: inlineNotice,
+      level: transientNoticeLevel,
+    );
+  }
+
+  if (isRecording) {
+    return const RecordingDiagnosticsSummary(
+      message: 'Recording is active.',
+      level: RecordingDiagnosticsNoticeLevel.info,
+    );
+  }
+
+  final nativeNotice = (statusNotice ?? '').trim();
+  if (nativeNotice.isNotEmpty) {
+    if (nativeNotice.startsWith('Import warning:')) {
+      return RecordingDiagnosticsSummary(
+        message: nativeNotice,
+        level: RecordingDiagnosticsNoticeLevel.warning,
+      );
+    }
+    if ((lastFailureKind ?? '').trim().isNotEmpty) {
+      return RecordingDiagnosticsSummary(
+        message: nativeNotice,
+        level: RecordingDiagnosticsNoticeLevel.error,
+      );
+    }
+    return RecordingDiagnosticsSummary(
+      message: nativeNotice,
+      level: RecordingDiagnosticsNoticeLevel.info,
+    );
+  }
+
+  if ((lastFailureKind ?? '').trim().isNotEmpty) {
+    return RecordingDiagnosticsSummary(
+      message: describeNativeRecordingFailure(
+        failureKind: lastFailureKind,
+        error: lastFailureMessage,
+      ),
+      level: RecordingDiagnosticsNoticeLevel.error,
+    );
+  }
+
+  final smokeSummary = (smokeCheckSummary ?? '').trim();
+  if (smokeSummary.isNotEmpty) {
+    final lower = smokeSummary.toLowerCase();
+    final level = lower.contains('failed') ||
+            lower.contains('still not active') ||
+            lower.contains('permission:')
+        ? RecordingDiagnosticsNoticeLevel.error
+        : lower.contains('warning')
+            ? RecordingDiagnosticsNoticeLevel.warning
+            : RecordingDiagnosticsNoticeLevel.info;
+    return RecordingDiagnosticsSummary(message: smokeSummary, level: level);
+  }
+
+  return null;
+}
+
 RecordingDiagnosticsData buildRecordingDiagnosticsData({
   required bool screenRecordingGranted,
   required String outputDir,
   required bool isRecording,
   String? engine,
   String? target,
-  String? lastResult,
-  RecordingDiagnosticsNoticeLevel lastResultLevel =
+  String? transientNotice,
+  RecordingDiagnosticsNoticeLevel transientNoticeLevel =
       RecordingDiagnosticsNoticeLevel.info,
+  String? statusNotice,
   String? lastFailureKind,
   String? lastFailureMessage,
   int? lastExitStatus,
@@ -87,6 +170,15 @@ RecordingDiagnosticsData buildRecordingDiagnosticsData({
   String? smokeCheckAt,
   String? smokeCheckSummary,
 }) {
+  final summary = recordingDiagnosticsSummary(
+    isRecording: isRecording,
+    transientNotice: transientNotice,
+    transientNoticeLevel: transientNoticeLevel,
+    statusNotice: statusNotice,
+    lastFailureKind: lastFailureKind,
+    lastFailureMessage: lastFailureMessage,
+    smokeCheckSummary: smokeCheckSummary,
+  );
   return RecordingDiagnosticsData(
     buildLabel: '${BuildInfo.commit} · ${BuildInfo.buildChannel}',
     appPath: BuildInfo.detectAppBundlePath(),
@@ -97,8 +189,8 @@ RecordingDiagnosticsData buildRecordingDiagnosticsData({
     outputDir: outputDir,
     logsDir: recordingLogsDirPath(),
     isRecording: isRecording,
-    lastResult: lastResult,
-    lastResultLevel: lastResultLevel,
+    lastResult: summary?.message,
+    lastResultLevel: summary?.level ?? RecordingDiagnosticsNoticeLevel.info,
     lastFailureKind: lastFailureKind,
     lastFailureMessage: lastFailureMessage,
     lastExitStatus: lastExitStatus,

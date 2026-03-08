@@ -16,8 +16,9 @@ void main() {
       isRecording: false,
       engine: 'Native macOS recorder',
       target: 'All screens',
-      lastResult: 'Permission: Screen Recording access is still not active.',
-      lastResultLevel: RecordingDiagnosticsNoticeLevel.error,
+      transientNotice:
+          'Permission: Screen Recording access is still not active.',
+      transientNoticeLevel: RecordingDiagnosticsNoticeLevel.error,
       lastFailureKind: 'permission_denied',
       lastFailureMessage: 'Screen Recording permission is required.',
       lastExitStatus: 1,
@@ -34,6 +35,7 @@ void main() {
     expect(report, contains('last_exit_status: 1'));
     expect(report, contains('logs_dir:'));
   });
+
   test(
       'recording diagnostics advice prioritizes permission over generic failures',
       () {
@@ -68,5 +70,45 @@ void main() {
     );
 
     expect(data.advice, contains('zero-byte file'));
+  });
+
+  test('recording diagnostics summary falls back to native failure mapping',
+      () {
+    final summary = recordingDiagnosticsSummary(
+      isRecording: false,
+      lastFailureKind: 'no_output',
+      lastFailureMessage: 'No playable video file created.',
+    );
+
+    expect(summary, isNotNull);
+    expect(summary!.level, RecordingDiagnosticsNoticeLevel.error);
+    expect(summary.message, contains('No file:'));
+  });
+
+  test('recording diagnostics summary treats import warnings as warning', () {
+    final summary = recordingDiagnosticsSummary(
+      isRecording: false,
+      statusNotice:
+          'Import warning: Recording saved locally, but adding it to Videos failed.',
+    );
+
+    expect(summary, isNotNull);
+    expect(summary!.level, RecordingDiagnosticsNoticeLevel.warning);
+    expect(summary.message, contains('Import warning:'));
+  });
+
+  test('recording diagnostics builder uses shared status notice fallback', () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      statusNotice:
+          'Import warning: Recording saved locally, but adding it to Videos failed.',
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+    );
+
+    expect(data.lastResult,
+        'Import warning: Recording saved locally, but adding it to Videos failed.');
+    expect(data.lastResultLevel, RecordingDiagnosticsNoticeLevel.warning);
   });
 }

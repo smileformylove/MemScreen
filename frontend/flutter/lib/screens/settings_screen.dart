@@ -377,10 +377,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? status!.outputDir
           : recordingDefaultOutputDir(),
       isRecording: status?.isRecording ?? false,
+      statusNotice: status?.lastNotice,
       lastFailureKind: status?.lastFailureKind,
       lastFailureMessage: status?.lastFailureMessage,
       lastExitStatus: status?.lastTerminationStatus,
       lastOutputPath: status?.lastOutputPath,
+      lastOutputFileSize: status?.lastOutputFileSize,
       smokeCheckAt: appState.lastRecordingSmokeCheckAt,
       smokeCheckSummary: appState.lastRecordingSmokeCheckSummary,
     );

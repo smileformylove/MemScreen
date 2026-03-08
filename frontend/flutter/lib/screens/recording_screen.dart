@@ -6,9 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../api/recording_api.dart';
-import '../build_info.dart';
 import '../app_state.dart';
 import '../services/floating_ball_service.dart';
+import '../services/recording_diagnostics.dart';
 import '../widgets/recording_diagnostics_panel.dart';
 
 class RecordingScreen extends StatefulWidget {
@@ -663,26 +663,6 @@ class _RecordingScreenState extends State<RecordingScreen> {
     return 'Backend recorder';
   }
 
-  bool _isInstalledInApplications() {
-    final appPath = BuildInfo.detectAppBundlePath() ?? '';
-    return appPath.startsWith('/Applications/');
-  }
-
-  String _installStatusLabel() {
-    final appPath = BuildInfo.detectAppBundlePath() ?? '';
-    if (appPath.isEmpty) {
-      return 'Unknown';
-    }
-    if (_isInstalledInApplications()) {
-      return 'Applications';
-    }
-    return 'Nonstandard path';
-  }
-
-  String _logsDirPath() {
-    return '${Platform.environment['HOME'] ?? '~'}/.memscreen/logs';
-  }
-
   Future<void> _openPath(String path, {required String label}) async {
     try {
       if (Platform.isMacOS) {
@@ -720,34 +700,29 @@ class _RecordingScreenState extends State<RecordingScreen> {
 
   RecordingDiagnosticsData _buildDiagnosticsData(AppState appState) {
     final status = _status;
-    return RecordingDiagnosticsData(
-      buildLabel: '${BuildInfo.commit} · ${BuildInfo.buildChannel}',
-      appPath: BuildInfo.detectAppBundlePath(),
-      installStatus: _installStatusLabel(),
+    return buildRecordingDiagnosticsData(
       screenRecordingGranted: appState.hasScreenRecordingPermission,
       engine: _recordingEngineLabel(appState),
       target: _recordingTargetLabel(),
       outputDir: (status?.outputDir ?? '').isNotEmpty
           ? status!.outputDir
-          : '${Platform.environment['HOME'] ?? '~'}/.memscreen/videos',
-      logsDir: _logsDirPath(),
+          : recordingDefaultOutputDir(),
       isRecording: status?.isRecording ?? false,
-      lastResult: _recordingNotice,
-      lastResultLevel: switch (_recordingNoticeLevel) {
+      transientNotice: _recordingNotice,
+      transientNoticeLevel: switch (_recordingNoticeLevel) {
         _RecordingNoticeLevel.error => RecordingDiagnosticsNoticeLevel.error,
         _RecordingNoticeLevel.warning =>
           RecordingDiagnosticsNoticeLevel.warning,
         _RecordingNoticeLevel.info => RecordingDiagnosticsNoticeLevel.info,
       },
+      statusNotice: status?.lastNotice,
       lastFailureKind: status?.lastFailureKind,
       lastFailureMessage: status?.lastFailureMessage,
       lastExitStatus: status?.lastTerminationStatus,
       lastOutputPath: status?.lastOutputPath,
       lastOutputFileSize: status?.lastOutputFileSize,
-      advice: ((BuildInfo.detectAppBundlePath() ?? '').isNotEmpty &&
-              !_isInstalledInApplications())
-          ? 'Install the latest MemScreen.app into /Applications before testing recording.'
-          : null,
+      smokeCheckAt: appState.lastRecordingSmokeCheckAt,
+      smokeCheckSummary: appState.lastRecordingSmokeCheckSummary,
     );
   }
 
@@ -804,7 +779,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
         RecordingDiagnosticsQuickAction(
           label: 'Open logs',
           icon: Icons.folder_open_outlined,
-          onPressed: () => _openPath(_logsDirPath(), label: 'logs folder'),
+          onPressed: () =>
+              _openPath(recordingLogsDirPath(), label: 'logs folder'),
         ),
       ],
       showPermissionShortcut:
