@@ -9,6 +9,7 @@ import '../api/model_api.dart';
 import '../app_state.dart';
 import '../connection/connection_state.dart';
 import '../services/model_catalog_groups.dart';
+import '../widgets/backend_required_panel.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -687,58 +688,21 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildBackendPlaceholder(BuildContext context) {
-    final theme = Theme.of(context);
     final appState = context.watch<AppState>();
     final isStarting =
         appState.connectionState.status == ConnectionStatus.connecting;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.smart_toy_outlined,
-                size: 56, color: theme.colorScheme.primary),
-            const SizedBox(height: 16),
-            Text('AI Chat needs the local backend',
-                style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
-            const SizedBox(height: 8),
-            Text(
-              'Recording, Videos, and Process work locally. Start the backend only when you want AI chat or model features.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium,
-            ),
-            if (appState.connectionState.status == ConnectionStatus.error &&
-                (appState.connectionState.message?.isNotEmpty ?? false)) ...[
-              const SizedBox(height: 12),
-              Text(
-                appState.connectionState.message!,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
-            ],
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: isStarting
-                  ? null
-                  : () => appState.ensureBackendConnection(force: true),
-              icon: isStarting
-                  ? SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: theme.colorScheme.onPrimary,
-                      ),
-                    )
-                  : const Icon(Icons.play_arrow),
-              label: Text(isStarting ? 'Starting Backend...' : 'Start Backend'),
-            ),
-          ],
-        ),
-      ),
+    return BackendRequiredPanel(
+      title: 'AI Chat needs the local backend',
+      description:
+          'Recording, Videos, and Process work locally. Start the backend only when you want AI chat or model features.',
+      isStarting: isStarting,
+      onStart: () => appState.ensureBackendConnection(force: true),
+      message: appState.connectionState.status == ConnectionStatus.error
+          ? appState.connectionState.message
+          : null,
+      centered: true,
+      icon: Icons.smart_toy_outlined,
+      padding: const EdgeInsets.all(20),
     );
   }
 
