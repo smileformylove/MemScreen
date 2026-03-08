@@ -26,6 +26,8 @@ class RecordingDiagnosticsData {
     this.lastOutputStatusLevel = RecordingDiagnosticsNoticeLevel.info,
     this.problemSummary,
     this.problemSummaryLevel = RecordingDiagnosticsNoticeLevel.info,
+    this.nextStep,
+    this.nextStepLevel = RecordingDiagnosticsNoticeLevel.info,
     this.smokeCheckAt,
     this.smokeCheckSummary,
     this.advice,
@@ -51,6 +53,8 @@ class RecordingDiagnosticsData {
   final RecordingDiagnosticsNoticeLevel lastOutputStatusLevel;
   final String? problemSummary;
   final RecordingDiagnosticsNoticeLevel problemSummaryLevel;
+  final String? nextStep;
+  final RecordingDiagnosticsNoticeLevel nextStepLevel;
   final String? smokeCheckAt;
   final String? smokeCheckSummary;
   final String? advice;
@@ -121,6 +125,9 @@ String buildRecordingDiagnosticsReport(RecordingDiagnosticsData data) {
   }
   if ((data.problemSummary ?? '').isNotEmpty) {
     lines.add('problem_summary: ${data.problemSummary!}');
+  }
+  if ((data.nextStep ?? '').isNotEmpty) {
+    lines.add('next_step: ${data.nextStep!}');
   }
   if ((data.lastResult ?? '').isNotEmpty) {
     lines.add('last_notice: ${data.lastResult!}');
@@ -222,6 +229,20 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
               label: 'Problem summary',
               value: data.problemSummary!,
               level: data.problemSummaryLevel,
+            ),
+          if ((data.nextStep ?? '').isNotEmpty)
+            _noticeBanner(
+              context,
+              icon: switch (data.nextStepLevel) {
+                RecordingDiagnosticsNoticeLevel.error => Icons.arrow_forward,
+                RecordingDiagnosticsNoticeLevel.warning =>
+                  Icons.double_arrow_outlined,
+                RecordingDiagnosticsNoticeLevel.info =>
+                  Icons.play_arrow_outlined,
+              },
+              label: 'Next step',
+              value: data.nextStep!,
+              level: data.nextStepLevel,
             ),
           if ((data.advice ?? '').isNotEmpty)
             _noticeBanner(

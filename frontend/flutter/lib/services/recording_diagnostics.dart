@@ -248,6 +248,84 @@ String? recordingDiagnosticsAdvice({
   }
 }
 
+RecordingDiagnosticsSummary? recordingNextStepHint({
+  required bool screenRecordingGranted,
+  String? statusNotice,
+  String? lastFailureKind,
+  int? lastExitStatus,
+  String? lastOutputStatus,
+}) {
+  final installAdvice = recordingInstallAdvice();
+  if (installAdvice != null) {
+    return const RecordingDiagnosticsSummary(
+      message: 'Move the app into /Applications, then retry the smoke check.',
+      level: RecordingDiagnosticsNoticeLevel.error,
+    );
+  }
+
+  final normalizedNotice = (statusNotice ?? '').trim();
+  if (normalizedNotice.startsWith('Import warning:')) {
+    return const RecordingDiagnosticsSummary(
+      message: 'Open Videos later or reconnect the backend to finish import.',
+      level: RecordingDiagnosticsNoticeLevel.warning,
+    );
+  }
+
+  if (!screenRecordingGranted || lastFailureKind == 'permission_denied') {
+    return const RecordingDiagnosticsSummary(
+      message: 'Quit MemScreen fully, reopen it, then run Smoke check again.',
+      level: RecordingDiagnosticsNoticeLevel.error,
+    );
+  }
+
+  switch ((lastFailureKind ?? '').trim()) {
+    case 'cancelled':
+      return const RecordingDiagnosticsSummary(
+        message: 'Run Smoke check again and keep the system capture flow open.',
+        level: RecordingDiagnosticsNoticeLevel.warning,
+      );
+    case 'empty_output':
+      return const RecordingDiagnosticsSummary(
+        message:
+            'Reveal the last output file, delete it if needed, then rerun Smoke check.',
+        level: RecordingDiagnosticsNoticeLevel.warning,
+      );
+    case 'no_output':
+      return lastExitStatus == null
+          ? const RecordingDiagnosticsSummary(
+              message:
+                  'Open logs, then rerun Smoke check and compare the output path.',
+              level: RecordingDiagnosticsNoticeLevel.error,
+            )
+          : RecordingDiagnosticsSummary(
+              message:
+                  'Open logs for exit status $lastExitStatus, then rerun Smoke check.',
+              level: RecordingDiagnosticsNoticeLevel.error,
+            );
+    case 'recorder_error':
+      return const RecordingDiagnosticsSummary(
+        message: 'Copy diagnostics, open logs, then retry recording.',
+        level: RecordingDiagnosticsNoticeLevel.error,
+      );
+    default:
+      if ((lastOutputStatus ?? '').trim().startsWith('Saved')) {
+        return const RecordingDiagnosticsSummary(
+          message:
+              'Open the last output file and verify it plays back correctly.',
+          level: RecordingDiagnosticsNoticeLevel.info,
+        );
+      }
+      if ((lastOutputStatus ?? '').trim().isNotEmpty) {
+        return const RecordingDiagnosticsSummary(
+          message:
+              'Reveal the last output in Finder and compare it with the logs.',
+          level: RecordingDiagnosticsNoticeLevel.warning,
+        );
+      }
+      return null;
+  }
+}
+
 RecordingDiagnosticsSummary? recordingDiagnosticsSummary({
   required bool isRecording,
   String? transientNotice,
@@ -337,6 +415,16 @@ RecordingDiagnosticsData buildRecordingDiagnosticsData({
   String? smokeCheckAt,
   String? smokeCheckSummary,
 }) {
+  final lastOutputStatus = recordingLastOutputStatus(
+    lastOutputPath: lastOutputPath,
+    lastOutputFileSize: lastOutputFileSize,
+    lastFailureKind: lastFailureKind,
+  );
+  final lastOutputStatusLevel = recordingLastOutputStatusLevel(
+    lastOutputPath: lastOutputPath,
+    lastOutputFileSize: lastOutputFileSize,
+    lastFailureKind: lastFailureKind,
+  );
   final summary = recordingDiagnosticsSummary(
     isRecording: isRecording,
     transientNotice: transientNotice,
@@ -345,6 +433,21 @@ RecordingDiagnosticsData buildRecordingDiagnosticsData({
     lastFailureKind: lastFailureKind,
     lastFailureMessage: lastFailureMessage,
     smokeCheckSummary: smokeCheckSummary,
+  );
+  final problemSummary = recordingProblemSummary(
+    screenRecordingGranted: screenRecordingGranted,
+    statusNotice: statusNotice,
+    lastFailureKind: lastFailureKind,
+    lastExitStatus: lastExitStatus,
+    lastOutputStatus: lastOutputStatus,
+    lastOutputStatusLevel: lastOutputStatusLevel,
+  );
+  final nextStep = recordingNextStepHint(
+    screenRecordingGranted: screenRecordingGranted,
+    statusNotice: statusNotice,
+    lastFailureKind: lastFailureKind,
+    lastExitStatus: lastExitStatus,
+    lastOutputStatus: lastOutputStatus,
   );
   return RecordingDiagnosticsData(
     buildLabel: '${BuildInfo.commit} · ${BuildInfo.buildChannel}',
@@ -363,49 +466,13 @@ RecordingDiagnosticsData buildRecordingDiagnosticsData({
     lastExitStatus: lastExitStatus,
     lastOutputPath: lastOutputPath,
     lastOutputFileSize: lastOutputFileSize,
-    lastOutputStatus: recordingLastOutputStatus(
-      lastOutputPath: lastOutputPath,
-      lastOutputFileSize: lastOutputFileSize,
-      lastFailureKind: lastFailureKind,
-    ),
-    lastOutputStatusLevel: recordingLastOutputStatusLevel(
-      lastOutputPath: lastOutputPath,
-      lastOutputFileSize: lastOutputFileSize,
-      lastFailureKind: lastFailureKind,
-    ),
-    problemSummary: recordingProblemSummary(
-      screenRecordingGranted: screenRecordingGranted,
-      statusNotice: statusNotice,
-      lastFailureKind: lastFailureKind,
-      lastExitStatus: lastExitStatus,
-      lastOutputStatus: recordingLastOutputStatus(
-        lastOutputPath: lastOutputPath,
-        lastOutputFileSize: lastOutputFileSize,
-        lastFailureKind: lastFailureKind,
-      ),
-      lastOutputStatusLevel: recordingLastOutputStatusLevel(
-        lastOutputPath: lastOutputPath,
-        lastOutputFileSize: lastOutputFileSize,
-        lastFailureKind: lastFailureKind,
-      ),
-    )?.message,
-    problemSummaryLevel: recordingProblemSummary(
-          screenRecordingGranted: screenRecordingGranted,
-          statusNotice: statusNotice,
-          lastFailureKind: lastFailureKind,
-          lastExitStatus: lastExitStatus,
-          lastOutputStatus: recordingLastOutputStatus(
-            lastOutputPath: lastOutputPath,
-            lastOutputFileSize: lastOutputFileSize,
-            lastFailureKind: lastFailureKind,
-          ),
-          lastOutputStatusLevel: recordingLastOutputStatusLevel(
-            lastOutputPath: lastOutputPath,
-            lastOutputFileSize: lastOutputFileSize,
-            lastFailureKind: lastFailureKind,
-          ),
-        )?.level ??
-        RecordingDiagnosticsNoticeLevel.info,
+    lastOutputStatus: lastOutputStatus,
+    lastOutputStatusLevel: lastOutputStatusLevel,
+    problemSummary: problemSummary?.message,
+    problemSummaryLevel:
+        problemSummary?.level ?? RecordingDiagnosticsNoticeLevel.info,
+    nextStep: nextStep?.message,
+    nextStepLevel: nextStep?.level ?? RecordingDiagnosticsNoticeLevel.info,
     smokeCheckAt: smokeCheckAt,
     smokeCheckSummary: smokeCheckSummary,
     advice: recordingDiagnosticsAdvice(

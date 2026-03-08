@@ -192,6 +192,62 @@ void main() {
     expect(data.problemSummary, 'Latest output: Saved · 1.5 KB.');
     expect(data.problemSummaryLevel, RecordingDiagnosticsNoticeLevel.info);
   });
+
+  test('recording next step points to restart when permission is blocked', () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: false,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastFailureKind: 'permission_denied',
+    );
+
+    expect(
+      data.nextStep,
+      'Quit MemScreen fully, reopen it, then run Smoke check again.',
+    );
+    expect(data.nextStepLevel, RecordingDiagnosticsNoticeLevel.error);
+  });
+
+  test('recording next step points to backend retry for import warnings', () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      statusNotice:
+          'Import warning: Recording saved locally, but adding it to Videos failed.',
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+      lastOutputFileSize: 2048,
+    );
+
+    expect(
+      data.nextStep,
+      'Open Videos later or reconnect the backend to finish import.',
+    );
+    expect(data.nextStepLevel, RecordingDiagnosticsNoticeLevel.warning);
+  });
+
+  test('recording next step falls back to verifying saved output', () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+      lastOutputFileSize: 1536,
+    );
+
+    expect(
+      data.nextStep,
+      'Open the last output file and verify it plays back correctly.',
+    );
+    expect(data.nextStepLevel, RecordingDiagnosticsNoticeLevel.info);
+
+    final report = buildRecordingDiagnosticsReport(data);
+    expect(
+      report,
+      contains(
+          'next_step: Open the last output file and verify it plays back correctly.'),
+    );
+  });
   test('recording diagnostics summary falls back to native failure mapping',
       () {
     final summary = recordingDiagnosticsSummary(
