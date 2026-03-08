@@ -137,4 +137,27 @@ class LocalModelEntry {
   final String recommendedUse;
   final bool chatSelectable;
   final bool recommendedChatDefault;
+
+  LocalModelEntry copyWith({
+    bool? installed,
+    String? installedName,
+    bool? chatSelectable,
+    bool? recommendedChatDefault,
+  }) {
+    return LocalModelEntry(
+      name: name,
+      purpose: purpose,
+      required: required,
+      installed: installed ?? this.installed,
+      installedName: installedName ?? this.installedName,
+      family: family,
+      sizeLabel: sizeLabel,
+      supportsChat: supportsChat,
+      supportsVision: supportsVision,
+      recommendedUse: recommendedUse,
+      chatSelectable: chatSelectable ?? this.chatSelectable,
+      recommendedChatDefault:
+          recommendedChatDefault ?? this.recommendedChatDefault,
+    );
+  }
 }

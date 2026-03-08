@@ -325,6 +325,42 @@ class AppState extends ChangeNotifier {
     _cachedLocalModelCatalogAt = DateTime.now();
   }
 
+  void _cacheDownloadedModel(String modelName) {
+    final catalog = _cachedLocalModelCatalog;
+    if (catalog == null) {
+      return;
+    }
+    final effectiveModel = modelName.trim();
+    if (effectiveModel.isEmpty) {
+      return;
+    }
+    final updatedModels = catalog.models.map((entry) {
+      if (entry.name == effectiveModel ||
+          entry.installedName == effectiveModel) {
+        return entry.copyWith(
+          installed: true,
+          installedName: effectiveModel,
+          chatSelectable: entry.supportsChat ? true : entry.chatSelectable,
+        );
+      }
+      return entry;
+    }).toList();
+    final updatedAvailable = List<String>.from(catalog.availableChatModels);
+    final matched = updatedModels.where(
+      (entry) =>
+          entry.name == effectiveModel || entry.installedName == effectiveModel,
+    );
+    if (matched.any((entry) => entry.supportsChat) &&
+        !updatedAvailable.contains(effectiveModel)) {
+      updatedAvailable.add(effectiveModel);
+    }
+    _cachedLocalModelCatalog = catalog.copyWith(
+      availableChatModels: updatedAvailable,
+      models: updatedModels,
+    );
+    _cachedLocalModelCatalogAt = DateTime.now();
+  }
+
   Future<LocalModelCatalog> loadLocalModelCatalogForUi({
     bool forceRefresh = false,
   }) async {
@@ -346,7 +382,8 @@ class AppState extends ChangeNotifier {
     Duration timeout = const Duration(minutes: 45),
   }) async {
     await _modelApi.downloadModel(modelName, timeout: timeout);
-    requestChatModelRefresh();
+    _cacheDownloadedModel(modelName);
+    requestChatModelRefresh(invalidateCache: false);
   }
 
   Future<List<String>> loadChatModelsForUi() async {

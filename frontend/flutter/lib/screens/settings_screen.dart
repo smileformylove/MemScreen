@@ -227,7 +227,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text('Chat model set to ${entry.installedName ?? entry.name}'),
         ),
       );
-      await _loadModelCatalog(forceRefresh: true);
     } catch (e) {
       if (!mounted) return;
       final msg = e is ApiException ? e.message : e.toString();
@@ -262,7 +261,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         );
       }
-      await _loadModelCatalog(forceRefresh: true);
     } catch (e) {
       if (mounted) {
         final msg = e is ApiException ? e.message : e.toString();
