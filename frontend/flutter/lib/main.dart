@@ -45,7 +45,9 @@ class _HomeWrapperState extends State<_HomeWrapper> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AppState>().checkConnection();
+      final appState = context.read<AppState>();
+      appState.refreshPermissionStatus();
+      appState.checkConnection();
       _startConnectionRetryLoop();
     });
   }

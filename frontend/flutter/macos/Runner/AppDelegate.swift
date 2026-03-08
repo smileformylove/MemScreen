@@ -10,6 +10,7 @@ class AppDelegate: FlutterAppDelegate {
     private var methodChannel: FlutterMethodChannel?
     private var nativeRecordingChannel: FlutterMethodChannel?
     private var nativeTrackingChannel: FlutterMethodChannel?
+    private var nativePermissionChannel: FlutterMethodChannel?
     private var creationTimer: Timer?
     private var creationAttempts = 0
     private var shouldForceQuit = false
@@ -18,6 +19,7 @@ class AppDelegate: FlutterAppDelegate {
     private var floatingBallHealthTimer: Timer?
     private let nativeScreenRecorder = NativeScreenRecorder()
     private let nativeInputTracker = NativeInputTracker()
+    private let nativePermissionManager = NativePermissionManager()
 
     let logger = OSLog(subsystem: "com.memscreen", category: "AppDelegate")
 
@@ -307,6 +309,14 @@ class AppDelegate: FlutterAppDelegate {
             nativeTrackingChannel?.setMethodCallHandler { [weak self] (call, result) in
                 self?.handleNativeTrackingCall(call, result: result)
             }
+
+            nativePermissionChannel = FlutterMethodChannel(
+                name: "com.memscreen/native_permissions",
+                binaryMessenger: channelController.engine.binaryMessenger
+            )
+            nativePermissionChannel?.setMethodCallHandler { [weak self] (call, result) in
+                self?.handleNativePermissionCall(call, result: result)
+            }
         }
     }
 
@@ -377,6 +387,21 @@ class AppDelegate: FlutterAppDelegate {
         guard let window = findFlutterWindow() else { return }
         if !window.isMiniaturized {
             window.miniaturize(nil)
+        }
+    }
+
+    private func handleNativePermissionCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        switch call.method {
+        case "nativePermissionStatus":
+            let args = call.arguments as? [String: Any] ?? [:]
+            let prompt = (args["prompt"] as? Bool) ?? false
+            result(nativePermissionManager.status(prompt: prompt))
+        case "openNativePermissionSettings":
+            let args = call.arguments as? [String: Any] ?? [:]
+            let area = (args["area"] as? String) ?? ""
+            result(["ok": nativePermissionManager.openSettings(area: area), "area": area])
+        default:
+            result(FlutterMethodNotImplemented)
         }
     }
 

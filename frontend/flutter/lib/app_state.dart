@@ -16,6 +16,7 @@ import 'connection/connection_service.dart';
 import 'services/floating_ball_commands.dart';
 import 'services/floating_ball_service.dart';
 import 'services/native_input_tracking_service.dart';
+import 'services/native_permission_service.dart';
 import 'services/native_recording_import_queue.dart';
 import 'services/native_recording_service.dart';
 import 'services/recording_lifecycle_coordinator.dart';
@@ -58,6 +59,7 @@ class AppState extends ChangeNotifier {
       _nativeRecordingService = NativeRecordingService();
       _nativeRecordingImportQueue = NativeRecordingImportQueue();
       _nativeInputTrackingService = NativeInputTrackingService();
+      _nativePermissionService = NativePermissionService();
     }
     _recordingTrackingCoordinator = RecordingTrackingCoordinator(
       processApi: _processApi,
@@ -134,6 +136,7 @@ class AppState extends ChangeNotifier {
   NativeRecordingService? _nativeRecordingService;
   NativeRecordingImportQueue? _nativeRecordingImportQueue;
   NativeInputTrackingService? _nativeInputTrackingService;
+  NativePermissionService? _nativePermissionService;
   Map<String, dynamic>? _permissionStatus;
   Map<String, dynamic>? get permissionStatus => _permissionStatus;
 
@@ -158,6 +161,9 @@ class AppState extends ChangeNotifier {
 
   bool get useNativeMacOSTracking =>
       Platform.isMacOS && _nativeInputTrackingService != null;
+
+  bool get useNativeMacOSPermissions =>
+      Platform.isMacOS && _nativePermissionService != null;
 
   bool _permissionGranted(String key) {
     final section = _permissionStatus?[key];
@@ -186,7 +192,24 @@ class AppState extends ChangeNotifier {
 
   Future<TrackingStatus> loadTrackingStatusForUi() async {
     if (useNativeMacOSTracking) {
-      return _nativeInputTrackingService!.getStatus();
+      final status = await _nativeInputTrackingService!.getStatus();
+      _permissionStatus = {
+        ...?_permissionStatus,
+        'accessibility': {
+          'granted': status.accessibilityGranted,
+          'message': status.accessibilityGranted
+              ? 'Accessibility permission granted'
+              : 'Accessibility permission is required for native tracking.',
+        },
+        'input_monitoring': {
+          'granted': status.inputMonitoringGranted,
+          'message': status.inputMonitoringGranted
+              ? 'Input Monitoring permission granted'
+              : 'Input Monitoring permission is required for native tracking.',
+        },
+      };
+      notifyListeners();
+      return status;
     }
     return _processApi.getTrackingStatus();
   }
@@ -313,9 +336,15 @@ class AppState extends ChangeNotifier {
 
   Future<void> refreshPermissionStatus({bool promptSystem = false}) async {
     try {
-      _permissionStatus = await _client.get(
-        '/permissions/status?prompt=${promptSystem ? 'true' : 'false'}',
-      );
+      if (useNativeMacOSPermissions) {
+        _permissionStatus = await _nativePermissionService!.getStatus(
+          prompt: promptSystem,
+        );
+      } else {
+        _permissionStatus = await _client.get(
+          '/permissions/status?prompt=${promptSystem ? 'true' : 'false'}',
+        );
+      }
       notifyListeners();
     } catch (e) {
       debugPrint('[AppState] Failed to refresh permission status: $e');
@@ -324,7 +353,11 @@ class AppState extends ChangeNotifier {
 
   Future<void> openPermissionSettings(String area) async {
     try {
-      await _client.post('/permissions/open-settings?area=$area');
+      if (useNativeMacOSPermissions) {
+        await _nativePermissionService!.openSettings(area);
+      } else {
+        await _client.post('/permissions/open-settings?area=$area');
+      }
     } catch (e) {
       debugPrint('[AppState] Failed to open permission settings: $e');
     }
