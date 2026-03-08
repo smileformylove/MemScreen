@@ -627,7 +627,17 @@ class AppState extends ChangeNotifier {
 
     _connectionState = _connectingState(message: 'Starting local backend...');
     notifyListeners();
-    await _ensureNativeBackendBootstrap();
+    final bootstrapResult = await _ensureNativeBackendBootstrap();
+    if (bootstrapResult != null && !bootstrapResult.shouldWaitForBackend) {
+      _connectionState = ApiConnectionState(
+        status: ConnectionStatus.error,
+        message: bootstrapResult.message ??
+            'Unable to start the local backend from this app session.',
+        config: _config,
+      );
+      notifyListeners();
+      return;
+    }
 
     for (var attempt = 0; attempt < _backendStartupPollAttempts; attempt += 1) {
       if (attempt > 0) {
@@ -654,17 +664,28 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _ensureNativeBackendBootstrap() async {
-    if (!useNativeMacOSRuntime ||
-        !_usesLocalEmbeddedBackend ||
-        _nativeRuntimeBootstrapRequested) {
-      return;
+  Future<NativeRuntimeBootstrapResult?> _ensureNativeBackendBootstrap() async {
+    if (!useNativeMacOSRuntime || !_usesLocalEmbeddedBackend) {
+      return null;
     }
-    _nativeRuntimeBootstrapRequested = true;
+    if (_nativeRuntimeBootstrapRequested) {
+      return const NativeRuntimeBootstrapResult(
+        ok: true,
+        status: 'already_requested',
+      );
+    }
     try {
-      await _nativeRuntimeService!.ensureBackendBootstrap();
+      final result = await _nativeRuntimeService!.ensureBackendBootstrap();
+      _nativeRuntimeBootstrapRequested = result.shouldWaitForBackend;
+      return result;
     } catch (e) {
+      _nativeRuntimeBootstrapRequested = false;
       debugPrint('[AppState] Failed to ensure native backend bootstrap: $e');
+      return NativeRuntimeBootstrapResult(
+        ok: false,
+        status: 'channel_error',
+        message: 'Failed to trigger local backend startup: $e',
+      );
     }
   }
 

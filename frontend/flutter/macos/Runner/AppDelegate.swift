@@ -272,9 +272,25 @@ class AppDelegate: FlutterAppDelegate {
         os_log("Floating ball created at %{public}f, %{public}f", log: logger, type: .info, x, y)
     }
 
-    private func launchEmbeddedBackendBootstrapIfNeeded() {
-        guard !backendBootstrapLaunched else { return }
-        backendBootstrapLaunched = true
+    private func runtimeBootstrapResult(
+        ok: Bool,
+        status: String,
+        message: String? = nil
+    ) -> [String: Any] {
+        var payload: [String: Any] = [
+            "ok": ok,
+            "status": status,
+        ]
+        if let message {
+            payload["message"] = message
+        }
+        return payload
+    }
+
+    private func launchEmbeddedBackendBootstrapIfNeeded() -> [String: Any] {
+        if backendBootstrapLaunched {
+            return runtimeBootstrapResult(ok: true, status: "already_running")
+        }
 
         let bundlePath = Bundle.main.bundlePath
         if bundlePath.hasPrefix("/Volumes/") {
@@ -285,12 +301,28 @@ class AppDelegate: FlutterAppDelegate {
                 alert.addButton(withTitle: "OK")
                 alert.runModal()
             }
-            return
+            return runtimeBootstrapResult(
+                ok: false,
+                status: "blocked_by_dmg",
+                message: "Install MemScreen into Applications, eject the DMG, then relaunch from Applications."
+            )
         }
 
-        guard let resourcesPath = Bundle.main.resourcePath else { return }
+        guard let resourcesPath = Bundle.main.resourcePath else {
+            return runtimeBootstrapResult(
+                ok: false,
+                status: "missing_resources",
+                message: "MemScreen app resources are unavailable."
+            )
+        }
         let backendBootstrap = (resourcesPath as NSString).appendingPathComponent("backend/bootstrap_backend.sh")
-        guard FileManager.default.isExecutableFile(atPath: backendBootstrap) else { return }
+        guard FileManager.default.isExecutableFile(atPath: backendBootstrap) else {
+            return runtimeBootstrapResult(
+                ok: false,
+                status: "missing_bootstrap",
+                message: "Embedded backend bootstrap is missing from the app bundle."
+            )
+        }
 
         let logsDir = (NSHomeDirectory() as NSString).appendingPathComponent(".memscreen/logs")
         let wrapperLog = (logsDir as NSString).appendingPathComponent("app_wrapper.log")
@@ -317,13 +349,20 @@ class AppDelegate: FlutterAppDelegate {
 
         do {
             try process.run()
+            backendBootstrapLaunched = true
             os_log("Embedded backend bootstrap launched", log: logger, type: .info)
+            return runtimeBootstrapResult(ok: true, status: "launched")
         } catch {
             os_log(
                 "Failed to launch embedded backend bootstrap: %{public}@",
                 log: logger,
                 type: .error,
                 error.localizedDescription
+            )
+            return runtimeBootstrapResult(
+                ok: false,
+                status: "launch_failed",
+                message: "Failed to launch embedded backend: \(error.localizedDescription)"
             )
         }
     }
@@ -534,8 +573,7 @@ class AppDelegate: FlutterAppDelegate {
     private func handleNativeRuntimeCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "ensureBackendBootstrap":
-            launchEmbeddedBackendBootstrapIfNeeded()
-            result(["ok": true])
+            result(launchEmbeddedBackendBootstrapIfNeeded())
         default:
             result(FlutterMethodNotImplemented)
         }
