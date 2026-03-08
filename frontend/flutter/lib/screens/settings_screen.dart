@@ -12,6 +12,7 @@ import '../api/model_api.dart';
 import '../api/recording_api.dart';
 import '../connection/connection_state.dart';
 import '../services/model_catalog_groups.dart';
+import '../services/recording_diagnostics.dart';
 import '../widgets/backend_required_panel.dart';
 import '../widgets/recording_diagnostics_panel.dart';
 
@@ -308,28 +309,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  String _settingsLogsDirPath() {
-    return '${Platform.environment['HOME'] ?? '~'}/.memscreen/logs';
-  }
-
-  String _settingsOutputDir() {
-    final outputDir = (_recordingStatus?.outputDir ?? '').trim();
-    if (outputDir.isNotEmpty) {
-      return outputDir;
-    }
-    return '${Platform.environment['HOME'] ?? '~'}/.memscreen/videos';
-  }
-
-  String _settingsInstallStatusLabel() {
-    final appPath = BuildInfo.detectAppBundlePath() ?? '';
-    if (appPath.isEmpty) {
-      return 'Unknown';
-    }
-    return appPath.startsWith('/Applications/')
-        ? 'Applications'
-        : 'Nonstandard path';
-  }
-
   Future<void> _loadRecordingDiagnostics(
       {bool refreshPermissions = false}) async {
     if (!mounted) return;
@@ -373,28 +352,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   RecordingDiagnosticsData _buildSettingsRecordingDiagnosticsData(
       AppState appState) {
     final status = _recordingStatus;
-    return RecordingDiagnosticsData(
-      buildLabel: '${BuildInfo.commit} · ${BuildInfo.buildChannel}',
-      appPath: BuildInfo.detectAppBundlePath(),
-      installStatus: _settingsInstallStatusLabel(),
+    return buildRecordingDiagnosticsData(
       screenRecordingGranted: appState.hasScreenRecordingPermission,
-      outputDir: _settingsOutputDir(),
-      logsDir: _settingsLogsDirPath(),
+      outputDir: (status?.outputDir ?? '').trim().isNotEmpty
+          ? status!.outputDir
+          : recordingDefaultOutputDir(),
       isRecording: status?.isRecording ?? false,
       lastFailureKind: status?.lastFailureKind,
       lastFailureMessage: status?.lastFailureMessage,
       lastExitStatus: status?.lastTerminationStatus,
       lastOutputPath: status?.lastOutputPath,
-      advice: ((BuildInfo.detectAppBundlePath() ?? '').isNotEmpty &&
-              !BuildInfo.detectAppBundlePath()!.startsWith('/Applications/'))
-          ? 'Install the latest MemScreen.app into /Applications before testing recording.'
-          : null,
     );
   }
 
   Future<void> _copyRecordingDiagnostics(AppState appState) async {
-    final report = buildRecordingDiagnosticsReport(
-        _buildSettingsRecordingDiagnosticsData(appState));
+    final diagnostics = _buildSettingsRecordingDiagnosticsData(appState);
+    final report = buildRecordingDiagnosticsReport(diagnostics);
     await Clipboard.setData(ClipboardData(text: report));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -405,9 +378,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _recordingDiagnosticsCard(AppState appState) {
     final hasPermission = Theme.of(context).platform != TargetPlatform.macOS ||
         appState.hasScreenRecordingPermission;
+    final diagnostics = _buildSettingsRecordingDiagnosticsData(appState);
     return RecordingDiagnosticsPanel(
       title: 'Recording diagnostics',
-      data: _buildSettingsRecordingDiagnosticsData(appState),
+      data: diagnostics,
       headerActions: [
         RecordingDiagnosticsHeaderAction(
           label: 'Copy',
@@ -427,7 +401,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           label: 'Open output',
           icon: Icons.video_library_outlined,
           onPressed: () => _openDiagnosticPath(
-            _settingsOutputDir(),
+            diagnostics.outputDir,
             label: 'output folder',
           ),
         ),
@@ -435,7 +409,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           label: 'Open logs',
           icon: Icons.folder_open_outlined,
           onPressed: () => _openDiagnosticPath(
-            _settingsLogsDirPath(),
+            diagnostics.logsDir,
             label: 'logs folder',
           ),
         ),
