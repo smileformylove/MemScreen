@@ -10,6 +10,7 @@ class NativeRecordingStartResult {
     this.audioSourceUsed,
     this.notice,
     this.error,
+    this.consumedByCallback = false,
   });
 
   final bool ok;
@@ -18,6 +19,7 @@ class NativeRecordingStartResult {
   final String? audioSourceUsed;
   final String? notice;
   final String? error;
+  final bool consumedByCallback;
 }
 
 class NativeRecordingStopResult {
@@ -29,6 +31,7 @@ class NativeRecordingStopResult {
     this.audioSourceUsed,
     this.notice,
     this.error,
+    this.consumedByCallback = false,
   });
 
   final bool ok;
@@ -38,6 +41,7 @@ class NativeRecordingStopResult {
   final String? audioSourceUsed;
   final String? notice;
   final String? error;
+  final bool consumedByCallback;
 }
 
 class NativeRecordingService {
@@ -73,6 +77,7 @@ class NativeRecordingService {
       audioSourceUsed: map['audioSourceUsed'] as String?,
       notice: map['notice'] as String?,
       error: map['error'] as String?,
+      consumedByCallback: map['consumedByCallback'] as bool? ?? false,
     );
   }
 
@@ -89,6 +94,7 @@ class NativeRecordingService {
       audioSourceUsed: map['audioSourceUsed'] as String?,
       notice: map['notice'] as String?,
       error: map['error'] as String?,
+      consumedByCallback: map['consumedByCallback'] as bool? ?? false,
     );
   }
 

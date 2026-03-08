@@ -302,6 +302,10 @@ class AppDelegate: FlutterAppDelegate {
                 self?.handleNativeRecordingCall(call, result: result)
             }
 
+            nativeScreenRecorder.onRecordingFinished = { [weak self] payload in
+                self?.methodChannel?.invokeMethod("nativeRecordingEnded", arguments: payload)
+            }
+
             nativeTrackingChannel = FlutterMethodChannel(
                 name: "com.memscreen/native_input_tracking",
                 binaryMessenger: channelController.engine.binaryMessenger

@@ -13,6 +13,7 @@ final class NativeScreenRecorder {
     private var notice: String?
     private var requestedDuration: Int = 9999
     private var requestedInterval: Double = 2.0
+    var onRecordingFinished: (([String: Any]) -> Void)?
 
     func start(arguments: [String: Any]) -> [String: Any] {
         if let process, process.isRunning {
@@ -69,6 +70,13 @@ final class NativeScreenRecorder {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         process.arguments = args
+        process.terminationHandler = { [weak self, weak process] _ in
+            guard let self, let process, self.process === process else { return }
+            let result = self.finishRecording(consumedByCallback: true)
+            DispatchQueue.main.async {
+                self.onRecordingFinished?(result)
+            }
+        }
 
         do {
             try FileManager.default.createDirectory(
@@ -98,12 +106,13 @@ final class NativeScreenRecorder {
             return ["ok": false, "error": "Native recording is not running"]
         }
 
+        process.terminationHandler = nil
         if process.isRunning {
             process.interrupt()
             process.waitUntilExit()
         }
 
-        return finishRecording()
+        return finishRecording(consumedByCallback: false)
     }
 
     func consumeFinishedRecordingIfNeeded() -> [String: Any] {
@@ -113,12 +122,12 @@ final class NativeScreenRecorder {
         guard !process.isRunning else {
             return ["ok": false, "consumed": false]
         }
-        var result = finishRecording()
+        var result = finishRecording(consumedByCallback: false)
         result["consumed"] = true
         return result
     }
 
-    private func finishRecording() -> [String: Any] {
+    private func finishRecording(consumedByCallback: Bool) -> [String: Any] {
         let duration = startedAt.map { Date().timeIntervalSince($0) } ?? 0
         let filename = outputURL?.path
         self.process = nil
@@ -132,6 +141,7 @@ final class NativeScreenRecorder {
             "mode": mode,
             "audioSourceUsed": audioSourceUsed,
             "notice": notice as Any,
+            "consumedByCallback": consumedByCallback,
         ]
     }
 

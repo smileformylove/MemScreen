@@ -478,27 +478,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void _startNativeRecordingMonitor() {
-    _nativeRecordingMonitorTimer?.cancel();
-    _nativeRecordingMonitorTimer =
-        Timer.periodic(const Duration(seconds: 2), (_) async {
-      if (!useNativeMacOSRecording) return;
-      try {
-        final status = await _nativeRecordingService!.getStatus();
-        if (status.isRecording) {
-          return;
-        }
-        final finished =
-            await _nativeRecordingService!.consumeFinishedRecordingIfNeeded();
-        if (finished != null) {
-          await _handleFinishedNativeRecording(finished);
-        }
-      } catch (e) {
-        debugPrint('[AppState] Native recording monitor failed: $e');
-      }
-    });
-  }
-
   void _stopNativeRecordingMonitor() {
     _nativeRecordingMonitorTimer?.cancel();
     _nativeRecordingMonitorTimer = null;
@@ -771,7 +750,6 @@ class AppState extends ChangeNotifier {
       }
       updateFloatingBallState(true);
       requestRecordingStatusRefresh();
-      _startNativeRecordingMonitor();
       return;
     }
 
@@ -867,6 +845,29 @@ class AppState extends ChangeNotifier {
           return <String, dynamic>{'ok': true};
         } catch (e) {
           debugPrint('[AppState] Error stopping recording: $e');
+          return <String, dynamic>{'ok': false, 'error': '$e'};
+        }
+
+      case 'nativeRecordingEnded':
+        try {
+          final args = call.arguments is Map
+              ? Map<String, dynamic>.from(call.arguments as Map)
+              : const <String, dynamic>{};
+          final result = NativeRecordingStopResult(
+            ok: args['ok'] as bool? ?? true,
+            filename: args['filename'] as String?,
+            durationSec: (args['durationSec'] as num?)?.toDouble(),
+            mode: args['mode'] as String?,
+            audioSourceUsed: args['audioSourceUsed'] as String?,
+            notice: args['notice'] as String?,
+            error: args['error'] as String?,
+            consumedByCallback: args['consumedByCallback'] as bool? ?? true,
+          );
+          await _handleFinishedNativeRecording(result);
+          debugPrint('[AppState] Native recording finished callback handled');
+          return <String, dynamic>{'ok': true};
+        } catch (e) {
+          debugPrint('[AppState] Error handling native recording finish: $e');
           return <String, dynamic>{'ok': false, 'error': '$e'};
         }
 
