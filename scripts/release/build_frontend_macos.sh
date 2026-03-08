@@ -134,6 +134,9 @@ if [[ ! -f "$LITE_RUNTIME_REQUIREMENTS" ]]; then
 fi
 
 VERSION="$(awk -F'"' '/^__version__ = /{print $2}' "$PROJECT_ROOT/memscreen/version.py")"
+BUILD_COMMIT="$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+BUILD_TIME_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+BUILD_CHANNEL="release"
 if [[ -z "$VERSION" ]]; then
   echo "[frontend-package] Failed to parse version from memscreen/version.py"
   exit 1
@@ -318,7 +321,7 @@ echo "[frontend-package] flutter pub get"
 (cd "$FRONTEND_DIR" && "$FLUTTER_CMD" pub get)
 
 echo "[frontend-package] flutter build macos --release"
-(cd "$FRONTEND_DIR" && "$FLUTTER_CMD" build macos --release)
+(cd "$FRONTEND_DIR" && "$FLUTTER_CMD" build macos --release --dart-define=MEMSCREEN_BUILD_COMMIT="$BUILD_COMMIT" --dart-define=MEMSCREEN_BUILD_TIME="$BUILD_TIME_UTC" --dart-define=MEMSCREEN_BUILD_CHANNEL="$BUILD_CHANNEL")
 
 if [[ ! -d "$APP_SRC" ]]; then
   echo "[frontend-package] Built app not found: $APP_SRC"

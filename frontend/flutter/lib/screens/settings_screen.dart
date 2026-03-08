@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
+import '../build_info.dart';
 import '../app_state.dart';
 import '../api/api_client.dart';
 import '../api/model_api.dart';
@@ -321,6 +322,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         future: _packageInfoFuture,
         builder: (context, pkgSnap) {
           final appVersion = pkgSnap.data?.version ?? '...';
+          final buildNumber = pkgSnap.data?.buildNumber ?? '...';
+          final buildCommit = BuildInfo.commit;
+          final builtAtUtc = BuildInfo.builtAtUtc;
+          final buildChannel = BuildInfo.buildChannel;
+          final bundlePath = BuildInfo.detectAppBundlePath();
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -330,7 +336,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 12),
               _modelsCard(),
               const SizedBox(height: 12),
-              _kv(context, 'Version', appVersion),
+              _kv(context, 'Version', '$appVersion ($buildNumber)'),
+              _kv(context, 'Commit', buildCommit),
+              _kv(context, 'Built', builtAtUtc),
+              _kv(context, 'Channel', buildChannel),
+              if ((bundlePath ?? '').isNotEmpty)
+                _kv(context, 'App Path', bundlePath!),
             ],
           );
         },
