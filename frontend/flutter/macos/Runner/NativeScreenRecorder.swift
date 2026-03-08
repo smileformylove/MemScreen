@@ -103,6 +103,22 @@ final class NativeScreenRecorder {
             process.waitUntilExit()
         }
 
+        return finishRecording()
+    }
+
+    func consumeFinishedRecordingIfNeeded() -> [String: Any] {
+        guard let process else {
+            return ["ok": false, "consumed": false]
+        }
+        guard !process.isRunning else {
+            return ["ok": false, "consumed": false]
+        }
+        var result = finishRecording()
+        result["consumed"] = true
+        return result
+    }
+
+    private func finishRecording() -> [String: Any] {
         let duration = startedAt.map { Date().timeIntervalSince($0) } ?? 0
         let filename = outputURL?.path
         self.process = nil

@@ -429,6 +429,8 @@ class AppDelegate: FlutterAppDelegate {
             result(nativeScreenRecorder.stop())
         case "nativeRecordingStatus":
             result(nativeScreenRecorder.status())
+        case "consumeFinishedNativeRecording":
+            result(nativeScreenRecorder.consumeFinishedRecordingIfNeeded())
         case "nativeRecordingScreens":
             result(nativeScreenRecorder.screens())
         default:

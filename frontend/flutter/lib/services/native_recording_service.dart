@@ -92,6 +92,26 @@ class NativeRecordingService {
     );
   }
 
+  Future<NativeRecordingStopResult?> consumeFinishedRecordingIfNeeded() async {
+    final raw =
+        await _channel.invokeMethod<dynamic>('consumeFinishedNativeRecording');
+    final map = (raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{});
+    if (map['consumed'] != true || map['ok'] != true) {
+      return null;
+    }
+    return NativeRecordingStopResult(
+      ok: true,
+      filename: map['filename'] as String?,
+      durationSec: (map['durationSec'] as num?)?.toDouble(),
+      mode: map['mode'] as String?,
+      audioSourceUsed: map['audioSourceUsed'] as String?,
+      notice: map['notice'] as String?,
+      error: map['error'] as String?,
+    );
+  }
+
   Future<List<RecordingScreenInfo>> getScreens() async {
     final raw = await _channel.invokeMethod<dynamic>('nativeRecordingScreens');
     final list = raw is List ? raw : const [];

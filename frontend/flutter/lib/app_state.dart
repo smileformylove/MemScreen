@@ -186,11 +186,19 @@ class AppState extends ChangeNotifier {
       _permissionGranted('input_monitoring');
 
   String _processSessionMergeKey(ProcessSession session) {
-    return '\${session.startTime}|\${session.endTime}|\${session.eventCount}|\${session.keystrokes}|\${session.clicks}';
+    return '${session.startTime}|${session.endTime}|${session.eventCount}|${session.keystrokes}|${session.clicks}';
   }
 
   Future<RecordingStatus> loadRecordingStatusForUi() async {
     if (useNativeMacOSRecording) {
+      final status = await _nativeRecordingService!.getStatus();
+      if (!status.isRecording) {
+        final finished =
+            await _nativeRecordingService!.consumeFinishedRecordingIfNeeded();
+        if (finished != null) {
+          await _handleFinishedNativeRecording(finished);
+        }
+      }
       return _nativeRecordingService!.getStatus();
     }
     return _recordingApi.getStatus();
@@ -466,6 +474,46 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> _handleFinishedNativeRecording(
+    NativeRecordingStopResult result,
+  ) async {
+    updateFloatingBallState(false);
+    requestRecordingStatusRefresh();
+    if ((result.notice ?? '').isNotEmpty) {
+      _recordingTrackingState.pendingRecordingNotice = result.notice;
+    }
+    final filename = result.filename;
+    if (result.ok && filename != null && filename.isNotEmpty) {
+      final file = File(filename);
+      final fileSize = await file.exists() ? await file.length() : 0;
+      await _localVideoCatalogStore?.upsert({
+        'filename': filename,
+        'timestamp': DateTime.now().toIso8601String(),
+        'duration': result.durationSec,
+        'file_size': fileSize,
+        'recording_mode': result.mode,
+        'audio_source': result.audioSourceUsed,
+        'content_summary': 'Native macOS recording',
+        'analysis_status': 'pending-sync',
+      });
+      final payload = {
+        'filename': filename,
+        'duration_sec': result.durationSec,
+        'mode': result.mode,
+        'audio_source': result.audioSourceUsed,
+      };
+      try {
+        await _client.post('/recording/import', body: payload);
+        requestVideoRefresh();
+      } catch (e) {
+        debugPrint('[AppState] Failed to import native recording: $e');
+        await _nativeRecordingImportQueue?.enqueue(payload);
+        _recordingTrackingState.pendingRecordingNotice =
+            'Recording saved locally. It will appear in Videos after backend reconnects.';
+      }
+    }
+  }
+
   Future<void> _loadRecordingSettings() async {
     try {
       final map = await _recordingSettingsStore.load();
@@ -711,41 +759,7 @@ class AppState extends ChangeNotifier {
   Future<void> stopRecording() async {
     if (useNativeMacOSRecording) {
       final result = await _nativeRecordingService!.stop();
-      updateFloatingBallState(false);
-      requestRecordingStatusRefresh();
-      if ((result.notice ?? '').isNotEmpty) {
-        _recordingTrackingState.pendingRecordingNotice = result.notice;
-      }
-      final filename = result.filename;
-      if (result.ok && filename != null && filename.isNotEmpty) {
-        final file = File(filename);
-        final fileSize = await file.exists() ? await file.length() : 0;
-        await _localVideoCatalogStore?.upsert({
-          'filename': filename,
-          'timestamp': DateTime.now().toIso8601String(),
-          'duration': result.durationSec,
-          'file_size': fileSize,
-          'recording_mode': result.mode,
-          'audio_source': result.audioSourceUsed,
-          'content_summary': 'Native macOS recording',
-          'analysis_status': 'pending-sync',
-        });
-        final payload = {
-          'filename': filename,
-          'duration_sec': result.durationSec,
-          'mode': result.mode,
-          'audio_source': result.audioSourceUsed,
-        };
-        try {
-          await _client.post('/recording/import', body: payload);
-          requestVideoRefresh();
-        } catch (e) {
-          debugPrint('[AppState] Failed to import native recording: $e');
-          await _nativeRecordingImportQueue?.enqueue(payload);
-          _recordingTrackingState.pendingRecordingNotice =
-              'Recording saved locally. It will appear in Videos after backend reconnects.';
-        }
-      }
+      await _handleFinishedNativeRecording(result);
       return;
     }
 
