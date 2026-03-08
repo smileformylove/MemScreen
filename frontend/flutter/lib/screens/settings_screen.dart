@@ -473,8 +473,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _modelsCard() {
+    final appState = context.watch<AppState>();
     final catalog = _modelCatalog;
     final theme = Theme.of(context);
+
+    if (!appState.isBackendConnected) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Local models'),
+            const SizedBox(height: 8),
+            Text(
+              'Model catalog requires the local backend. Core local features continue to work without it.',
+              style: TextStyle(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () async {
+                await appState.ensureBackendConnection(force: true);
+                await _loadModelCatalog(showError: true);
+              },
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Start Backend'),
+            ),
+          ],
+        ),
+      );
+    }
     final runtimeReady = catalog?.runtimeReady ?? false;
     final runtimeText = runtimeReady ? 'Runtime ready' : 'Runtime unavailable';
     final statusColor = runtimeReady ? Colors.green : theme.colorScheme.error;

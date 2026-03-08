@@ -104,7 +104,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _loadHistory({String? threadId}) async {
-    final api = context.read<AppState>().chatApi;
+    final appState = context.read<AppState>();
+    await appState.ensureBackendConnection(force: true);
+    final api = appState.chatApi;
     try {
       final list = await api.getHistory(threadId: threadId);
       if (mounted) {
@@ -359,8 +361,44 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  Widget _buildBackendPlaceholder(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.smart_toy_outlined,
+                size: 56, color: theme.colorScheme.primary),
+            const SizedBox(height: 16),
+            Text('AI Chat needs the local backend',
+                style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            Text(
+              'Recording, Videos, and Process work locally. Start the backend only when you want AI chat or model features.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () =>
+                  context.read<AppState>().ensureBackendConnection(force: true),
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Start Backend'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final appState = context.watch<AppState>();
+    if (!appState.isBackendConnected && _history.isEmpty && !_loading) {
+      return _buildBackendPlaceholder(context);
+    }
     return Column(
       children: [
         AppBar(
