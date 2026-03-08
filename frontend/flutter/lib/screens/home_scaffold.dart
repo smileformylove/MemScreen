@@ -46,10 +46,6 @@ class HomeScaffoldState extends State<HomeScaffold> {
         _ensureTabLoaded(appState.desiredTabIndex!);
         _index = appState.desiredTabIndex!;
       });
-      if ((_index == 3 || _index == 4) &&
-          appState.connectionState.status != ConnectionStatus.connected) {
-        appState.ensureBackendConnection();
-      }
       // Clear the desired tab after consuming it
       appState.clearDesiredTab();
     }
@@ -131,11 +127,6 @@ class HomeScaffoldState extends State<HomeScaffold> {
             _ensureTabLoaded(i);
             _index = i;
           });
-          final appState = context.read<AppState>();
-          if ((i == 3 || i == 4) &&
-              appState.connectionState.status != ConnectionStatus.connected) {
-            appState.ensureBackendConnection();
-          }
         },
         destinations: _tabs
             .map((t) =>
