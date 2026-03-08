@@ -28,6 +28,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _requestedModelHydration = false;
   List<String> _availableModels = [];
   String? _currentModel;
+  int _lastChatModelRefreshVersion = -1;
   StreamSubscription? _streamSub;
   Timer? _thinkingTimer;
   int _thinkingStep = 0;
@@ -41,7 +42,9 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    if (context.read<AppState>().isBackendConnected) {
+    final appState = context.read<AppState>();
+    _lastChatModelRefreshVersion = appState.chatModelRefreshVersion;
+    if (appState.isBackendConnected) {
       _requestedInitialHydration = true;
       _requestedModelHydration = true;
       _loadThreads();
@@ -87,6 +90,22 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = raw.replaceFirst('T', ' ');
     if (text.length >= 16) return text.substring(0, 16);
     return text;
+  }
+
+  void _maybeRefreshModelState(AppState appState) {
+    if (!appState.isBackendConnected) {
+      return;
+    }
+    if (_lastChatModelRefreshVersion == appState.chatModelRefreshVersion) {
+      return;
+    }
+    _lastChatModelRefreshVersion = appState.chatModelRefreshVersion;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _loadModelSelector();
+    });
   }
 
   void _maybeHydrateAfterBackendConnect(AppState appState) {
@@ -518,6 +537,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
     _maybeHydrateAfterBackendConnect(appState);
+    _maybeRefreshModelState(appState);
     if (!appState.isBackendConnected && _history.isEmpty && !_loading) {
       return _buildBackendPlaceholder(context);
     }

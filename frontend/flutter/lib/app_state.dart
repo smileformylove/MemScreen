@@ -119,6 +119,8 @@ class AppState extends ChangeNotifier {
   int get recordingStatusVersion => _recordingStatusVersion;
   int _processRefreshVersion = 0;
   int get processRefreshVersion => _processRefreshVersion;
+  int _chatModelRefreshVersion = 0;
+  int get chatModelRefreshVersion => _chatModelRefreshVersion;
   int _recordingDurationSec = 9999;
   int get recordingDurationSec => _recordingDurationSec;
   double _recordingIntervalSec = 2.0;
@@ -310,6 +312,7 @@ class AppState extends ChangeNotifier {
     Duration timeout = const Duration(minutes: 45),
   }) async {
     await _modelApi.downloadModel(modelName, timeout: timeout);
+    requestChatModelRefresh();
   }
 
   Future<List<String>> loadChatModelsForUi() async {
@@ -322,6 +325,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> setChatModelForUi(String modelName) async {
     await _chatApi.setModel(modelName);
+    requestChatModelRefresh();
   }
 
   Future<List<VideoItem>> loadVideosForUi() async {
@@ -649,6 +653,13 @@ class AppState extends ChangeNotifier {
 
   void requestProcessRefresh({bool notify = true}) {
     _processRefreshVersion += 1;
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  void requestChatModelRefresh({bool notify = true}) {
+    _chatModelRefreshVersion += 1;
     if (notify) {
       notifyListeners();
     }

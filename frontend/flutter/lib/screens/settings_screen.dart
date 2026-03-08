@@ -24,6 +24,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _loadingModelCatalog = false;
   bool _loadingPermissions = false;
   bool _requestedModelHydration = false;
+  int _lastChatModelRefreshVersion = -1;
   String? _downloadingModelName;
   String? _switchingChatModelName;
 
@@ -32,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _packageInfoFuture = PackageInfo.fromPlatform();
     final appState = context.read<AppState>();
+    _lastChatModelRefreshVersion = appState.chatModelRefreshVersion;
     _durationController.text = appState.recordingDurationSec.toString();
     _intervalController.text = appState.recordingIntervalSec.toString();
     if (appState.isBackendConnected) {
@@ -114,6 +116,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() => _loadingPermissions = false);
       }
     }
+  }
+
+  void _maybeRefreshModelState(AppState appState) {
+    if (!appState.isBackendConnected) {
+      return;
+    }
+    if (_lastChatModelRefreshVersion == appState.chatModelRefreshVersion) {
+      return;
+    }
+    _lastChatModelRefreshVersion = appState.chatModelRefreshVersion;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _loadModelCatalog();
+    });
   }
 
   void _maybeHydrateAfterBackendConnect(AppState appState) {
@@ -209,9 +227,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await context.read<AppState>().downloadLocalModelForUi(entry.name);
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Downloaded ${entry.name}')));
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Downloaded ${entry.name}'),
+            action: _isChatCapableModel(entry.name)
+                ? SnackBarAction(
+                    label: 'Use for Chat',
+                    onPressed: () => _setChatModel(entry),
+                  )
+                : null,
+          ),
+        );
       }
       await _loadModelCatalog();
     } catch (e) {
@@ -232,6 +259,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
     _maybeHydrateAfterBackendConnect(appState);
+    _maybeRefreshModelState(appState);
     final durationText = appState.recordingDurationSec.toString();
     final intervalText = appState.recordingIntervalSec.toString();
     if (!_durationFocusNode.hasFocus &&
