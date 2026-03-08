@@ -243,11 +243,10 @@ class ApiRouterSmokeTest(unittest.TestCase):
     self.assertEqual(payload['current_chat_model'], 'm1')
     self.assertEqual(payload['available_chat_models'], ['m1', 'm2'])
     names = {item['name'] for item in payload['models']}
-    self.assertIn('qwen3:0.6b', names)
-    self.assertIn('qwen3:1.7b', names)
-    self.assertIn('qwen3:4b', names)
-    self.assertIn('qwen3-vl:2b', names)
-    self.assertIn('qwen3-vl:4b', names)
+    self.assertIn('qwen3.5:0.8b', names)
+    self.assertIn('qwen3.5:2b', names)
+    self.assertIn('qwen3.5:4b', names)
+    self.assertIn('qwen3.5:9b', names)
 
   def test_chat_video_and_system_routes(self):
     self.assertEqual(self.client.get('/chat/models').json()['models'], ['m1', 'm2'])

@@ -47,8 +47,8 @@ class MemScreenConfig:
 
     # Ollama configuration
     DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
-    DEFAULT_OLLAMA_LLM_MODEL = "qwen3:4b"
-    DEFAULT_OLLAMA_VISION_MODEL = "qwen3-vl:4b"
+    DEFAULT_OLLAMA_LLM_MODEL = "qwen3.5:4b"
+    DEFAULT_OLLAMA_VISION_MODEL = "qwen3.5:4b"
     DEFAULT_OLLAMA_EMBEDDING_MODEL = "mxbai-embed-large"
 
     # vLLM configuration
