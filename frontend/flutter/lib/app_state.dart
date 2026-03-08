@@ -712,7 +712,7 @@ class AppState extends ChangeNotifier {
     }
     try {
       await _nativeTrackingSessionQueue!.flush(_processApi);
-      requestVideoRefresh();
+      requestProcessRefresh();
     } catch (e) {
       debugPrint('[AppState] Failed to flush pending tracking sessions: $e');
     }
