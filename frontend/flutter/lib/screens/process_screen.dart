@@ -91,9 +91,10 @@ class _ProcessScreenState extends State<ProcessScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final api = context.read<AppState>().processApi;
+      final appState = context.read<AppState>();
+      final api = appState.processApi;
       final list = await api.getSessions();
-      final status = await api.getTrackingStatus();
+      final status = await appState.loadTrackingStatusForUi();
       context.read<AppState>().updateFloatingBallTracking(status.isTracking);
       if (mounted) {
         setState(() {
@@ -112,8 +113,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
     _trackingPollTimer?.cancel();
     _trackingPollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
       try {
-        final status =
-            await context.read<AppState>().processApi.getTrackingStatus();
+        final status = await context.read<AppState>().loadTrackingStatusForUi();
         context.read<AppState>().updateFloatingBallTracking(status.isTracking);
         if (mounted) setState(() => _trackingStatus = status);
         if (!status.isTracking) _trackingPollTimer?.cancel();
@@ -161,8 +161,7 @@ class _ProcessScreenState extends State<ProcessScreen> {
       return;
     }
     try {
-      await appState.processApi.startTracking();
-      appState.updateFloatingBallTracking(true);
+      await appState.startInputTracking();
       if (mounted) {
         setState(() =>
             _trackingStatus = TrackingStatus(isTracking: true, eventCount: 0));
@@ -181,14 +180,13 @@ class _ProcessScreenState extends State<ProcessScreen> {
   Future<void> _stopTracking() async {
     try {
       final appState = context.read<AppState>();
-      await appState.processApi.stopTracking();
-      appState.updateFloatingBallTracking(false);
+      await appState.stopInputTracking();
       _trackingPollTimer?.cancel();
 
       // Auto-save session when stopping tracking
       try {
         final result =
-            await context.read<AppState>().processApi.saveSessionFromTracking();
+            await context.read<AppState>().saveTrackingSessionForUi();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

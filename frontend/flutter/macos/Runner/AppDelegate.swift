@@ -9,6 +9,7 @@ class AppDelegate: FlutterAppDelegate {
     private var floatingBall: FloatingBallWindow?
     private var methodChannel: FlutterMethodChannel?
     private var nativeRecordingChannel: FlutterMethodChannel?
+    private var nativeTrackingChannel: FlutterMethodChannel?
     private var creationTimer: Timer?
     private var creationAttempts = 0
     private var shouldForceQuit = false
@@ -16,6 +17,7 @@ class AppDelegate: FlutterAppDelegate {
     private var lastKnownFlutterController: FlutterViewController?
     private var floatingBallHealthTimer: Timer?
     private let nativeScreenRecorder = NativeScreenRecorder()
+    private let nativeInputTracker = NativeInputTracker()
 
     let logger = OSLog(subsystem: "com.memscreen", category: "AppDelegate")
 
@@ -297,6 +299,14 @@ class AppDelegate: FlutterAppDelegate {
             nativeRecordingChannel?.setMethodCallHandler { [weak self] (call, result) in
                 self?.handleNativeRecordingCall(call, result: result)
             }
+
+            nativeTrackingChannel = FlutterMethodChannel(
+                name: "com.memscreen/native_input_tracking",
+                binaryMessenger: channelController.engine.binaryMessenger
+            )
+            nativeTrackingChannel?.setMethodCallHandler { [weak self] (call, result) in
+                self?.handleNativeTrackingCall(call, result: result)
+            }
         }
     }
 
@@ -367,6 +377,21 @@ class AppDelegate: FlutterAppDelegate {
         guard let window = findFlutterWindow() else { return }
         if !window.isMiniaturized {
             window.miniaturize(nil)
+        }
+    }
+
+    private func handleNativeTrackingCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        switch call.method {
+        case "startNativeTracking":
+            result(nativeInputTracker.start())
+        case "stopNativeTracking":
+            result(nativeInputTracker.stop())
+        case "nativeTrackingStatus":
+            result(nativeInputTracker.status())
+        case "saveNativeTrackingSession":
+            result(nativeInputTracker.saveSession())
+        default:
+            result(FlutterMethodNotImplemented)
         }
     }
 

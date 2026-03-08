@@ -15,6 +15,7 @@ import 'connection/connection_state.dart';
 import 'connection/connection_service.dart';
 import 'services/floating_ball_commands.dart';
 import 'services/floating_ball_service.dart';
+import 'services/native_input_tracking_service.dart';
 import 'services/native_recording_import_queue.dart';
 import 'services/native_recording_service.dart';
 import 'services/recording_lifecycle_coordinator.dart';
@@ -56,6 +57,7 @@ class AppState extends ChangeNotifier {
     if (Platform.isMacOS) {
       _nativeRecordingService = NativeRecordingService();
       _nativeRecordingImportQueue = NativeRecordingImportQueue();
+      _nativeInputTrackingService = NativeInputTrackingService();
     }
     _recordingTrackingCoordinator = RecordingTrackingCoordinator(
       processApi: _processApi,
@@ -131,6 +133,7 @@ class AppState extends ChangeNotifier {
   late final RecordingSettingsStore _recordingSettingsStore;
   NativeRecordingService? _nativeRecordingService;
   NativeRecordingImportQueue? _nativeRecordingImportQueue;
+  NativeInputTrackingService? _nativeInputTrackingService;
   Map<String, dynamic>? _permissionStatus;
   Map<String, dynamic>? get permissionStatus => _permissionStatus;
 
@@ -152,6 +155,9 @@ class AppState extends ChangeNotifier {
 
   bool get useNativeMacOSRecording =>
       Platform.isMacOS && _nativeRecordingService != null;
+
+  bool get useNativeMacOSTracking =>
+      Platform.isMacOS && _nativeInputTrackingService != null;
 
   bool _permissionGranted(String key) {
     final section = _permissionStatus?[key];
@@ -176,6 +182,47 @@ class AppState extends ChangeNotifier {
       return _nativeRecordingService!.getScreens();
     }
     return _recordingApi.getScreens();
+  }
+
+  Future<TrackingStatus> loadTrackingStatusForUi() async {
+    if (useNativeMacOSTracking) {
+      return _nativeInputTrackingService!.getStatus();
+    }
+    return _processApi.getTrackingStatus();
+  }
+
+  Future<void> startInputTracking() async {
+    if (useNativeMacOSTracking) {
+      await _nativeInputTrackingService!.start();
+      updateFloatingBallTracking(true);
+      requestRecordingStatusRefresh();
+      return;
+    }
+    await _processApi.startTracking();
+    updateFloatingBallTracking(true);
+    requestRecordingStatusRefresh();
+  }
+
+  Future<void> stopInputTracking() async {
+    if (useNativeMacOSTracking) {
+      await _nativeInputTrackingService!.stop();
+      updateFloatingBallTracking(false);
+      requestRecordingStatusRefresh();
+      return;
+    }
+    await _processApi.stopTracking();
+    updateFloatingBallTracking(false);
+    requestRecordingStatusRefresh();
+  }
+
+  Future<SaveFromTrackingResult> saveTrackingSessionForUi() async {
+    if (useNativeMacOSTracking) {
+      final result =
+          await _nativeInputTrackingService!.saveSession(_processApi);
+      requestVideoRefresh();
+      return result;
+    }
+    return _processApi.saveSessionFromTracking();
   }
 
   /// Check connection (e.g. on startup or retry).
@@ -281,6 +328,11 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('[AppState] Failed to open permission settings: $e');
     }
+  }
+
+  Future<void> promptScreenRecordingPermissionFlow() async {
+    await refreshPermissionStatus(promptSystem: true);
+    await openPermissionSettings('screen_recording');
   }
 
   Future<void> _flushPendingNativeImports() async {
@@ -593,6 +645,16 @@ class AppState extends ChangeNotifier {
             call.arguments,
           );
 
+          if (Platform.isMacOS && !hasScreenRecordingPermission) {
+            setDesiredTabIndex(4);
+            await promptScreenRecordingPermissionFlow();
+            return <String, dynamic>{
+              'ok': false,
+              'error':
+                  'Screen Recording permission is required. Opened Settings for authorization.',
+            };
+          }
+
           await startRecording(
             duration: _recordingDurationSec,
             interval: _recordingIntervalSec,
@@ -638,9 +700,35 @@ class AppState extends ChangeNotifier {
 
       case 'toggleTracking':
         try {
-          await _recordingTrackingCoordinator.toggleTrackingFromFloatingBall(
-            state: _recordingTrackingState,
-          );
+          final status = await loadTrackingStatusForUi();
+          if (status.isTracking) {
+            await stopInputTracking();
+            try {
+              final result = await saveTrackingSessionForUi();
+              if (result.eventsSaved > 0) {
+                requestVideoRefresh();
+              }
+            } catch (e) {
+              debugPrint('[AppState] Error saving tracking session: $e');
+            }
+          } else {
+            if (Platform.isMacOS &&
+                (!hasAccessibilityPermission ||
+                    !hasInputMonitoringPermission)) {
+              setDesiredTabIndex(4);
+              if (!hasAccessibilityPermission) {
+                await openPermissionSettings('accessibility');
+              } else {
+                await openPermissionSettings('input_monitoring');
+              }
+              return <String, dynamic>{
+                'ok': false,
+                'error':
+                    'Tracking permission is required. Opened Settings for authorization.',
+              };
+            }
+            await startInputTracking();
+          }
           debugPrint('[AppState] Input tracking toggled from floating ball');
           return <String, dynamic>{'ok': true};
         } catch (e) {

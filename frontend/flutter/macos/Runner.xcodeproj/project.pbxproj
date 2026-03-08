@@ -21,6 +21,7 @@
 /* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
+		33CC11AD2044BFA00003C045 /* NativeInputTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11AC2044BFA00003C045 /* NativeInputTracker.swift */; };
 		33CC11AB2044BFA00003C045 /* NativeScreenRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11AA2044BFA00003C045 /* NativeScreenRecorder.swift */; };
 		072B1FE73ADDF8A810EE6262 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F47F0140E0670651DFEE9A71 /* Pods_RunnerTests.framework */; };
 		331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C80D7294CF71000263BE5 /* RunnerTests.swift */; };
@@ -64,6 +65,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		33CC11AC2044BFA00003C045 /* NativeInputTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInputTracker.swift; sourceTree = "<group>"; };
 		33CC11AA2044BFA00003C045 /* NativeScreenRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeScreenRecorder.swift; sourceTree = "<group>"; };
 		331C80D5294CF71000263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		331C80D7294CF71000263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
@@ -183,6 +185,7 @@
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 					33CCFBWIND7FB68BC /* FloatingBallWindow.swift */,
 					33CC11AA2044BFA00003C045 /* NativeScreenRecorder.swift */,
+					33CC11AC2044BFA00003C045 /* NativeInputTracker.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
@@ -446,6 +449,7 @@
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
 				33CCFBBLD14ED417B /* FloatingBallWindow.swift in Sources */,
 				33CC11AB2044BFA00003C045 /* NativeScreenRecorder.swift in Sources */,
+				33CC11AD2044BFA00003C045 /* NativeInputTracker.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);

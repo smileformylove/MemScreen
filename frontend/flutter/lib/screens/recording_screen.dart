@@ -268,6 +268,21 @@ class _RecordingScreenState extends State<RecordingScreen> {
     }
 
     try {
+      if (Theme.of(context).platform == TargetPlatform.macOS &&
+          !appState.hasScreenRecordingPermission) {
+        await appState.promptScreenRecordingPermissionFlow();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Screen Recording permission is required. System Settings has been opened.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
       final requestedAudioSource = appState.recordingAudioSource;
       if (!appState.useNativeMacOSRecording && requestedAudioSource != 'none') {
         final diagnosis = await appState.recordingApi
