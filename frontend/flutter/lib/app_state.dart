@@ -338,6 +338,13 @@ class AppState extends ChangeNotifier {
     _cachedLocalModelCatalogAt = DateTime.now();
   }
 
+  Future<LocalModelCatalog> _ensureModelCatalogSnapshotAfterMutation() async {
+    if (_cachedLocalModelCatalog != null) {
+      return _cachedLocalModelCatalog!;
+    }
+    return loadLocalModelCatalogForUi(forceRefresh: true);
+  }
+
   Future<LocalModelCatalog> loadLocalModelCatalogForUi({
     bool forceRefresh = false,
   }) async {
@@ -354,14 +361,14 @@ class AppState extends ChangeNotifier {
     return catalog;
   }
 
-  Future<LocalModelCatalog?> downloadLocalModelForUi(
+  Future<LocalModelCatalog> downloadLocalModelForUi(
     String modelName, {
     Duration timeout = const Duration(minutes: 45),
   }) async {
     await _modelApi.downloadModel(modelName, timeout: timeout);
     _cacheDownloadedModel(modelName);
     requestChatModelRefresh(invalidateCache: false);
-    return _cachedLocalModelCatalog;
+    return _ensureModelCatalogSnapshotAfterMutation();
   }
 
   Future<List<String>> loadChatModelsForUi() async {
@@ -380,11 +387,11 @@ class AppState extends ChangeNotifier {
     return _chatApi.getCurrentModel();
   }
 
-  Future<LocalModelCatalog?> setChatModelForUi(String modelName) async {
+  Future<LocalModelCatalog> setChatModelForUi(String modelName) async {
     await _chatApi.setModel(modelName);
     _cacheCurrentChatModel(modelName);
     requestChatModelRefresh(invalidateCache: false);
-    return _cachedLocalModelCatalog;
+    return _ensureModelCatalogSnapshotAfterMutation();
   }
 
   Future<List<VideoItem>> loadVideosForUi() async {

@@ -231,30 +231,24 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) {
         return;
       }
-      if (updatedCatalog != null) {
-        final details = <String, LocalModelEntry>{};
-        for (final entry in updatedCatalog.models) {
-          if (updatedCatalog.availableChatModels.contains(entry.name)) {
-            details[entry.name] = entry;
-          }
-          if ((entry.installedName ?? '').isNotEmpty &&
-              updatedCatalog.availableChatModels
-                  .contains(entry.installedName)) {
-            details[entry.installedName!] = entry;
-          }
+      final details = <String, LocalModelEntry>{};
+      for (final entry in updatedCatalog.models) {
+        if (updatedCatalog.availableChatModels.contains(entry.name)) {
+          details[entry.name] = entry;
         }
-        setState(() {
-          _modelUiState = _modelUiState.copyWith(
-            currentModel: updatedCatalog.currentChatModel ?? modelName,
-            recommendedModel: updatedCatalog.recommendedChatModel,
-            availableModels: updatedCatalog.availableChatModels,
-            detailsByModel: details,
-          );
-        });
-      } else {
-        setState(() =>
-            _modelUiState = _modelUiState.copyWith(currentModel: modelName));
+        if ((entry.installedName ?? '').isNotEmpty &&
+            updatedCatalog.availableChatModels.contains(entry.installedName)) {
+          details[entry.installedName!] = entry;
+        }
       }
+      setState(() {
+        _modelUiState = _modelUiState.copyWith(
+          currentModel: updatedCatalog.currentChatModel ?? modelName,
+          recommendedModel: updatedCatalog.recommendedChatModel,
+          availableModels: updatedCatalog.availableChatModels,
+          detailsByModel: details,
+        );
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Chat model set to $modelName')),
       );

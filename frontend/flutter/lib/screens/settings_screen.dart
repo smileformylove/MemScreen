@@ -267,9 +267,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           .read<AppState>()
           .setChatModelForUi(entry.installedName ?? entry.name);
       if (!mounted) return;
-      if (updatedCatalog != null) {
-        _setModelUiState(_modelUiState.copyWith(catalog: updatedCatalog));
-      }
+      _setModelUiState(_modelUiState.copyWith(catalog: updatedCatalog));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content:
@@ -295,7 +293,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final updatedCatalog =
           await context.read<AppState>().downloadLocalModelForUi(entry.name);
-      if (mounted && updatedCatalog != null) {
+      if (mounted) {
         _setModelUiState(_modelUiState.copyWith(catalog: updatedCatalog));
       }
       if (mounted) {
