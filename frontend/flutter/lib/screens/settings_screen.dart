@@ -216,6 +216,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return current == entry.name || current == (entry.installedName ?? '');
   }
 
+  LocalModelEntry? _entryForModelName(
+    List<LocalModelEntry> entries,
+    String modelName,
+  ) {
+    final normalized = modelName.trim();
+    for (final entry in entries) {
+      if (entry.name == normalized || entry.installedName == normalized) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
   Future<void> _setChatModel(LocalModelEntry entry) async {
     if (_switchingChatModelName != null) return;
     setState(() => _switchingChatModelName = entry.name);
@@ -255,7 +268,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             content: Text('Downloaded ${entry.name}'),
             action: entry.supportsChat
                 ? SnackBarAction(
-                    label: 'Use for Chat',
+                    label: entry.recommendedChatDefault
+                        ? 'Use recommended'
+                        : 'Use for Chat',
                     onPressed: () => _setChatModel(entry),
                   )
                 : null,
@@ -656,6 +671,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final modelsDir = catalog?.modelsDir;
     final modelsDirExternal = catalog?.modelsDirExternal ?? false;
     final currentChatModel = catalog?.currentChatModel;
+    final recommendedChatModel = catalog?.recommendedChatModel;
     final models = catalog?.models ?? const <LocalModelEntry>[];
     final disableDownloads = _loadingModelCatalog;
 
@@ -718,6 +734,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 color: theme.colorScheme.onSurfaceVariant,
                 fontSize: 12,
               ),
+            ),
+          ],
+          if ((recommendedChatModel ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Recommended chat model: $recommendedChatModel',
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                if ((currentChatModel ?? '') != recommendedChatModel)
+                  TextButton(
+                    onPressed: _switchingChatModelName != null
+                        ? null
+                        : () {
+                            final entry = _entryForModelName(
+                              models,
+                              recommendedChatModel!,
+                            );
+                            if (entry != null) {
+                              _setChatModel(entry);
+                            }
+                          },
+                    child: const Text('Use recommended'),
+                  ),
+              ],
             ),
           ],
           if (catalog?.modelsDisabled == true) ...[
@@ -863,6 +910,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _modelTag(theme, entry.sizeLabel!),
                   _modelTag(theme, _recommendedUseLabel(entry)),
                   if (entry.supportsVision) _modelTag(theme, 'Vision'),
+                  if (entry.recommendedChatDefault)
+                    _modelTag(theme, 'Recommended'),
                   if (entry.required) _modelTag(theme, 'Required'),
                 ],
               ),

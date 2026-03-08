@@ -241,6 +241,7 @@ class ApiRouterSmokeTest(unittest.TestCase):
     self.assertEqual(payload['models_dir'], '/Volumes/TestDrive/models/ollama')
     self.assertTrue(payload['models_dir_external'])
     self.assertEqual(payload['current_chat_model'], 'm1')
+    self.assertEqual(payload['recommended_chat_model'], 'm1')
     self.assertEqual(payload['available_chat_models'], ['m1', 'm2'])
     names = {item['name'] for item in payload['models']}
     self.assertIn('qwen3.5:0.8b', names)
@@ -251,6 +252,7 @@ class ApiRouterSmokeTest(unittest.TestCase):
     self.assertTrue(model_map['qwen3.5:4b']['supports_chat'])
     self.assertTrue(model_map['qwen3.5:4b']['supports_vision'])
     self.assertEqual(model_map['qwen3.5:4b']['recommended_use'], 'balanced')
+    self.assertIn('recommended_chat_default', model_map['qwen3.5:4b'])
 
   def test_chat_video_and_system_routes(self):
     self.assertEqual(self.client.get('/chat/models').json()['models'], ['m1', 'm2'])

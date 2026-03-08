@@ -24,6 +24,8 @@ class ModelApi {
             supportsVision: item['supports_vision'] as bool? ?? false,
             recommendedUse: item['recommended_use'] as String? ?? 'general',
             chatSelectable: item['chat_selectable'] as bool? ?? false,
+            recommendedChatDefault:
+                item['recommended_chat_default'] as bool? ?? false,
           ),
         );
       }
@@ -33,6 +35,7 @@ class ModelApi {
       modelsDir: m['models_dir'] as String?,
       modelsDirExternal: m['models_dir_external'] as bool? ?? false,
       currentChatModel: m['current_chat_model'] as String?,
+      recommendedChatModel: m['recommended_chat_model'] as String?,
       availableChatModels: (m['available_chat_models'] is List)
           ? (m['available_chat_models'] as List)
               .map((e) => e.toString())
@@ -66,6 +69,7 @@ class LocalModelCatalog {
     required this.modelsDir,
     required this.modelsDirExternal,
     required this.currentChatModel,
+    required this.recommendedChatModel,
     required this.availableChatModels,
     required this.runtimeReady,
     required this.runtimeError,
@@ -77,6 +81,7 @@ class LocalModelCatalog {
   final String? modelsDir;
   final bool modelsDirExternal;
   final String? currentChatModel;
+  final String? recommendedChatModel;
   final List<String> availableChatModels;
   final bool runtimeReady;
   final String? runtimeError;
@@ -96,6 +101,7 @@ class LocalModelEntry {
     required this.supportsVision,
     required this.recommendedUse,
     required this.chatSelectable,
+    required this.recommendedChatDefault,
     this.installedName,
   });
 
@@ -110,4 +116,5 @@ class LocalModelEntry {
   final bool supportsVision;
   final String recommendedUse;
   final bool chatSelectable;
+  final bool recommendedChatDefault;
 }

@@ -153,6 +153,28 @@ async def models_catalog():
             'recommended_use': recommended_use,
         }
 
+
+    def _recommended_chat_score(name: str, capabilities: dict) -> int:
+        recommended_use = capabilities.get('recommended_use', 'general')
+        score_map = {
+            'balanced': 500,
+            'fast': 450,
+            'ultra_light': 420,
+            'advanced': 390,
+            'vision_fallback': 300,
+            'general': 200,
+            'embedding': 0,
+        }
+        normalized = str(name or '').strip().lower()
+        size_bonus = 0
+        _, tag = _split_model_ref(normalized)
+        if tag and tag.endswith('b'):
+            try:
+                size_bonus = int(float(tag[:-1]) * 10)
+            except Exception:
+                size_bonus = 0
+        return score_map.get(recommended_use, 0) + size_bonus
+
     current_chat_model = None
     available_chat_models = []
     try:
@@ -169,15 +191,23 @@ async def models_catalog():
     available_chat_model_set = {str(model).strip().lower() for model in available_chat_models}
 
     models = []
+    recommended_chat_model = None
+    recommended_chat_score = -1
     for name, purpose, required in deduped_specs:
         matched_name, meta = _find_installed_model(name)
-        capabilities = _classify_model(matched_name or name)
+        effective_name = matched_name or name
+        capabilities = _classify_model(effective_name)
         installed_name_normalized = str(matched_name or '').strip().lower()
         requested_name_normalized = str(name).strip().lower()
         chat_selectable = (
             requested_name_normalized in available_chat_model_set
             or installed_name_normalized in available_chat_model_set
         )
+        if chat_selectable and capabilities['supports_chat']:
+            score = _recommended_chat_score(effective_name, capabilities)
+            if score > recommended_chat_score:
+                recommended_chat_score = score
+                recommended_chat_model = matched_name or name
         models.append(
             {
                 "name": name,
@@ -193,8 +223,18 @@ async def models_catalog():
                 "supports_vision": capabilities["supports_vision"],
                 "recommended_use": capabilities["recommended_use"],
                 "chat_selectable": chat_selectable,
+                "recommended_chat_default": (matched_name or name) == recommended_chat_model,
             }
         )
+
+    if recommended_chat_model is None and current_chat_model:
+        recommended_chat_model = current_chat_model
+
+    if recommended_chat_model is not None:
+        for item in models:
+            item['recommended_chat_default'] = (
+                item.get('installed_name') or item['name']
+            ) == recommended_chat_model
 
     models_dir = resolve_ollama_models_dir()
     return {
@@ -202,6 +242,7 @@ async def models_catalog():
         "models_dir": models_dir,
         "models_dir_external": is_external_models_dir(models_dir),
         "current_chat_model": current_chat_model,
+        "recommended_chat_model": recommended_chat_model,
         "available_chat_models": available_chat_models,
         "models_disabled": disable_models,
         "runtime_ready": runtime_ready,
