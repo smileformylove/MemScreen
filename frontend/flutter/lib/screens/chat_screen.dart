@@ -17,6 +17,38 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
+class _ChatModelUiState {
+  const _ChatModelUiState({
+    this.availableModels = const <String>[],
+    this.detailsByModel = const <String, LocalModelEntry>{},
+    this.currentModel,
+    this.recommendedModel,
+    this.loading = false,
+  });
+
+  final List<String> availableModels;
+  final Map<String, LocalModelEntry> detailsByModel;
+  final String? currentModel;
+  final String? recommendedModel;
+  final bool loading;
+
+  _ChatModelUiState copyWith({
+    List<String>? availableModels,
+    Map<String, LocalModelEntry>? detailsByModel,
+    String? currentModel,
+    String? recommendedModel,
+    bool? loading,
+  }) {
+    return _ChatModelUiState(
+      availableModels: availableModels ?? this.availableModels,
+      detailsByModel: detailsByModel ?? this.detailsByModel,
+      currentModel: currentModel ?? this.currentModel,
+      recommendedModel: recommendedModel ?? this.recommendedModel,
+      loading: loading ?? this.loading,
+    );
+  }
+}
+
 class _ChatScreenState extends State<ChatScreen> {
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
@@ -25,14 +57,9 @@ class _ChatScreenState extends State<ChatScreen> {
   String _currentReply = '';
   String _activeThreadId = '';
   bool _loading = false;
-  bool _loadingModels = false;
   bool _requestedInitialHydration = false;
   bool _requestedModelHydration = false;
-  List<String> _availableModels = [];
-  Map<String, LocalModelEntry> _availableModelDetails =
-      <String, LocalModelEntry>{};
-  String? _currentModel;
-  String? _recommendedModel;
+  _ChatModelUiState _modelUiState = const _ChatModelUiState();
   int _lastChatModelRefreshVersion = -1;
   StreamSubscription? _streamSub;
   Timer? _thinkingTimer;
@@ -128,7 +155,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _loadThreads();
       });
     }
-    if (!_requestedModelHydration && !_loadingModels) {
+    if (!_requestedModelHydration && !_modelUiState.loading) {
       _requestedModelHydration = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
@@ -146,7 +173,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!appState.isBackendConnected) {
       return;
     }
-    setState(() => _loadingModels = true);
+    setState(() => _modelUiState = _modelUiState.copyWith(loading: true));
     try {
       final catalog =
           await appState.loadLocalModelCatalogForUi(forceRefresh: forceRefresh);
@@ -172,10 +199,12 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
       setState(() {
-        _availableModels = models;
-        _availableModelDetails = details;
-        _currentModel = current;
-        _recommendedModel = catalog.recommendedChatModel;
+        _modelUiState = _modelUiState.copyWith(
+          availableModels: models,
+          detailsByModel: details,
+          currentModel: current,
+          recommendedModel: catalog.recommendedChatModel,
+        );
       });
     } catch (e) {
       if (showError && mounted) {
@@ -185,16 +214,17 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _loadingModels = false);
+        setState(() => _modelUiState = _modelUiState.copyWith(loading: false));
       }
     }
   }
 
   Future<void> _setChatModel(String modelName) async {
-    if (_loadingModels || modelName == (_currentModel ?? '')) {
+    if (_modelUiState.loading ||
+        modelName == (_modelUiState.currentModel ?? '')) {
       return;
     }
-    setState(() => _loadingModels = true);
+    setState(() => _modelUiState = _modelUiState.copyWith(loading: true));
     try {
       final updatedCatalog =
           await context.read<AppState>().setChatModelForUi(modelName);
@@ -214,13 +244,16 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         }
         setState(() {
-          _currentModel = updatedCatalog.currentChatModel ?? modelName;
-          _recommendedModel = updatedCatalog.recommendedChatModel;
-          _availableModels = updatedCatalog.availableChatModels;
-          _availableModelDetails = details;
+          _modelUiState = _modelUiState.copyWith(
+            currentModel: updatedCatalog.currentChatModel ?? modelName,
+            recommendedModel: updatedCatalog.recommendedChatModel,
+            availableModels: updatedCatalog.availableChatModels,
+            detailsByModel: details,
+          );
         });
       } else {
-        setState(() => _currentModel = modelName);
+        setState(() =>
+            _modelUiState = _modelUiState.copyWith(currentModel: modelName));
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Chat model set to $modelName')),
@@ -234,17 +267,17 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() => _loadingModels = false);
+        setState(() => _modelUiState = _modelUiState.copyWith(loading: false));
       }
     }
   }
 
   LocalModelEntry? _modelDetailsFor(String modelName) {
-    return resolveModelDetails(modelName, _availableModelDetails);
+    return resolveModelDetails(modelName, _modelUiState.detailsByModel);
   }
 
   bool _isRecommendedModel(String modelName) {
-    final recommended = (_recommendedModel ?? '').trim();
+    final recommended = (_modelUiState.recommendedModel ?? '').trim();
     if (recommended.isEmpty) {
       return false;
     }
@@ -256,18 +289,18 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _openModelSheet() async {
-    if (_loadingModels) {
+    if (_modelUiState.loading) {
       return;
     }
-    if (_availableModels.isEmpty) {
+    if (_modelUiState.availableModels.isEmpty) {
       await _loadModelSelector(showError: true, forceRefresh: true);
-      if (!mounted || _availableModels.isEmpty) {
+      if (!mounted || _modelUiState.availableModels.isEmpty) {
         return;
       }
     }
 
-    final groups =
-        buildChatModelGroups(_availableModels, _availableModelDetails);
+    final groups = buildChatModelGroups(
+        _modelUiState.availableModels, _modelUiState.detailsByModel);
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -281,7 +314,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 children: [
                   const Expanded(child: Text('Chat models')),
                   TextButton.icon(
-                    onPressed: _loadingModels
+                    onPressed: _modelUiState.loading
                         ? null
                         : () async {
                             Navigator.of(sheetContext).pop();
@@ -293,8 +326,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ],
               ),
-              if ((_currentModel ?? '').isNotEmpty ||
-                  (_recommendedModel ?? '').isNotEmpty)
+              if ((_modelUiState.currentModel ?? '').isNotEmpty ||
+                  (_modelUiState.recommendedModel ?? '').isNotEmpty)
                 Container(
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(12),
@@ -305,37 +338,41 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if ((_currentModel ?? '').isNotEmpty)
+                      if ((_modelUiState.currentModel ?? '').isNotEmpty)
                         Text(
-                          'Current: $_currentModel',
+                          'Current: $_modelUiState.currentModel',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
-                      if ((_recommendedModel ?? '').isNotEmpty) ...[
-                        if ((_currentModel ?? '').isNotEmpty)
+                      if ((_modelUiState.recommendedModel ?? '')
+                          .isNotEmpty) ...[
+                        if ((_modelUiState.currentModel ?? '').isNotEmpty)
                           const SizedBox(height: 6),
                         Text(
-                          'Recommended: $_recommendedModel',
+                          'Recommended: $_modelUiState.recommendedModel',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
-                      if ((_recommendedModel ?? '').isNotEmpty &&
-                          (_currentModel ?? '') != _recommendedModel) ...[
+                      if ((_modelUiState.recommendedModel ?? '').isNotEmpty &&
+                          (_modelUiState.currentModel ?? '') !=
+                              _modelUiState.recommendedModel) ...[
                         const SizedBox(height: 10),
                         FilledButton.tonalIcon(
-                          onPressed: _loadingModels
+                          onPressed: _modelUiState.loading
                               ? null
                               : () async {
                                   Navigator.of(sheetContext).pop();
-                                  await _setChatModel(_recommendedModel!);
+                                  await _setChatModel(
+                                      _modelUiState.recommendedModel!);
                                 },
                           icon: const Icon(Icons.auto_awesome),
                           label: const Text('Use recommended'),
                         ),
-                      ] else if ((_recommendedModel ?? '').isNotEmpty) ...[
+                      ] else if ((_modelUiState.recommendedModel ?? '')
+                          .isNotEmpty) ...[
                         const SizedBox(height: 10),
                         Text(
                           'You are already using the recommended model.',
@@ -361,7 +398,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 for (final model in group.models)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: model == _currentModel
+                    leading: model == _modelUiState.currentModel
                         ? const Icon(Icons.check_circle, color: Colors.green)
                         : const Icon(Icons.smart_toy_outlined),
                     title: Text(model),
@@ -371,7 +408,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         details: _modelDetailsFor(model),
                       ),
                     ),
-                    trailing: model == _currentModel
+                    trailing: model == _modelUiState.currentModel
                         ? const Text('Current')
                         : (_isRecommendedModel(model)
                             ? const Text('Recommended')
@@ -754,9 +791,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
               ),
-              if ((_currentModel ?? '').isNotEmpty)
+              if ((_modelUiState.currentModel ?? '').isNotEmpty)
                 Text(
-                  _currentModel!,
+                  _modelUiState.currentModel!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -777,11 +814,11 @@ class _ChatScreenState extends State<ChatScreen> {
               onPressed: _loading ? null : _openThreadSheet,
             ),
             IconButton(
-              tooltip: _currentModel == null
+              tooltip: _modelUiState.currentModel == null
                   ? 'Chat model'
-                  : 'Chat model: $_currentModel',
-              onPressed: _loadingModels ? null : _openModelSheet,
-              icon: _loadingModels
+                  : 'Chat model: $_modelUiState.currentModel',
+              onPressed: _modelUiState.loading ? null : _openModelSheet,
+              icon: _modelUiState.loading
                   ? const SizedBox(
                       width: 18,
                       height: 18,
