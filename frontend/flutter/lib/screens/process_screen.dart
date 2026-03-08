@@ -109,13 +109,12 @@ class _ProcessScreenState extends State<ProcessScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     final appState = context.read<AppState>();
-    final api = appState.processApi;
 
     List<ProcessSession> nextSessions = _sessions;
     TrackingStatus? nextStatus = _trackingStatus;
 
     try {
-      nextSessions = await api.getSessions();
+      nextSessions = await appState.loadProcessSessionsForUi();
     } catch (_) {}
 
     try {
@@ -131,6 +130,8 @@ class _ProcessScreenState extends State<ProcessScreen> {
       });
       if (nextStatus?.isTracking == true) {
         _startTrackingPoll();
+      } else {
+        _trackingPollTimer?.cancel();
       }
     }
   }
@@ -139,10 +140,17 @@ class _ProcessScreenState extends State<ProcessScreen> {
     _trackingPollTimer?.cancel();
     _trackingPollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
       try {
-        final status = await context.read<AppState>().loadTrackingStatusForUi();
-        context.read<AppState>().updateFloatingBallTracking(status.isTracking);
-        if (mounted) setState(() => _trackingStatus = status);
-        if (!status.isTracking) _trackingPollTimer?.cancel();
+        final appState = context.read<AppState>();
+        final status = await appState.loadTrackingStatusForUi();
+        appState.updateFloatingBallTracking(status.isTracking);
+        if (mounted &&
+            (_trackingStatus?.isTracking != status.isTracking ||
+                _trackingStatus?.eventCount != status.eventCount)) {
+          setState(() => _trackingStatus = status);
+        }
+        if (!status.isTracking) {
+          _trackingPollTimer?.cancel();
+        }
       } catch (_) {}
     });
   }
@@ -220,8 +228,6 @@ class _ProcessScreenState extends State<ProcessScreen> {
                     'Stopped tracking. Saved ${result.eventsSaved} events (${_formatDisplayRange(result.startTime, result.endTime)})')),
           );
         }
-        // Reload sessions to show the newly saved one
-        _load();
       } catch (saveError) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -246,7 +252,6 @@ class _ProcessScreenState extends State<ProcessScreen> {
   Future<void> _deleteSession(int id) async {
     try {
       await context.read<AppState>().deleteProcessSessionForUi(id);
-      _load();
     } catch (_) {}
   }
 
@@ -270,7 +275,6 @@ class _ProcessScreenState extends State<ProcessScreen> {
     if (ok == true) {
       try {
         await context.read<AppState>().deleteAllProcessSessionsForUi();
-        _load();
       } catch (_) {}
     }
   }
