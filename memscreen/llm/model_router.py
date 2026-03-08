@@ -277,12 +277,13 @@ class IntelligentModelRouter:
 
         # Small models (1B-3B) - Default for everyday queries
         self.model_configs.update({
-            "qwen3.5:0.8b": ModelConfig("qwen3.5:0.8b", ModelTier.TINY, avg_latency_ms=90, quality_score=0.78),
-            "qwen3.5:2b": ModelConfig("qwen3.5:2b", ModelTier.SMALL, avg_latency_ms=135, quality_score=0.84),
-            "qwen3.5:4b": ModelConfig("qwen3.5:4b", ModelTier.SMALL, avg_latency_ms=180, quality_score=0.88),
+            "qwen3:0.6b": ModelConfig("qwen3:0.6b", ModelTier.TINY, avg_latency_ms=90, quality_score=0.78),
+            "qwen3:1.7b": ModelConfig("qwen3:1.7b", ModelTier.SMALL, avg_latency_ms=120, quality_score=0.80),
+            "qwen3:4b": ModelConfig("qwen3:4b", ModelTier.SMALL, avg_latency_ms=180, quality_score=0.88),
+            "qwen3-vl:2b": ModelConfig("qwen3-vl:2b", ModelTier.SMALL, avg_latency_ms=145, quality_score=0.84),
+            "qwen3-vl:4b": ModelConfig("qwen3-vl:4b", ModelTier.SMALL, avg_latency_ms=190, quality_score=0.89),
             "qwen2.5vl:3b": ModelConfig("qwen2.5vl:3b", ModelTier.SMALL, avg_latency_ms=150, quality_score=0.85),
             "llama3.2:3b": ModelConfig("llama3.2:3b", ModelTier.SMALL, avg_latency_ms=180, quality_score=0.82),
-            "qwen3:1.7b": ModelConfig("qwen3:1.7b", ModelTier.SMALL, avg_latency_ms=120, quality_score=0.80),
             "phi3:3.8b": ModelConfig("phi3:3.8b", ModelTier.SMALL, avg_latency_ms=200, quality_score=0.87),
         })
 
@@ -380,7 +381,7 @@ class IntelligentModelRouter:
             selected_model = sorted_models[0]
         else:
             # Ultimate fallback
-            selected_model = "qwen3.5:4b"
+            selected_model = "qwen3:4b"
 
         config = self.model_configs.get(selected_model, ModelConfig(selected_model, analysis.tier))
 

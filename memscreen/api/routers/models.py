@@ -38,10 +38,12 @@ async def models_catalog():
         (cfg.ollama_llm_model, "Chat", True),
         (cfg.ollama_vision_model, "Video tags", True),
         (cfg.ollama_embedding_model, "Memory retrieval", True),
-        ("qwen3.5:0.8b", "Ultra-light chat/vision (optional)", False),
-        ("qwen3.5:2b", "Fast chat/vision (optional)", False),
-        ("qwen3.5:4b", "Balanced chat/vision (optional)", False),
-        ("qwen2.5vl:7b", "Advanced vision (optional)", False),
+        ("qwen3:0.6b", "Ultra-light chat (optional)", False),
+        ("qwen3:1.7b", "Fast chat (optional)", False),
+        ("qwen3:4b", "Balanced chat (optional)", False),
+        ("qwen3-vl:2b", "Light vision (optional)", False),
+        ("qwen3-vl:4b", "Balanced vision (optional)", False),
+        ("qwen2.5vl:7b", "Advanced vision fallback (optional)", False),
     ]
 
     deduped_specs = []

@@ -4,7 +4,7 @@
 #   ./download_models.sh minimal
 #   ./download_models.sh recommended
 #   ./download_models.sh full
-#   ./download_models.sh custom qwen3.5:0.8b qwen3.5:2b qwen3.5:4b
+#   ./download_models.sh custom qwen3:0.6b qwen3:1.7b qwen3:4b qwen3-vl:2b qwen3-vl:4b
 
 set -euo pipefail
 
@@ -68,21 +68,25 @@ MODELS=()
 case "$PRESET" in
   minimal)
     MODELS=(
-      "qwen3.5:0.8b"
+      "qwen3:0.6b"
+      "qwen3-vl:2b"
       "mxbai-embed-large:latest"
     )
     ;;
   recommended)
     MODELS=(
-      "qwen3.5:4b"
+      "qwen3:4b"
+      "qwen3-vl:4b"
       "mxbai-embed-large:latest"
     )
     ;;
   full)
     MODELS=(
-      "qwen3.5:0.8b"
-      "qwen3.5:2b"
-      "qwen3.5:4b"
+      "qwen3:0.6b"
+      "qwen3:1.7b"
+      "qwen3:4b"
+      "qwen3-vl:2b"
+      "qwen3-vl:4b"
       "mxbai-embed-large:latest"
       "nomic-embed-text:latest"
     )
@@ -90,7 +94,7 @@ case "$PRESET" in
   custom)
     if [[ $# -eq 0 ]]; then
       echo "[model-download] custom mode requires model names."
-      echo "example: ./download_models.sh custom qwen3.5:0.8b qwen3.5:2b qwen3.5:4b"
+      echo "example: ./download_models.sh custom qwen3:0.6b qwen3:1.7b qwen3:4b qwen3-vl:2b qwen3-vl:4b"
       exit 1
     fi
     MODELS=("$@")

@@ -13,9 +13,9 @@ class ModelPerformanceConfig:
     """Configuration for optimized model performance"""
 
     # Model selection
-    model_chat: str = "qwen3.5:4b"  # Changed from 3b to 7b for better accuracy
-    model_chat_fast: str = "qwen3.5:2b"  # Changed to 3b as faster option
-    model_vision: str = "qwen3.5:4b"  # Use 7b for better understanding
+    model_chat: str = "qwen3:4b"  # Balanced default chat model
+    model_chat_fast: str = "qwen3:1.7b"  # Faster small chat model
+    model_vision: str = "qwen3-vl:4b"  # Balanced multimodal model
     model_embedding: str = "nomic-embed-text"
 
     # Performance parameters - optimized for speed

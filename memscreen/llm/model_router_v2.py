@@ -5,11 +5,11 @@
 ### license: MIT                 ###
 
 """
-Enhanced model router with 7b model optimization for visual QA.
+Enhanced model router with multimodal model optimization for visual QA.
 
 This module extends the existing IntelligentModelRouter to provide:
 - Specialized routing for visual QA tasks
-- Context optimization for 7b models
+- Context optimization for current multimodal models
 - Parameter tuning for visual reasoning
 """
 
@@ -25,7 +25,7 @@ __all__ = [
 
 class EnhancedModelRouter:
     """
-    Enhanced model router with 7b model optimization for visual QA.
+    Enhanced model router with multimodal model optimization for visual QA.
 
     Extends routing decisions to consider:
     - Visual context size
@@ -53,21 +53,21 @@ class EnhancedModelRouter:
         """
         self.base_router = base_router
 
-        # 7b model configuration
+        # Multimodal model configuration
         self.model_configs = {
-            "qwen3.5:4b": {
+            "qwen3-vl:4b": {
                 "quality": 0.92,
                 "avg_latency_ms": 400,
                 "max_tokens": 2048,
                 "specialized_for": ["vision_reasoning", "context_heavy"],
             },
-            "qwen3.5:2b": {
+            "qwen3-vl:2b": {
                 "quality": 0.82,
                 "avg_latency_ms": 200,
                 "max_tokens": 1024,
                 "specialized_for": ["quick_vision"],
             },
-            "qwen3.5:0.8b": {
+            "qwen3:0.6b": {
                 "quality": 0.75,
                 "avg_latency_ms": 120,
                 "max_tokens": 512,
@@ -111,8 +111,8 @@ class EnhancedModelRouter:
 
         # Routing decision
         if has_visual_context and context_size > 3:
-            # Rich visual context → use 7b
-            model = "qwen3.5:4b"
+            # Rich visual context → use balanced multimodal model
+            model = "qwen3-vl:4b"
             params = {
                 "temperature": 0.5,
                 "num_predict": 1024,
@@ -121,13 +121,13 @@ class EnhancedModelRouter:
                 "repeat_penalty": 1.1,
             }
             logger.info(
-                f"Routing to 7b model: {model} "
+                f"Routing to balanced multimodal model: {model} "
                 f"(rich visual context, n={context_size})"
             )
 
         elif needs_vision_reasoning or context_size > 0:
-            # Some visual reasoning needed → use 3b vision model
-            model = "qwen3.5:2b"
+            # Some visual reasoning needed → use lighter multimodal model
+            model = "qwen3-vl:2b"
             params = {
                 "temperature": 0.3,
                 "num_predict": 512,
@@ -135,13 +135,13 @@ class EnhancedModelRouter:
                 "top_p": 0.85,
             }
             logger.info(
-                f"Routing to 3b vision model: {model} "
+                f"Routing to light multimodal model: {model} "
                 f"(visual reasoning, n={context_size})"
             )
 
         else:
             # No visual context → use fast model
-            model = "qwen3.5:0.8b"
+            model = "qwen3:0.6b"
             params = {
                 "temperature": 0.3,
                 "num_predict": 256,
