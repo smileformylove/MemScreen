@@ -312,6 +312,14 @@ class AppState extends ChangeNotifier {
     await _modelApi.downloadModel(modelName, timeout: timeout);
   }
 
+  Future<List<String>> loadChatModelsForUi() async {
+    return _chatApi.getModels();
+  }
+
+  Future<String?> loadCurrentChatModelForUi() async {
+    return _chatApi.getCurrentModel();
+  }
+
   Future<void> setChatModelForUi(String modelName) async {
     await _chatApi.setModel(modelName);
   }

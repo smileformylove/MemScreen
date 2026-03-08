@@ -23,7 +23,11 @@ class _ChatScreenState extends State<ChatScreen> {
   String _currentReply = '';
   String _activeThreadId = '';
   bool _loading = false;
+  bool _loadingModels = false;
   bool _requestedInitialHydration = false;
+  bool _requestedModelHydration = false;
+  List<String> _availableModels = [];
+  String? _currentModel;
   StreamSubscription? _streamSub;
   Timer? _thinkingTimer;
   int _thinkingStep = 0;
@@ -39,7 +43,9 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     if (context.read<AppState>().isBackendConnected) {
       _requestedInitialHydration = true;
+      _requestedModelHydration = true;
       _loadThreads();
+      _loadModelSelector();
     }
   }
 
@@ -86,18 +92,85 @@ class _ChatScreenState extends State<ChatScreen> {
   void _maybeHydrateAfterBackendConnect(AppState appState) {
     if (!appState.isBackendConnected) {
       _requestedInitialHydration = false;
+      _requestedModelHydration = false;
       return;
     }
-    if (_requestedInitialHydration || _loading) {
+    if (!_requestedInitialHydration && !_loading) {
+      _requestedInitialHydration = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        _loadThreads();
+      });
+    }
+    if (!_requestedModelHydration && !_loadingModels) {
+      _requestedModelHydration = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        _loadModelSelector();
+      });
+    }
+  }
+
+  Future<void> _loadModelSelector({bool showError = false}) async {
+    if (!mounted) return;
+    final appState = context.read<AppState>();
+    if (!appState.isBackendConnected) {
       return;
     }
-    _requestedInitialHydration = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    setState(() => _loadingModels = true);
+    try {
+      final models = await appState.loadChatModelsForUi();
+      final current = await appState.loadCurrentChatModelForUi();
       if (!mounted) {
         return;
       }
-      _loadThreads();
-    });
+      setState(() {
+        _availableModels = models;
+        _currentModel = current;
+      });
+    } catch (e) {
+      if (showError && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load chat models: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loadingModels = false);
+      }
+    }
+  }
+
+  Future<void> _setChatModel(String modelName) async {
+    if (_loadingModels || modelName == (_currentModel ?? '')) {
+      return;
+    }
+    setState(() => _loadingModels = true);
+    try {
+      await context.read<AppState>().setChatModelForUi(modelName);
+      if (!mounted) {
+        return;
+      }
+      setState(() => _currentModel = modelName);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Chat model set to $modelName')),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to switch chat model: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _loadingModels = false);
+      }
+    }
   }
 
   Future<void> _loadThreads({bool refreshHistory = true}) async {
@@ -464,6 +537,15 @@ class _ChatScreenState extends State<ChatScreen> {
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
               ),
+              if ((_currentModel ?? '').isNotEmpty)
+                Text(
+                  _currentModel!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                ),
             ],
           ),
           actions: [
@@ -476,6 +558,41 @@ class _ChatScreenState extends State<ChatScreen> {
               icon: const Icon(Icons.history),
               tooltip: 'Threads',
               onPressed: _loading ? null : _openThreadSheet,
+            ),
+            PopupMenuButton<String>(
+              tooltip: _currentModel == null
+                  ? 'Chat model'
+                  : 'Chat model: $_currentModel',
+              enabled: _availableModels.isNotEmpty && !_loadingModels,
+              icon: _loadingModels
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.tune),
+              onSelected: _setChatModel,
+              itemBuilder: (context) => _availableModels
+                  .map(
+                    (model) => PopupMenuItem<String>(
+                      value: model,
+                      child: Row(
+                        children: [
+                          if (model == _currentModel) ...[
+                            const Icon(Icons.check, size: 16),
+                            const SizedBox(width: 8),
+                          ],
+                          Flexible(
+                            child: Text(
+                              model,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
             ),
             // Context selector
             if (_selectedContext == null)
