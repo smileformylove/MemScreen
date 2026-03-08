@@ -8,6 +8,43 @@ import '../api/model_api.dart';
 import '../connection/connection_state.dart';
 import '../services/model_catalog_groups.dart';
 
+class _SettingsModelUiState {
+  const _SettingsModelUiState({
+    this.catalog,
+    this.loading = false,
+    this.requestedHydration = false,
+    this.lastRefreshVersion = -1,
+    this.downloadingModelName,
+    this.switchingChatModelName,
+  });
+
+  final LocalModelCatalog? catalog;
+  final bool loading;
+  final bool requestedHydration;
+  final int lastRefreshVersion;
+  final String? downloadingModelName;
+  final String? switchingChatModelName;
+
+  _SettingsModelUiState copyWith({
+    LocalModelCatalog? catalog,
+    bool? loading,
+    bool? requestedHydration,
+    int? lastRefreshVersion,
+    String? downloadingModelName,
+    String? switchingChatModelName,
+  }) {
+    return _SettingsModelUiState(
+      catalog: catalog ?? this.catalog,
+      loading: loading ?? this.loading,
+      requestedHydration: requestedHydration ?? this.requestedHydration,
+      lastRefreshVersion: lastRefreshVersion ?? this.lastRefreshVersion,
+      downloadingModelName: downloadingModelName ?? this.downloadingModelName,
+      switchingChatModelName:
+          switchingChatModelName ?? this.switchingChatModelName,
+    );
+  }
+}
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -21,24 +58,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _intervalController = TextEditingController();
   final FocusNode _durationFocusNode = FocusNode();
   final FocusNode _intervalFocusNode = FocusNode();
-  LocalModelCatalog? _modelCatalog;
-  bool _loadingModelCatalog = false;
+  _SettingsModelUiState _modelUiState = const _SettingsModelUiState();
   bool _loadingPermissions = false;
-  bool _requestedModelHydration = false;
-  int _lastChatModelRefreshVersion = -1;
-  String? _downloadingModelName;
-  String? _switchingChatModelName;
+
+  LocalModelCatalog? get _modelCatalog => _modelUiState.catalog;
+  bool get _loadingModelCatalog => _modelUiState.loading;
+  bool get _requestedModelHydration => _modelUiState.requestedHydration;
+  int get _lastChatModelRefreshVersion => _modelUiState.lastRefreshVersion;
+  String? get _downloadingModelName => _modelUiState.downloadingModelName;
+  String? get _switchingChatModelName => _modelUiState.switchingChatModelName;
+
+  void _setModelUiState(_SettingsModelUiState nextState) {
+    setState(() => _modelUiState = nextState);
+  }
 
   @override
   void initState() {
     super.initState();
     _packageInfoFuture = PackageInfo.fromPlatform();
     final appState = context.read<AppState>();
-    _lastChatModelRefreshVersion = appState.chatModelRefreshVersion;
+    _modelUiState = _modelUiState.copyWith(
+        lastRefreshVersion: appState.chatModelRefreshVersion);
     _durationController.text = appState.recordingDurationSec.toString();
     _intervalController.text = appState.recordingIntervalSec.toString();
     if (appState.isBackendConnected) {
-      _requestedModelHydration = true;
+      _modelUiState = _modelUiState.copyWith(requestedHydration: true);
       _loadModelCatalog();
     }
     _loadPermissionStatus();
@@ -126,7 +170,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_lastChatModelRefreshVersion == appState.chatModelRefreshVersion) {
       return;
     }
-    _lastChatModelRefreshVersion = appState.chatModelRefreshVersion;
+    _modelUiState = _modelUiState.copyWith(
+        lastRefreshVersion: appState.chatModelRefreshVersion);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -137,7 +182,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _maybeHydrateAfterBackendConnect(AppState appState) {
     if (!appState.isBackendConnected) {
-      _requestedModelHydration = false;
+      _modelUiState = _modelUiState.copyWith(requestedHydration: false);
       return;
     }
     if (_requestedModelHydration ||
@@ -145,7 +190,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _modelCatalog != null) {
       return;
     }
-    _requestedModelHydration = true;
+    _modelUiState = _modelUiState.copyWith(requestedHydration: true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -157,7 +202,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadModelCatalog(
       {bool showError = false, bool forceRefresh = false}) async {
     if (!mounted) return;
-    setState(() => _loadingModelCatalog = true);
+    _setModelUiState(_modelUiState.copyWith(loading: true));
     try {
       final appState = context.read<AppState>();
       if (!appState.isBackendConnected) {
@@ -166,7 +211,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final catalog =
           await appState.loadLocalModelCatalogForUi(forceRefresh: forceRefresh);
       if (!mounted) return;
-      setState(() => _modelCatalog = catalog);
+      _setModelUiState(_modelUiState.copyWith(catalog: catalog));
     } catch (e) {
       if (showError && mounted) {
         final msg = e is ApiException ? e.message : e.toString();
@@ -176,7 +221,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _loadingModelCatalog = false);
+        _setModelUiState(_modelUiState.copyWith(loading: false));
       }
     }
   }
@@ -215,14 +260,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _setChatModel(LocalModelEntry entry) async {
     if (_switchingChatModelName != null) return;
-    setState(() => _switchingChatModelName = entry.name);
+    _setModelUiState(
+        _modelUiState.copyWith(switchingChatModelName: entry.name));
     try {
       final updatedCatalog = await context
           .read<AppState>()
           .setChatModelForUi(entry.installedName ?? entry.name);
       if (!mounted) return;
       if (updatedCatalog != null) {
-        setState(() => _modelCatalog = updatedCatalog);
+        _setModelUiState(_modelUiState.copyWith(catalog: updatedCatalog));
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -238,19 +284,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() => _switchingChatModelName = null);
+        _setModelUiState(_modelUiState.copyWith(switchingChatModelName: null));
       }
     }
   }
 
   Future<void> _downloadModel(LocalModelEntry entry) async {
     if (_downloadingModelName != null) return;
-    setState(() => _downloadingModelName = entry.name);
+    _setModelUiState(_modelUiState.copyWith(downloadingModelName: entry.name));
     try {
       final updatedCatalog =
           await context.read<AppState>().downloadLocalModelForUi(entry.name);
       if (mounted && updatedCatalog != null) {
-        setState(() => _modelCatalog = updatedCatalog);
+        _setModelUiState(_modelUiState.copyWith(catalog: updatedCatalog));
       }
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
@@ -277,7 +323,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _downloadingModelName = null);
+        _setModelUiState(_modelUiState.copyWith(downloadingModelName: null));
       }
     }
   }
