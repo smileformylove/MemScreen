@@ -45,11 +45,16 @@ class NativeInputTrackingService {
     await _channel.invokeMethod<dynamic>('stopNativeTracking');
   }
 
-  Future<SaveFromTrackingResult> saveSession(ProcessApi processApi) async {
+  Future<Map<String, dynamic>> captureSessionPayload() async {
     final raw =
         await _channel.invokeMethod<dynamic>('saveNativeTrackingSession');
-    final map =
-        raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
+    return raw is Map<String, dynamic>
+        ? raw
+        : Map<String, dynamic>.from(raw as Map);
+  }
+
+  Future<SaveFromTrackingResult> saveSession(ProcessApi processApi) async {
+    final map = await captureSessionPayload();
     if (map['ok'] != true) {
       throw PlatformException(
         code: 'NATIVE_TRACKING_SAVE_FAILED',

@@ -18,6 +18,7 @@ import 'services/floating_ball_service.dart';
 import 'services/native_input_tracking_service.dart';
 import 'services/native_permission_service.dart';
 import 'services/native_recording_import_queue.dart';
+import 'services/native_tracking_session_queue.dart';
 import 'services/native_recording_service.dart';
 import 'services/recording_lifecycle_coordinator.dart';
 import 'services/recording_settings_store.dart';
@@ -60,6 +61,7 @@ class AppState extends ChangeNotifier {
       _nativeRecordingImportQueue = NativeRecordingImportQueue();
       _nativeInputTrackingService = NativeInputTrackingService();
       _nativePermissionService = NativePermissionService();
+      _nativeTrackingSessionQueue = NativeTrackingSessionQueue();
     }
     _recordingTrackingCoordinator = RecordingTrackingCoordinator(
       processApi: _processApi,
@@ -137,6 +139,7 @@ class AppState extends ChangeNotifier {
   NativeRecordingImportQueue? _nativeRecordingImportQueue;
   NativeInputTrackingService? _nativeInputTrackingService;
   NativePermissionService? _nativePermissionService;
+  NativeTrackingSessionQueue? _nativeTrackingSessionQueue;
   Map<String, dynamic>? _permissionStatus;
   Map<String, dynamic>? get permissionStatus => _permissionStatus;
 
@@ -240,10 +243,30 @@ class AppState extends ChangeNotifier {
 
   Future<SaveFromTrackingResult> saveTrackingSessionForUi() async {
     if (useNativeMacOSTracking) {
-      final result =
-          await _nativeInputTrackingService!.saveSession(_processApi);
-      requestVideoRefresh();
-      return result;
+      try {
+        final result =
+            await _nativeInputTrackingService!.saveSession(_processApi);
+        requestVideoRefresh();
+        return result;
+      } catch (e) {
+        if (_nativeTrackingSessionQueue != null) {
+          final map =
+              await _nativeInputTrackingService!.captureSessionPayload();
+          if (map['ok'] == true) {
+            await _nativeTrackingSessionQueue!.enqueue({
+              'events': map['events'],
+              'start_time': map['startTime'],
+              'end_time': map['endTime'],
+            });
+            return SaveFromTrackingResult(
+              eventsSaved: map['eventsSaved'] as int? ?? 0,
+              startTime: map['startTime'] as String? ?? '',
+              endTime: map['endTime'] as String? ?? '',
+            );
+          }
+        }
+        rethrow;
+      }
     }
     return _processApi.saveSessionFromTracking();
   }
@@ -260,6 +283,8 @@ class AppState extends ChangeNotifier {
     if (state.status == ConnectionStatus.connected) {
       await refreshPermissionStatus();
       await _flushPendingNativeImports();
+      await _flushPendingTrackingSessions();
+      await _flushPendingTrackingSessions();
     }
   }
 
@@ -377,6 +402,18 @@ class AppState extends ChangeNotifier {
       requestVideoRefresh();
     } catch (e) {
       debugPrint('[AppState] Failed to flush pending native imports: $e');
+    }
+  }
+
+  Future<void> _flushPendingTrackingSessions() async {
+    if (!useNativeMacOSTracking || _nativeTrackingSessionQueue == null) {
+      return;
+    }
+    try {
+      await _nativeTrackingSessionQueue!.flush(_processApi);
+      requestVideoRefresh();
+    } catch (e) {
+      debugPrint('[AppState] Failed to flush pending tracking sessions: $e');
     }
   }
 
