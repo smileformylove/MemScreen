@@ -154,7 +154,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
-  Future<void> _loadModelCatalog({bool showError = false}) async {
+  Future<void> _loadModelCatalog(
+      {bool showError = false, bool forceRefresh = false}) async {
     if (!mounted) return;
     setState(() => _loadingModelCatalog = true);
     try {
@@ -162,7 +163,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!appState.isBackendConnected) {
         return;
       }
-      final catalog = await appState.loadLocalModelCatalogForUi();
+      final catalog =
+          await appState.loadLocalModelCatalogForUi(forceRefresh: forceRefresh);
       if (!mounted) return;
       setState(() => _modelCatalog = catalog);
     } catch (e) {
@@ -225,7 +227,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text('Chat model set to ${entry.installedName ?? entry.name}'),
         ),
       );
-      await _loadModelCatalog();
+      await _loadModelCatalog(forceRefresh: true);
     } catch (e) {
       if (!mounted) return;
       final msg = e is ApiException ? e.message : e.toString();
@@ -260,7 +262,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         );
       }
-      await _loadModelCatalog();
+      await _loadModelCatalog(forceRefresh: true);
     } catch (e) {
       if (mounted) {
         final msg = e is ApiException ? e.message : e.toString();
@@ -629,7 +631,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   : () async {
                       await appState.ensureBackendConnection(force: true);
                       if (appState.isBackendConnected) {
-                        await _loadModelCatalog(showError: true);
+                        await _loadModelCatalog(
+                            showError: true, forceRefresh: true);
                       }
                     },
               icon: isStarting

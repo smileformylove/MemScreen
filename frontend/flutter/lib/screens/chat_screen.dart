@@ -138,7 +138,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _loadModelSelector({bool showError = false}) async {
+  Future<void> _loadModelSelector(
+      {bool showError = false, bool forceRefresh = false}) async {
     if (!mounted) return;
     final appState = context.read<AppState>();
     if (!appState.isBackendConnected) {
@@ -146,7 +147,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     setState(() => _loadingModels = true);
     try {
-      final catalog = await appState.loadLocalModelCatalogForUi();
+      final catalog =
+          await appState.loadLocalModelCatalogForUi(forceRefresh: forceRefresh);
       var models = catalog.availableChatModels;
       var current = catalog.currentChatModel;
       if (models.isEmpty) {
@@ -223,7 +225,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
     if (_availableModels.isEmpty) {
-      await _loadModelSelector(showError: true);
+      await _loadModelSelector(showError: true, forceRefresh: true);
       if (!mounted || _availableModels.isEmpty) {
         return;
       }
@@ -248,7 +250,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         ? null
                         : () async {
                             Navigator.of(sheetContext).pop();
-                            await _loadModelSelector(showError: true);
+                            await _loadModelSelector(
+                                showError: true, forceRefresh: true);
                           },
                     icon: const Icon(Icons.refresh, size: 16),
                     label: const Text('Refresh'),

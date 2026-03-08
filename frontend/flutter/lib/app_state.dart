@@ -311,6 +311,20 @@ class AppState extends ChangeNotifier {
     _cachedLocalModelCatalogAt = null;
   }
 
+  void _cacheCurrentChatModel(String modelName) {
+    final catalog = _cachedLocalModelCatalog;
+    if (catalog == null) {
+      return;
+    }
+    final effectiveModel = modelName.trim();
+    if (effectiveModel.isEmpty) {
+      return;
+    }
+    _cachedLocalModelCatalog =
+        catalog.copyWith(currentChatModel: effectiveModel);
+    _cachedLocalModelCatalogAt = DateTime.now();
+  }
+
   Future<LocalModelCatalog> loadLocalModelCatalogForUi({
     bool forceRefresh = false,
   }) async {
@@ -332,7 +346,6 @@ class AppState extends ChangeNotifier {
     Duration timeout = const Duration(minutes: 45),
   }) async {
     await _modelApi.downloadModel(modelName, timeout: timeout);
-    _invalidateModelCatalogCache();
     requestChatModelRefresh();
   }
 
@@ -354,8 +367,8 @@ class AppState extends ChangeNotifier {
 
   Future<void> setChatModelForUi(String modelName) async {
     await _chatApi.setModel(modelName);
-    _invalidateModelCatalogCache();
-    requestChatModelRefresh();
+    _cacheCurrentChatModel(modelName);
+    requestChatModelRefresh(invalidateCache: false);
   }
 
   Future<List<VideoItem>> loadVideosForUi() async {
@@ -688,8 +701,13 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void requestChatModelRefresh({bool notify = true}) {
-    _invalidateModelCatalogCache();
+  void requestChatModelRefresh({
+    bool notify = true,
+    bool invalidateCache = true,
+  }) {
+    if (invalidateCache) {
+      _invalidateModelCatalogCache();
+    }
     _chatModelRefreshVersion += 1;
     if (notify) {
       notifyListeners();

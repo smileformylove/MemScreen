@@ -87,6 +87,26 @@ class LocalModelCatalog {
   final String? runtimeError;
   final bool modelsDisabled;
   final List<LocalModelEntry> models;
+
+  LocalModelCatalog copyWith({
+    String? currentChatModel,
+    String? recommendedChatModel,
+    List<String>? availableChatModels,
+    List<LocalModelEntry>? models,
+  }) {
+    return LocalModelCatalog(
+      baseUrl: baseUrl,
+      modelsDir: modelsDir,
+      modelsDirExternal: modelsDirExternal,
+      currentChatModel: currentChatModel ?? this.currentChatModel,
+      recommendedChatModel: recommendedChatModel ?? this.recommendedChatModel,
+      availableChatModels: availableChatModels ?? this.availableChatModels,
+      runtimeReady: runtimeReady,
+      runtimeError: runtimeError,
+      modelsDisabled: modelsDisabled,
+      models: models ?? this.models,
+    );
+  }
 }
 
 class LocalModelEntry {
