@@ -261,3 +261,106 @@ String describeChatModel(String modelName, {LocalModelEntry? details}) {
           ? 'Lower latency option'
           : 'General chat model');
 }
+
+bool modelNameMatchesEntry(LocalModelEntry entry, String modelName) {
+  final normalized = modelName.trim();
+  return entry.name == normalized || entry.installedName == normalized;
+}
+
+String? computeRecommendedChatModel(LocalModelCatalog catalog) {
+  final available = catalog.availableChatModels.toSet();
+  if (available.isEmpty) {
+    return catalog.currentChatModel;
+  }
+
+  LocalModelEntry? bestEntry;
+  var bestScore = -1;
+  for (final entry in catalog.models) {
+    final entryNames = <String>{
+      entry.name,
+      if ((entry.installedName ?? '').isNotEmpty) entry.installedName!
+    };
+    final selectable =
+        entry.chatSelectable || entryNames.any(available.contains);
+    if (!selectable || !entry.supportsChat) {
+      continue;
+    }
+    final preferredName = (entry.installedName ?? '').isNotEmpty &&
+            available.contains(entry.installedName)
+        ? entry.installedName!
+        : entry.name;
+    final score = chatModelPreferenceScore(preferredName, details: entry);
+    if (score > bestScore) {
+      bestScore = score;
+      bestEntry = entry;
+    }
+  }
+
+  if (bestEntry == null) {
+    return catalog.currentChatModel;
+  }
+  final installedName = bestEntry.installedName;
+  if ((installedName ?? '').isNotEmpty && available.contains(installedName)) {
+    return installedName;
+  }
+  return bestEntry.name;
+}
+
+LocalModelCatalog markCurrentChatModel(
+  LocalModelCatalog catalog,
+  String modelName,
+) {
+  final effectiveModel = modelName.trim();
+  final recommended = computeRecommendedChatModel(catalog);
+  final updatedModels = catalog.models.map((entry) {
+    final isRecommended =
+        recommended != null && modelNameMatchesEntry(entry, recommended);
+    return entry.copyWith(recommendedChatDefault: isRecommended);
+  }).toList();
+  return catalog.copyWith(
+    currentChatModel: effectiveModel,
+    recommendedChatModel: recommended,
+    models: updatedModels,
+  );
+}
+
+LocalModelCatalog markDownloadedModel(
+  LocalModelCatalog catalog,
+  String modelName,
+) {
+  final effectiveModel = modelName.trim();
+  final updatedModels = catalog.models.map((entry) {
+    if (modelNameMatchesEntry(entry, effectiveModel)) {
+      return entry.copyWith(
+        installed: true,
+        installedName: effectiveModel,
+        chatSelectable: entry.supportsChat ? true : entry.chatSelectable,
+      );
+    }
+    return entry;
+  }).toList();
+
+  final updatedAvailable = List<String>.from(catalog.availableChatModels);
+  final matched = updatedModels
+      .where((entry) => modelNameMatchesEntry(entry, effectiveModel));
+  if (matched.any((entry) => entry.supportsChat) &&
+      !updatedAvailable.contains(effectiveModel)) {
+    updatedAvailable.add(effectiveModel);
+  }
+
+  final interim = catalog.copyWith(
+    availableChatModels: updatedAvailable,
+    models: updatedModels,
+  );
+  final recommended = computeRecommendedChatModel(interim);
+  final finalModels = interim.models.map((entry) {
+    final isRecommended =
+        recommended != null && modelNameMatchesEntry(entry, recommended);
+    return entry.copyWith(recommendedChatDefault: isRecommended);
+  }).toList();
+
+  return interim.copyWith(
+    recommendedChatModel: recommended,
+    models: finalModels,
+  );
+}

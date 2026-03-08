@@ -196,11 +196,32 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     setState(() => _loadingModels = true);
     try {
-      await context.read<AppState>().setChatModelForUi(modelName);
+      final updatedCatalog =
+          await context.read<AppState>().setChatModelForUi(modelName);
       if (!mounted) {
         return;
       }
-      setState(() => _currentModel = modelName);
+      if (updatedCatalog != null) {
+        final details = <String, LocalModelEntry>{};
+        for (final entry in updatedCatalog.models) {
+          if (updatedCatalog.availableChatModels.contains(entry.name)) {
+            details[entry.name] = entry;
+          }
+          if ((entry.installedName ?? '').isNotEmpty &&
+              updatedCatalog.availableChatModels
+                  .contains(entry.installedName)) {
+            details[entry.installedName!] = entry;
+          }
+        }
+        setState(() {
+          _currentModel = updatedCatalog.currentChatModel ?? modelName;
+          _recommendedModel = updatedCatalog.recommendedChatModel;
+          _availableModels = updatedCatalog.availableChatModels;
+          _availableModelDetails = details;
+        });
+      } else {
+        setState(() => _currentModel = modelName);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Chat model set to $modelName')),
       );

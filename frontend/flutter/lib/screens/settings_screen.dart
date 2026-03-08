@@ -217,10 +217,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_switchingChatModelName != null) return;
     setState(() => _switchingChatModelName = entry.name);
     try {
-      await context
+      final updatedCatalog = await context
           .read<AppState>()
           .setChatModelForUi(entry.installedName ?? entry.name);
       if (!mounted) return;
+      if (updatedCatalog != null) {
+        setState(() => _modelCatalog = updatedCatalog);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content:
@@ -244,7 +247,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_downloadingModelName != null) return;
     setState(() => _downloadingModelName = entry.name);
     try {
-      await context.read<AppState>().downloadLocalModelForUi(entry.name);
+      final updatedCatalog =
+          await context.read<AppState>().downloadLocalModelForUi(entry.name);
+      if (mounted && updatedCatalog != null) {
+        setState(() => _modelCatalog = updatedCatalog);
+      }
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
         messenger.showSnackBar(

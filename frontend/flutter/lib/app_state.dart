@@ -18,6 +18,7 @@ import 'services/floating_ball_service.dart';
 import 'services/local_process_session_store.dart';
 import 'services/local_video_catalog.dart';
 import 'services/local_video_catalog_store.dart';
+import 'services/model_catalog_groups.dart';
 import 'services/native_input_tracking_service.dart';
 import 'services/native_permission_service.dart';
 import 'services/native_recording_import_queue.dart';
@@ -320,8 +321,7 @@ class AppState extends ChangeNotifier {
     if (effectiveModel.isEmpty) {
       return;
     }
-    _cachedLocalModelCatalog =
-        catalog.copyWith(currentChatModel: effectiveModel);
+    _cachedLocalModelCatalog = markCurrentChatModel(catalog, effectiveModel);
     _cachedLocalModelCatalogAt = DateTime.now();
   }
 
@@ -334,30 +334,7 @@ class AppState extends ChangeNotifier {
     if (effectiveModel.isEmpty) {
       return;
     }
-    final updatedModels = catalog.models.map((entry) {
-      if (entry.name == effectiveModel ||
-          entry.installedName == effectiveModel) {
-        return entry.copyWith(
-          installed: true,
-          installedName: effectiveModel,
-          chatSelectable: entry.supportsChat ? true : entry.chatSelectable,
-        );
-      }
-      return entry;
-    }).toList();
-    final updatedAvailable = List<String>.from(catalog.availableChatModels);
-    final matched = updatedModels.where(
-      (entry) =>
-          entry.name == effectiveModel || entry.installedName == effectiveModel,
-    );
-    if (matched.any((entry) => entry.supportsChat) &&
-        !updatedAvailable.contains(effectiveModel)) {
-      updatedAvailable.add(effectiveModel);
-    }
-    _cachedLocalModelCatalog = catalog.copyWith(
-      availableChatModels: updatedAvailable,
-      models: updatedModels,
-    );
+    _cachedLocalModelCatalog = markDownloadedModel(catalog, effectiveModel);
     _cachedLocalModelCatalogAt = DateTime.now();
   }
 
@@ -377,13 +354,14 @@ class AppState extends ChangeNotifier {
     return catalog;
   }
 
-  Future<void> downloadLocalModelForUi(
+  Future<LocalModelCatalog?> downloadLocalModelForUi(
     String modelName, {
     Duration timeout = const Duration(minutes: 45),
   }) async {
     await _modelApi.downloadModel(modelName, timeout: timeout);
     _cacheDownloadedModel(modelName);
     requestChatModelRefresh(invalidateCache: false);
+    return _cachedLocalModelCatalog;
   }
 
   Future<List<String>> loadChatModelsForUi() async {
@@ -402,10 +380,11 @@ class AppState extends ChangeNotifier {
     return _chatApi.getCurrentModel();
   }
 
-  Future<void> setChatModelForUi(String modelName) async {
+  Future<LocalModelCatalog?> setChatModelForUi(String modelName) async {
     await _chatApi.setModel(modelName);
     _cacheCurrentChatModel(modelName);
     requestChatModelRefresh(invalidateCache: false);
+    return _cachedLocalModelCatalog;
   }
 
   Future<List<VideoItem>> loadVideosForUi() async {
