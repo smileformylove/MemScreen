@@ -118,6 +118,77 @@ RecordingDiagnosticsNoticeLevel recordingLastOutputStatusLevel({
   }
 }
 
+RecordingDiagnosticsSummary? recordingProblemSummary({
+  required bool screenRecordingGranted,
+  String? statusNotice,
+  String? lastFailureKind,
+  int? lastExitStatus,
+  String? lastOutputStatus,
+  RecordingDiagnosticsNoticeLevel? lastOutputStatusLevel,
+}) {
+  final normalizedNotice = (statusNotice ?? '').trim();
+  if (normalizedNotice.startsWith('Import warning:')) {
+    return const RecordingDiagnosticsSummary(
+      message: 'Recording saved locally; Videos import is still pending.',
+      level: RecordingDiagnosticsNoticeLevel.warning,
+    );
+  }
+  if (!screenRecordingGranted ||
+      (lastFailureKind ?? '').trim() == 'permission_denied') {
+    return const RecordingDiagnosticsSummary(
+      message: 'Blocked by Screen Recording permission.',
+      level: RecordingDiagnosticsNoticeLevel.error,
+    );
+  }
+  switch ((lastFailureKind ?? '').trim()) {
+    case 'cancelled':
+      return const RecordingDiagnosticsSummary(
+        message: 'Capture was cancelled before file save.',
+        level: RecordingDiagnosticsNoticeLevel.warning,
+      );
+    case 'empty_output':
+      return const RecordingDiagnosticsSummary(
+        message: 'Recorder wrote an empty file.',
+        level: RecordingDiagnosticsNoticeLevel.error,
+      );
+    case 'no_output':
+      if (lastExitStatus == 0) {
+        return const RecordingDiagnosticsSummary(
+          message: 'Capture ended without a playable file.',
+          level: RecordingDiagnosticsNoticeLevel.error,
+        );
+      }
+      if (lastExitStatus != null) {
+        return RecordingDiagnosticsSummary(
+          message: 'Native recorder exited early (status $lastExitStatus).',
+          level: RecordingDiagnosticsNoticeLevel.error,
+        );
+      }
+      return const RecordingDiagnosticsSummary(
+        message: 'No playable file was created.',
+        level: RecordingDiagnosticsNoticeLevel.error,
+      );
+    case 'recorder_error':
+      return lastExitStatus == null
+          ? const RecordingDiagnosticsSummary(
+              message: 'Native recorder reported an error.',
+              level: RecordingDiagnosticsNoticeLevel.error,
+            )
+          : RecordingDiagnosticsSummary(
+              message: 'Native recorder failed (status $lastExitStatus).',
+              level: RecordingDiagnosticsNoticeLevel.error,
+            );
+    default:
+      if ((lastOutputStatus ?? '').trim().isNotEmpty) {
+        return RecordingDiagnosticsSummary(
+          message: 'Latest output: ${lastOutputStatus!.trim()}.',
+          level: lastOutputStatusLevel ?? RecordingDiagnosticsNoticeLevel.info,
+        );
+      }
+      return null;
+  }
+}
+
 String? recordingDiagnosticsAdvice({
   required bool screenRecordingGranted,
   String? statusNotice,
@@ -302,6 +373,39 @@ RecordingDiagnosticsData buildRecordingDiagnosticsData({
       lastOutputFileSize: lastOutputFileSize,
       lastFailureKind: lastFailureKind,
     ),
+    problemSummary: recordingProblemSummary(
+      screenRecordingGranted: screenRecordingGranted,
+      statusNotice: statusNotice,
+      lastFailureKind: lastFailureKind,
+      lastExitStatus: lastExitStatus,
+      lastOutputStatus: recordingLastOutputStatus(
+        lastOutputPath: lastOutputPath,
+        lastOutputFileSize: lastOutputFileSize,
+        lastFailureKind: lastFailureKind,
+      ),
+      lastOutputStatusLevel: recordingLastOutputStatusLevel(
+        lastOutputPath: lastOutputPath,
+        lastOutputFileSize: lastOutputFileSize,
+        lastFailureKind: lastFailureKind,
+      ),
+    )?.message,
+    problemSummaryLevel: recordingProblemSummary(
+          screenRecordingGranted: screenRecordingGranted,
+          statusNotice: statusNotice,
+          lastFailureKind: lastFailureKind,
+          lastExitStatus: lastExitStatus,
+          lastOutputStatus: recordingLastOutputStatus(
+            lastOutputPath: lastOutputPath,
+            lastOutputFileSize: lastOutputFileSize,
+            lastFailureKind: lastFailureKind,
+          ),
+          lastOutputStatusLevel: recordingLastOutputStatusLevel(
+            lastOutputPath: lastOutputPath,
+            lastOutputFileSize: lastOutputFileSize,
+            lastFailureKind: lastFailureKind,
+          ),
+        )?.level ??
+        RecordingDiagnosticsNoticeLevel.info,
     smokeCheckAt: smokeCheckAt,
     smokeCheckSummary: smokeCheckSummary,
     advice: recordingDiagnosticsAdvice(

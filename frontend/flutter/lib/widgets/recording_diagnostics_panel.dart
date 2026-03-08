@@ -24,6 +24,8 @@ class RecordingDiagnosticsData {
     this.lastOutputFileSize,
     this.lastOutputStatus,
     this.lastOutputStatusLevel = RecordingDiagnosticsNoticeLevel.info,
+    this.problemSummary,
+    this.problemSummaryLevel = RecordingDiagnosticsNoticeLevel.info,
     this.smokeCheckAt,
     this.smokeCheckSummary,
     this.advice,
@@ -47,6 +49,8 @@ class RecordingDiagnosticsData {
   final int? lastOutputFileSize;
   final String? lastOutputStatus;
   final RecordingDiagnosticsNoticeLevel lastOutputStatusLevel;
+  final String? problemSummary;
+  final RecordingDiagnosticsNoticeLevel problemSummaryLevel;
   final String? smokeCheckAt;
   final String? smokeCheckSummary;
   final String? advice;
@@ -114,6 +118,9 @@ String buildRecordingDiagnosticsReport(RecordingDiagnosticsData data) {
   }
   if ((data.lastOutputStatus ?? '').isNotEmpty) {
     lines.add('last_output_status: ${data.lastOutputStatus!}');
+  }
+  if ((data.problemSummary ?? '').isNotEmpty) {
+    lines.add('problem_summary: ${data.problemSummary!}');
   }
   if ((data.lastResult ?? '').isNotEmpty) {
     lines.add('last_notice: ${data.lastResult!}');
@@ -202,6 +209,20 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
             value: data.installStatus,
             valueColor: installOk ? Colors.green : theme.colorScheme.error,
           ),
+          if ((data.problemSummary ?? '').isNotEmpty)
+            _noticeBanner(
+              context,
+              icon: switch (data.problemSummaryLevel) {
+                RecordingDiagnosticsNoticeLevel.error => Icons.error_outline,
+                RecordingDiagnosticsNoticeLevel.warning =>
+                  Icons.warning_amber_outlined,
+                RecordingDiagnosticsNoticeLevel.info =>
+                  Icons.check_circle_outline,
+              },
+              label: 'Problem summary',
+              value: data.problemSummary!,
+              level: data.problemSummaryLevel,
+            ),
           if ((data.advice ?? '').isNotEmpty)
             _noticeBanner(
               context,

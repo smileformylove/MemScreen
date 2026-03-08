@@ -142,6 +142,56 @@ void main() {
     final report = buildRecordingDiagnosticsReport(data);
     expect(report, contains('last_output_status: Zero-byte file'));
   });
+
+  test('recording problem summary prioritizes permission blockers', () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: false,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastFailureKind: 'permission_denied',
+    );
+
+    expect(data.problemSummary, 'Blocked by Screen Recording permission.');
+    expect(data.problemSummaryLevel, RecordingDiagnosticsNoticeLevel.error);
+  });
+
+  test('recording problem summary explains saved local import warnings', () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      statusNotice:
+          'Import warning: Recording saved locally, but adding it to Videos failed.',
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+      lastOutputFileSize: 2048,
+    );
+
+    expect(
+      data.problemSummary,
+      'Recording saved locally; Videos import is still pending.',
+    );
+    expect(data.problemSummaryLevel, RecordingDiagnosticsNoticeLevel.warning);
+
+    final report = buildRecordingDiagnosticsReport(data);
+    expect(
+      report,
+      contains(
+          'problem_summary: Recording saved locally; Videos import is still pending.'),
+    );
+  });
+
+  test('recording problem summary falls back to output health', () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+      lastOutputFileSize: 1536,
+    );
+
+    expect(data.problemSummary, 'Latest output: Saved · 1.5 KB.');
+    expect(data.problemSummaryLevel, RecordingDiagnosticsNoticeLevel.info);
+  });
   test('recording diagnostics summary falls back to native failure mapping',
       () {
     final summary = recordingDiagnosticsSummary(
