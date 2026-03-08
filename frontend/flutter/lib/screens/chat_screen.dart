@@ -308,7 +308,9 @@ class _ChatScreenState extends State<ChatScreen> {
     for (final model in sorted) {
       final details = _modelDetailsFor(model);
       final recommendedUse = details?.recommendedUse ?? 'general';
-      if (recommendedUse == 'balanced' || recommendedUse == 'advanced') {
+      if (details?.recommendedChatDefault == true ||
+          recommendedUse == 'balanced' ||
+          recommendedUse == 'advanced') {
         recommended.add(model);
       } else if (_isFastModel(model)) {
         fast.add(model);
@@ -408,6 +410,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             if ((details.sizeLabel ?? '').isNotEmpty)
                               details.sizeLabel!,
                             if (details.supportsVision) 'Vision',
+                            if (details.recommendedChatDefault) 'Recommended',
                             details.recommendedUse.replaceAll('_', ' '),
                           ];
                           return tags.join(' · ');
