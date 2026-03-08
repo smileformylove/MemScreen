@@ -17,6 +17,7 @@ class AppDelegate: FlutterAppDelegate {
     private var mainWindow: NSWindow?
     private var lastKnownFlutterController: FlutterViewController?
     private var floatingBallHealthTimer: Timer?
+    private var backendBootstrapLaunched = false
     private let nativeScreenRecorder = NativeScreenRecorder()
     private let nativeInputTracker = NativeInputTracker()
     private let nativePermissionManager = NativePermissionManager()
@@ -103,6 +104,7 @@ class AppDelegate: FlutterAppDelegate {
     override func applicationDidFinishLaunching(_ notification: Notification) {
         super.applicationDidFinishLaunching(notification)
         os_log("App did finish launching", log: logger, type: .info)
+        launchEmbeddedBackendBootstrapIfNeeded()
         // Build the floating ball after Flutter window/controller is ready.
         // We keep the main window visible to avoid blank-screen startup edge cases.
         DispatchQueue.main.async { [weak self] in
@@ -255,6 +257,56 @@ class AppDelegate: FlutterAppDelegate {
         NSApp.activate(ignoringOtherApps: true)
 
         os_log("Floating ball created at %{public}f, %{public}f", log: logger, type: .info, x, y)
+    }
+
+    private func launchEmbeddedBackendBootstrapIfNeeded() {
+        guard !backendBootstrapLaunched else { return }
+        backendBootstrapLaunched = true
+
+        let bundlePath = Bundle.main.bundlePath
+        if bundlePath.hasPrefix("/Volumes/") {
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                alert.messageText = "Install MemScreen first"
+                alert.informativeText = "Please drag MemScreen.app into Applications, eject the DMG, then launch MemScreen from Applications. Running directly from the DMG can break macOS permissions."
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
+            return
+        }
+
+        guard let resourcesPath = Bundle.main.resourcePath else { return }
+        let backendBootstrap = (resourcesPath as NSString).appendingPathComponent("backend/bootstrap_backend.sh")
+        guard FileManager.default.isExecutableFile(atPath: backendBootstrap) else { return }
+
+        let logsDir = (NSHomeDirectory() as NSString).appendingPathComponent(".memscreen/logs")
+        let wrapperLog = (logsDir as NSString).appendingPathComponent("app_wrapper.log")
+        try? FileManager.default.createDirectory(
+            atPath: logsDir,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        FileManager.default.createFile(atPath: wrapperLog, contents: nil)
+
+        let escapedBootstrap = backendBootstrap.replacingOccurrences(of: "'", with: "'\''")
+        let escapedLog = wrapperLog.replacingOccurrences(of: "'", with: "'\''")
+        let command = "nohup '\(escapedBootstrap)' >> '\(escapedLog)' 2>&1 &"
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-lc", command]
+        process.environment = ProcessInfo.processInfo.environment
+        do {
+            try process.run()
+            os_log("Embedded backend bootstrap launched", log: logger, type: .info)
+        } catch {
+            os_log(
+                "Failed to launch embedded backend bootstrap: %{public}@",
+                log: logger,
+                type: .error,
+                error.localizedDescription
+            )
+        }
     }
 
     private func startFloatingBallHealthMonitor() {

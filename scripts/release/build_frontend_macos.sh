@@ -306,45 +306,6 @@ SH
   chmod +x "$BACKEND_DIR/download_models.sh"
 }
 
-install_startup_wrapper() {
-  echo "[frontend-package] installing app startup wrapper"
-  local real_bin="$APP_MACOS_DIR/memscreen_flutter_real"
-  local wrapper_bin="$APP_MACOS_DIR/memscreen_flutter"
-
-  if [[ ! -x "$wrapper_bin" ]]; then
-    echo "[frontend-package] flutter app executable missing: $wrapper_bin"
-    exit 1
-  fi
-
-  mv "$wrapper_bin" "$real_bin"
-  cat > "$wrapper_bin" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-
-APP_BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_BOOTSTRAP="${APP_BIN_DIR}/../Resources/backend/bootstrap_backend.sh"
-HEALTH_URL="${MEMSCREEN_API_URL:-http://127.0.0.1:8765/health}"
-LOG_DIR="${HOME}/.memscreen/logs"
-WRAPPER_LOG="${LOG_DIR}/app_wrapper.log"
-
-if [[ "$APP_BIN_DIR" == /Volumes/* ]]; then
-  osascript <<'OSA' >/dev/null 2>&1 || true
-  display alert "Install MemScreen first" message "Please drag MemScreen.app into Applications, eject the DMG, then launch MemScreen from Applications. Running directly from the DMG can break macOS permissions." buttons {"OK"} default button "OK"
-OSA
-  exit 1
-fi
-
-if [[ -x "$BACKEND_BOOTSTRAP" ]]; then
-  mkdir -p "$LOG_DIR"
-  touch "$WRAPPER_LOG"
-  nohup "$BACKEND_BOOTSTRAP" >>"$WRAPPER_LOG" 2>&1 &
-fi
-
-exec "${APP_BIN_DIR}/memscreen_flutter_real" "$@"
-SH
-  chmod +x "$wrapper_bin"
-}
-
 mkdir -p "$DIST_ROOT"
 rm -rf "$STAGE_DIR"
 rm -f "$DIST_ROOT"/MemScreen-v*-macos.dmg
@@ -366,7 +327,6 @@ fi
 
 cp -R "$APP_SRC" "$APP_STAGE_PATH"
 prepare_embedded_backend
-install_startup_wrapper
 codesign_app_if_needed
 
 ln -s /Applications "$STAGE_DIR/Applications"
