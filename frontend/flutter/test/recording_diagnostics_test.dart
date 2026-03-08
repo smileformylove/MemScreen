@@ -34,4 +34,39 @@ void main() {
     expect(report, contains('last_exit_status: 1'));
     expect(report, contains('logs_dir:'));
   });
+  test(
+      'recording diagnostics advice prioritizes permission over generic failures',
+      () {
+    BuildInfo.debugBundlePathOverride = '/Applications/MemScreen.app';
+    addTearDown(() => BuildInfo.debugBundlePathOverride = null);
+
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: false,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastFailureKind: 'no_output',
+      lastFailureMessage:
+          'Native recording finished without creating a playable video file.',
+    );
+
+    expect(data.installStatus, 'Applications');
+    expect(data.advice, contains('fully quit and reopen MemScreen'));
+  });
+
+  test('recording diagnostics advice explains empty output failures', () {
+    BuildInfo.debugBundlePathOverride = '/Applications/MemScreen.app';
+    addTearDown(() => BuildInfo.debugBundlePathOverride = null);
+
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastFailureKind: 'empty_output',
+      lastFailureMessage: 'Recording ended, but the saved file was empty.',
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+      lastOutputFileSize: 0,
+    );
+
+    expect(data.advice, contains('zero-byte file'));
+  });
 }

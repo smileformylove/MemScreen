@@ -41,6 +41,35 @@ String? recordingInstallAdvice() {
       : null;
 }
 
+String? recordingDiagnosticsAdvice({
+  required bool screenRecordingGranted,
+  String? lastFailureKind,
+  String? lastFailureMessage,
+}) {
+  final installAdvice = recordingInstallAdvice();
+  if (installAdvice != null) {
+    return installAdvice;
+  }
+  if (!screenRecordingGranted || lastFailureKind == 'permission_denied') {
+    return 'Grant Screen Recording permission, then fully quit and reopen MemScreen before trying again.';
+  }
+  switch ((lastFailureKind ?? '').trim()) {
+    case 'cancelled':
+      return 'The recording was cancelled before a file was written. Retry the smoke check and avoid dismissing the system capture flow.';
+    case 'empty_output':
+      return 'A zero-byte file was created. Retry the smoke check, then inspect the output folder and logs if it happens again.';
+    case 'no_output':
+      return 'No playable video file was created. Run the smoke check again and compare the exit status and last output path.';
+    case 'recorder_error':
+      if ((lastFailureMessage ?? '').trim().isNotEmpty) {
+        return 'Recorder error detected. Open logs and check the native failure details before retrying.';
+      }
+      return 'Recorder error detected. Open logs before retrying.';
+    default:
+      return null;
+  }
+}
+
 RecordingDiagnosticsData buildRecordingDiagnosticsData({
   required bool screenRecordingGranted,
   required String outputDir,
@@ -73,6 +102,10 @@ RecordingDiagnosticsData buildRecordingDiagnosticsData({
     lastExitStatus: lastExitStatus,
     lastOutputPath: lastOutputPath,
     lastOutputFileSize: lastOutputFileSize,
-    advice: recordingInstallAdvice(),
+    advice: recordingDiagnosticsAdvice(
+      screenRecordingGranted: screenRecordingGranted,
+      lastFailureKind: lastFailureKind,
+      lastFailureMessage: lastFailureMessage,
+    ),
   );
 }
