@@ -785,6 +785,13 @@ class _RecordingScreenState extends State<RecordingScreen> {
       ],
       showPermissionShortcut:
           Theme.of(context).platform == TargetPlatform.macOS && !hasPermission,
+      onOpenLastOutput:
+          (_buildDiagnosticsData(appState).lastOutputPath ?? '').trim().isEmpty
+              ? null
+              : () => _openPath(
+                    _buildDiagnosticsData(appState).lastOutputPath!,
+                    label: 'last output file',
+                  ),
       onOpenScreenRecording: () =>
           appState.openPermissionSettings('screen_recording'),
     );

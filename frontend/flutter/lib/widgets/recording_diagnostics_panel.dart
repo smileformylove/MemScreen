@@ -129,6 +129,7 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
     this.headerActions = const <RecordingDiagnosticsHeaderAction>[],
     this.quickActions = const <RecordingDiagnosticsQuickAction>[],
     this.showPermissionShortcut = false,
+    this.onOpenLastOutput,
     this.onOpenScreenRecording,
   });
 
@@ -137,12 +138,14 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
   final List<RecordingDiagnosticsHeaderAction> headerActions;
   final List<RecordingDiagnosticsQuickAction> quickActions;
   final bool showPermissionShortcut;
+  final VoidCallback? onOpenLastOutput;
   final VoidCallback? onOpenScreenRecording;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final installOk = data.installStatus == 'Applications';
+    final lastOutputAvailable = (data.lastOutputPath ?? '').trim().isNotEmpty;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -189,12 +192,14 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
             valueColor: installOk ? Colors.green : theme.colorScheme.error,
           ),
           if ((data.advice ?? '').isNotEmpty)
-            _diagnosticRow(
+            _noticeBanner(
               context,
-              icon: Icons.warning_amber_outlined,
+              icon: Icons.tips_and_updates_outlined,
               label: 'Advice',
               value: data.advice!,
-              valueColor: theme.colorScheme.error,
+              level: data.screenRecordingGranted
+                  ? RecordingDiagnosticsNoticeLevel.warning
+                  : RecordingDiagnosticsNoticeLevel.error,
             ),
           if ((data.engine ?? '').isNotEmpty)
             _diagnosticRow(
@@ -232,19 +237,17 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
             value: data.logsDir,
           ),
           if ((data.lastResult ?? '').isNotEmpty)
-            _diagnosticRow(
+            _noticeBanner(
               context,
-              icon: Icons.info_outline,
+              icon: switch (data.lastResultLevel) {
+                RecordingDiagnosticsNoticeLevel.error => Icons.error_outline,
+                RecordingDiagnosticsNoticeLevel.warning =>
+                  Icons.warning_amber_outlined,
+                RecordingDiagnosticsNoticeLevel.info => Icons.info_outline,
+              },
               label: 'Last result',
               value: data.lastResult!,
-              valueColor: switch (data.lastResultLevel) {
-                RecordingDiagnosticsNoticeLevel.error =>
-                  theme.colorScheme.error,
-                RecordingDiagnosticsNoticeLevel.warning =>
-                  theme.colorScheme.onTertiaryContainer,
-                RecordingDiagnosticsNoticeLevel.info =>
-                  theme.colorScheme.onSurface,
-              },
+              level: data.lastResultLevel,
             ),
           if ((data.lastFailureKind ?? '').isNotEmpty)
             _diagnosticRow(
@@ -294,6 +297,12 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
                       : Icon(action.icon),
                   label: Text(action.label),
                 ),
+              if (lastOutputAvailable)
+                OutlinedButton.icon(
+                  onPressed: onOpenLastOutput,
+                  icon: const Icon(Icons.play_circle_outline),
+                  label: const Text('Open last output'),
+                ),
               if (showPermissionShortcut)
                 OutlinedButton.icon(
                   onPressed: onOpenScreenRecording,
@@ -337,6 +346,63 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _noticeBanner(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String value,
+    required RecordingDiagnosticsNoticeLevel level,
+  }) {
+    final theme = Theme.of(context);
+    final (background, foreground) = switch (level) {
+      RecordingDiagnosticsNoticeLevel.error => (
+          theme.colorScheme.errorContainer,
+          theme.colorScheme.onErrorContainer,
+        ),
+      RecordingDiagnosticsNoticeLevel.warning => (
+          theme.colorScheme.tertiaryContainer,
+          theme.colorScheme.onTertiaryContainer,
+        ),
+      RecordingDiagnosticsNoticeLevel.info => (
+          theme.colorScheme.secondaryContainer,
+          theme.colorScheme.onSecondaryContainer,
+        ),
+    };
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: foreground),
+          const SizedBox(width: 8),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: theme.textTheme.bodySmall?.copyWith(color: foreground),
+                children: [
+                  TextSpan(
+                    text: '$label: ',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: foreground,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  TextSpan(text: value),
                 ],
               ),
             ),

@@ -354,11 +354,15 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    await tester.drag(find.byType(ListView).first, const Offset(0, -600));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    final recommendedLabel = find.text('Recommended chat model: qwen3.5:4b');
+    await tester.scrollUntilVisible(
+      recommendedLabel,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
 
-    expect(find.text('Recommended chat model: qwen3.5:4b'), findsOneWidget);
+    expect(recommendedLabel, findsOneWidget);
     expect(find.text('Use recommended'), findsOneWidget);
     expect(find.text('Recommended'), findsWidgets);
     expect(find.text('Fast / Light'), findsOneWidget);
@@ -400,14 +404,19 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    await tester.drag(find.byType(ListView).first, const Offset(0, -400));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    final diagnosticsTitle = find.text('Recording diagnostics');
+    await tester.scrollUntilVisible(
+      diagnosticsTitle,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
 
-    expect(find.text('Recording diagnostics'), findsOneWidget);
+    expect(diagnosticsTitle, findsOneWidget);
     expect(find.text('Run smoke check'), findsOneWidget);
     expect(find.text('Open output'), findsOneWidget);
     expect(find.text('Open logs'), findsOneWidget);
+    expect(find.text('Open last output'), findsOneWidget);
     expect(find.text('Copy'), findsWidgets);
     expect(find.byIcon(Icons.install_desktop_outlined), findsWidgets);
     expect(find.byIcon(Icons.bug_report_outlined), findsWidgets);

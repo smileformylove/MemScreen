@@ -111,6 +111,7 @@ void main() {
     expect(find.text('Run smoke check'), findsOneWidget);
     expect(find.text('Open output'), findsOneWidget);
     expect(find.text('Open logs'), findsOneWidget);
+    expect(find.text('Open last output'), findsOneWidget);
     expect(find.text('Copy'), findsOneWidget);
     expect(find.byIcon(Icons.install_desktop_outlined), findsWidgets);
   });
