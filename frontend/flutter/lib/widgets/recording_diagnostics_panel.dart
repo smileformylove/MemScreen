@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/recording_failure_messages.dart';
 
@@ -84,6 +85,19 @@ class RecordingDiagnosticsQuickAction {
   final IconData icon;
   final VoidCallback? onPressed;
   final bool isLoading;
+}
+
+Future<String> copyRecordingDiagnosticsToClipboard(
+  RecordingDiagnosticsData data, {
+  required bool brief,
+}) async {
+  final text = brief
+      ? buildRecordingDiagnosticsBrief(data)
+      : buildRecordingDiagnosticsReport(data);
+  await Clipboard.setData(ClipboardData(text: text));
+  return brief
+      ? 'Recording diagnostics brief copied'
+      : 'Recording diagnostics report copied';
 }
 
 String buildRecordingDiagnosticsBrief(RecordingDiagnosticsData data) {

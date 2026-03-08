@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
@@ -398,19 +397,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required bool brief,
   }) async {
     final diagnostics = _buildSettingsRecordingDiagnosticsData(appState);
-    final text = brief
-        ? buildRecordingDiagnosticsBrief(diagnostics)
-        : buildRecordingDiagnosticsReport(diagnostics);
-    await Clipboard.setData(ClipboardData(text: text));
+    final message = await copyRecordingDiagnosticsToClipboard(
+      diagnostics,
+      brief: brief,
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          brief
-              ? 'Recording diagnostics brief copied'
-              : 'Recording diagnostics report copied',
-        ),
-      ),
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -425,19 +418,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       headerActions: [
         RecordingDiagnosticsHeaderAction(
           label: 'Copy brief',
-          onPressed: _loadingRecordingDiagnostics
+          onPressed: _loadingRecordingDiagnostics || smokeCheckRunning
               ? null
               : () => _copyRecordingDiagnostics(appState, brief: true),
         ),
         RecordingDiagnosticsHeaderAction(
           label: 'Copy full',
-          onPressed: _loadingRecordingDiagnostics
+          onPressed: _loadingRecordingDiagnostics || smokeCheckRunning
               ? null
               : () => _copyRecordingDiagnostics(appState, brief: false),
         ),
         RecordingDiagnosticsHeaderAction(
           label: 'Refresh',
-          onPressed: _loadingRecordingDiagnostics
+          onPressed: _loadingRecordingDiagnostics || smokeCheckRunning
               ? null
               : () => _loadRecordingDiagnostics(refreshPermissions: true),
         ),

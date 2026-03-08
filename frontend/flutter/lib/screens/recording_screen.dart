@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../api/recording_api.dart';
@@ -736,19 +735,13 @@ class _RecordingScreenState extends State<RecordingScreen> {
     required bool brief,
   }) async {
     final diagnostics = _buildDiagnosticsData(appState);
-    final text = brief
-        ? buildRecordingDiagnosticsBrief(diagnostics)
-        : buildRecordingDiagnosticsReport(diagnostics);
-    await Clipboard.setData(ClipboardData(text: text));
+    final message = await copyRecordingDiagnosticsToClipboard(
+      diagnostics,
+      brief: brief,
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          brief
-              ? 'Recording diagnostics brief copied'
-              : 'Recording diagnostics report copied',
-        ),
-      ),
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -773,7 +766,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
               : () => _copyDiagnostics(appState, brief: false),
         ),
         RecordingDiagnosticsHeaderAction(
-          label: 'Check again',
+          label: 'Refresh',
           onPressed: smokeCheckRunning
               ? null
               : () async {

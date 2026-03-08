@@ -115,6 +115,7 @@ void main() {
     expect(find.text('Reveal in Finder'), findsOneWidget);
     expect(find.text('Copy brief'), findsOneWidget);
     expect(find.text('Copy full'), findsOneWidget);
+    expect(find.text('Refresh'), findsOneWidget);
     expect(find.byIcon(Icons.install_desktop_outlined), findsWidgets);
   });
 }
