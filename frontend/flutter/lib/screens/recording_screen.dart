@@ -10,6 +10,7 @@ import '../build_info.dart';
 import '../app_state.dart';
 import '../api/api_client.dart';
 import '../services/floating_ball_service.dart';
+import '../widgets/recording_diagnostics_panel.dart';
 
 class RecordingScreen extends StatefulWidget {
   const RecordingScreen({super.key});
@@ -748,45 +749,42 @@ class _RecordingScreenState extends State<RecordingScreen> {
     return '${screen.name} (${screen.width}x${screen.height})';
   }
 
-  String _buildDiagnosticsReport(AppState appState) {
+  RecordingDiagnosticsData _buildDiagnosticsData(AppState appState) {
     final status = _status;
-    final lines = <String>[
-      'MemScreen recording diagnostics',
-      'commit: ${BuildInfo.commit}',
-      'built_at_utc: ${BuildInfo.builtAtUtc}',
-      'channel: ${BuildInfo.buildChannel}',
-      'app_path: ${BuildInfo.detectAppBundlePath() ?? 'unknown'}',
-      'install_status: ${_installStatusLabel()}',
-      'engine: ${_recordingEngineLabel(appState)}',
-      'screen_recording_permission: ${appState.hasScreenRecordingPermission ? 'granted' : 'missing'}',
-      'target: ${_recordingTargetLabel()}',
-      'output_dir: ${(status?.outputDir ?? '').isNotEmpty ? status!.outputDir : '${Platform.environment['HOME'] ?? '~'}/.memscreen/videos'}',
-      'logs_dir: ${_logsDirPath()}',
-      'is_recording: ${status?.isRecording ?? false}',
-    ];
-    if ((status?.lastFailureKind ?? '').isNotEmpty) {
-      lines.add('last_failure_kind: ${status!.lastFailureKind}');
-    }
-    if ((status?.lastFailureMessage ?? '').isNotEmpty) {
-      lines.add('last_failure_message: ${status!.lastFailureMessage}');
-    }
-    if ((status?.lastTerminationStatus?.toString() ?? '').isNotEmpty) {
-      lines.add('last_exit_status: ${status!.lastTerminationStatus}');
-    }
-    if ((status?.lastOutputPath ?? '').isNotEmpty) {
-      lines.add('last_output_path: ${status!.lastOutputPath}');
-    }
-    if ((status?.lastOutputFileSize?.toString() ?? '').isNotEmpty) {
-      lines.add('last_output_file_size: ${status!.lastOutputFileSize}');
-    }
-    if ((_recordingNotice ?? '').isNotEmpty) {
-      lines.add('last_notice: ${_recordingNotice!}');
-    }
-    return lines.join('\n');
+    return RecordingDiagnosticsData(
+      buildLabel: '${BuildInfo.commit} · ${BuildInfo.buildChannel}',
+      appPath: BuildInfo.detectAppBundlePath(),
+      installStatus: _installStatusLabel(),
+      screenRecordingGranted: appState.hasScreenRecordingPermission,
+      engine: _recordingEngineLabel(appState),
+      target: _recordingTargetLabel(),
+      outputDir: (status?.outputDir ?? '').isNotEmpty
+          ? status!.outputDir
+          : '${Platform.environment['HOME'] ?? '~'}/.memscreen/videos',
+      logsDir: _logsDirPath(),
+      isRecording: status?.isRecording ?? false,
+      lastResult: _recordingNotice,
+      lastResultLevel: switch (_recordingNoticeLevel) {
+        _RecordingNoticeLevel.error => RecordingDiagnosticsNoticeLevel.error,
+        _RecordingNoticeLevel.warning =>
+          RecordingDiagnosticsNoticeLevel.warning,
+        _RecordingNoticeLevel.info => RecordingDiagnosticsNoticeLevel.info,
+      },
+      lastFailureKind: status?.lastFailureKind,
+      lastFailureMessage: status?.lastFailureMessage,
+      lastExitStatus: status?.lastTerminationStatus,
+      lastOutputPath: status?.lastOutputPath,
+      lastOutputFileSize: status?.lastOutputFileSize,
+      advice: ((BuildInfo.detectAppBundlePath() ?? '').isNotEmpty &&
+              !_isInstalledInApplications())
+          ? 'Install the latest MemScreen.app into /Applications before testing recording.'
+          : null,
+    );
   }
 
   Future<void> _copyDiagnostics(AppState appState) async {
-    final report = _buildDiagnosticsReport(appState);
+    final report =
+        buildRecordingDiagnosticsReport(_buildDiagnosticsData(appState));
     await Clipboard.setData(ClipboardData(text: report));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -794,227 +792,55 @@ class _RecordingScreenState extends State<RecordingScreen> {
     );
   }
 
-  Widget _buildDiagnosticRow(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required String value,
-    Color? valueColor,
-  }) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(width: 8),
-          Expanded(
-            child: RichText(
-              text: TextSpan(
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                children: [
-                  TextSpan(text: '$label: '),
-                  TextSpan(
-                    text: value,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: valueColor ?? theme.colorScheme.onSurface,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildDiagnosticsCard(AppState appState) {
-    final theme = Theme.of(context);
     final hasPermission = Theme.of(context).platform != TargetPlatform.macOS ||
         appState.hasScreenRecordingPermission;
-    final permissionText = hasPermission ? 'Granted' : 'Missing';
-    final permissionColor =
-        hasPermission ? Colors.green : theme.colorScheme.error;
-    final outputDir = (_status?.outputDir ?? '').isNotEmpty
-        ? _status!.outputDir
-        : '${Platform.environment['HOME'] ?? '~'}/.memscreen/videos';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(child: Text('Recording diagnostics')),
-              TextButton(
-                onPressed: _runningSmokeCheck
-                    ? null
-                    : () => _copyDiagnostics(appState),
-                child: const Text('Copy'),
-              ),
-              TextButton(
-                onPressed: _runningSmokeCheck
-                    ? null
-                    : () async {
-                        await appState.refreshPermissionStatus();
-                        await _load();
-                      },
-                child: const Text('Check again'),
-              ),
-            ],
+    return RecordingDiagnosticsPanel(
+      title: 'Recording diagnostics',
+      data: _buildDiagnosticsData(appState),
+      headerActions: [
+        RecordingDiagnosticsHeaderAction(
+          label: 'Copy',
+          onPressed:
+              _runningSmokeCheck ? null : () => _copyDiagnostics(appState),
+        ),
+        RecordingDiagnosticsHeaderAction(
+          label: 'Check again',
+          onPressed: _runningSmokeCheck
+              ? null
+              : () async {
+                  await appState.refreshPermissionStatus();
+                  await _load();
+                },
+        ),
+      ],
+      quickActions: [
+        RecordingDiagnosticsQuickAction(
+          label: _runningSmokeCheck ? 'Running check...' : 'Run smoke check',
+          icon: Icons.science_outlined,
+          onPressed: _runningSmokeCheck || (_status?.isRecording ?? false)
+              ? null
+              : _runSmokeCheck,
+          isLoading: _runningSmokeCheck,
+        ),
+        RecordingDiagnosticsQuickAction(
+          label: 'Open output',
+          icon: Icons.video_library_outlined,
+          onPressed: () => _openPath(
+            _buildDiagnosticsData(appState).outputDir,
+            label: 'output folder',
           ),
-          _buildDiagnosticRow(
-            context,
-            icon: Icons.commit,
-            label: 'Build',
-            value: '${BuildInfo.commit} · ${BuildInfo.buildChannel}',
-          ),
-          if ((BuildInfo.detectAppBundlePath() ?? '').isNotEmpty)
-            _buildDiagnosticRow(
-              context,
-              icon: Icons.apps_outlined,
-              label: 'App Path',
-              value: BuildInfo.detectAppBundlePath()!,
-            ),
-          _buildDiagnosticRow(
-            context,
-            icon: Icons.install_desktop_outlined,
-            label: 'Install',
-            value: _installStatusLabel(),
-            valueColor: _isInstalledInApplications()
-                ? Colors.green
-                : theme.colorScheme.error,
-          ),
-          if ((BuildInfo.detectAppBundlePath() ?? '').isNotEmpty &&
-              !_isInstalledInApplications())
-            _buildDiagnosticRow(
-              context,
-              icon: Icons.warning_amber_outlined,
-              label: 'Advice',
-              value:
-                  'Install the latest MemScreen.app into /Applications before testing recording.',
-              valueColor: theme.colorScheme.error,
-            ),
-          _buildDiagnosticRow(
-            context,
-            icon: Icons.videocam_outlined,
-            label: 'Engine',
-            value: _recordingEngineLabel(appState),
-          ),
-          _buildDiagnosticRow(
-            context,
-            icon: Icons.privacy_tip_outlined,
-            label: 'Screen Recording',
-            value: permissionText,
-            valueColor: permissionColor,
-          ),
-          _buildDiagnosticRow(
-            context,
-            icon: Icons.filter_center_focus_outlined,
-            label: 'Target',
-            value: _recordingTargetLabel(),
-          ),
-          _buildDiagnosticRow(
-            context,
-            icon: Icons.folder_open_outlined,
-            label: 'Output',
-            value: outputDir,
-          ),
-          _buildDiagnosticRow(
-            context,
-            icon: Icons.receipt_long_outlined,
-            label: 'Logs',
-            value: _logsDirPath(),
-          ),
-          if ((_recordingNotice ?? '').isNotEmpty)
-            _buildDiagnosticRow(
-              context,
-              icon: Icons.info_outline,
-              label: 'Last result',
-              value: _recordingNotice!,
-              valueColor: switch (_recordingNoticeLevel) {
-                _RecordingNoticeLevel.error => theme.colorScheme.error,
-                _RecordingNoticeLevel.warning =>
-                  theme.colorScheme.onTertiaryContainer,
-                _RecordingNoticeLevel.info => theme.colorScheme.onSurface,
-              },
-            ),
-          if ((_status?.lastFailureKind ?? '').isNotEmpty)
-            _buildDiagnosticRow(
-              context,
-              icon: Icons.bug_report_outlined,
-              label: 'Failure kind',
-              value: _status!.lastFailureKind!,
-              valueColor: theme.colorScheme.error,
-            ),
-          if ((_status?.lastTerminationStatus?.toString() ?? '').isNotEmpty)
-            _buildDiagnosticRow(
-              context,
-              icon: Icons.terminal,
-              label: 'Exit status',
-              value: _status!.lastTerminationStatus.toString(),
-            ),
-          if ((_status?.lastOutputPath ?? '').isNotEmpty)
-            _buildDiagnosticRow(
-              context,
-              icon: Icons.insert_drive_file_outlined,
-              label: 'Last output',
-              value: _status!.lastOutputPath!,
-            ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                onPressed: _runningSmokeCheck || (_status?.isRecording ?? false)
-                    ? null
-                    : _runSmokeCheck,
-                icon: _runningSmokeCheck
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.science_outlined),
-                label: Text(
-                  _runningSmokeCheck ? 'Running check...' : 'Run smoke check',
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _openPath(outputDir, label: 'output folder'),
-                icon: const Icon(Icons.video_library_outlined),
-                label: const Text('Open output'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () =>
-                    _openPath(_logsDirPath(), label: 'logs folder'),
-                icon: const Icon(Icons.folder_open_outlined),
-                label: const Text('Open logs'),
-              ),
-              if (Theme.of(context).platform == TargetPlatform.macOS &&
-                  !hasPermission)
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      appState.openPermissionSettings('screen_recording'),
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('Open Screen Recording'),
-                ),
-            ],
-          ),
-        ],
-      ),
+        ),
+        RecordingDiagnosticsQuickAction(
+          label: 'Open logs',
+          icon: Icons.folder_open_outlined,
+          onPressed: () => _openPath(_logsDirPath(), label: 'logs folder'),
+        ),
+      ],
+      showPermissionShortcut:
+          Theme.of(context).platform == TargetPlatform.macOS && !hasPermission,
+      onOpenScreenRecording: () =>
+          appState.openPermissionSettings('screen_recording'),
     );
   }
 
