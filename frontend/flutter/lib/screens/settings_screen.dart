@@ -186,6 +186,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         !normalized.contains('mxbai-embed');
   }
 
+  bool _canUseModelForChat(LocalModelCatalog? catalog, LocalModelEntry entry) {
+    final available = catalog?.availableChatModels ?? const <String>[];
+    if (available.isNotEmpty) {
+      return available.contains(entry.name) ||
+          ((entry.installedName ?? '').isNotEmpty &&
+              available.contains(entry.installedName));
+    }
+    return entry.installed && _isChatCapableModel(entry.name);
+  }
+
   bool _isCurrentChatModel(LocalModelCatalog? catalog, LocalModelEntry entry) {
     final current = (catalog?.currentChatModel ?? '').trim();
     if (current.isEmpty) {
@@ -747,7 +757,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final downloading = _downloadingModelName == entry.name;
 
     final isCurrentChatModel = _isCurrentChatModel(catalog, entry);
-    final canUseForChat = entry.installed && _isChatCapableModel(entry.name);
+    final canUseForChat = _canUseModelForChat(catalog, entry);
 
     Widget trailing;
     if (entry.installed) {
