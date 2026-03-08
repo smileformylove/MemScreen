@@ -4,7 +4,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:memscreen_flutter/api/chat_api.dart';
 import 'package:memscreen_flutter/api/model_api.dart';
+import 'package:memscreen_flutter/api/recording_api.dart';
 import 'package:memscreen_flutter/api/api_client.dart';
+import 'package:memscreen_flutter/build_info.dart';
 import 'package:memscreen_flutter/app_state.dart';
 import 'package:memscreen_flutter/config/api_config.dart';
 import 'package:memscreen_flutter/connection/connection_state.dart';
@@ -137,6 +139,42 @@ class FakeAppState extends AppState {
             : ConnectionStatus.error,
         message: _backendConnected ? null : 'Backend not connected',
       );
+
+  @override
+  Future<RecordingStatus> loadRecordingStatusForUi() async {
+    return RecordingStatus(
+      isRecording: false,
+      duration: 2,
+      interval: 2.0,
+      outputDir: '/Users/test/.memscreen/videos',
+      frameCount: 0,
+      elapsedTime: 0,
+      mode: 'fullscreen',
+      lastFailureKind: 'permission_denied',
+      lastFailureMessage: 'Screen Recording permission is required.',
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+      lastOutputFileSize: 0,
+      lastTerminationStatus: 1,
+      lastNotice: 'Permission: Screen Recording access is still not active.',
+    );
+  }
+
+  @override
+  Future<List<RecordingScreenInfo>> loadAvailableScreensForUi() async {
+    return [
+      RecordingScreenInfo(
+        index: 0,
+        name: 'Main',
+        width: 1,
+        height: 1,
+        isPrimary: true,
+        displayId: 1,
+      ),
+    ];
+  }
+
+  @override
+  Future<void> syncRecordingStateFromBackend(bool isRecording) async {}
 
   @override
   ChatApi get chatApi => _chatApi;
@@ -324,5 +362,43 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('Current chat model: qwen3.5:4b'), findsOneWidget);
+  });
+
+  testWidgets('Settings screen shows recording diagnostics actions',
+      (tester) async {
+    BuildInfo.debugBundlePathOverride = '/Users/test/Downloads/MemScreen.app';
+    addTearDown(() => BuildInfo.debugBundlePathOverride = null);
+
+    final catalog = makeCatalog(
+      currentChatModel: 'qwen3.5:2b',
+      recommendedChatModel: 'qwen3.5:4b',
+      availableChatModels: const ['qwen3.5:4b', 'qwen3.5:2b'],
+      models: [
+        makeEntry(
+          name: 'qwen3.5:4b',
+          installedName: 'qwen3.5:4b',
+          sizeLabel: '4b',
+          recommendedUse: 'balanced',
+          supportsVision: true,
+          recommendedChatDefault: true,
+        ),
+      ],
+    );
+
+    final appState = FakeAppState(catalog: catalog, backendConnected: true);
+    await tester.pumpWidget(wrapAsHome(appState, const SettingsScreen()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.drag(find.byType(ListView).first, const Offset(0, -400));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Recording diagnostics'), findsOneWidget);
+    expect(find.text('Open output'), findsOneWidget);
+    expect(find.text('Open logs'), findsOneWidget);
+    expect(find.text('Copy'), findsWidgets);
+    expect(find.byIcon(Icons.install_desktop_outlined), findsWidgets);
+    expect(find.byIcon(Icons.bug_report_outlined), findsWidgets);
   });
 }
