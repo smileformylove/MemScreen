@@ -572,9 +572,68 @@ class _RecordingScreenState extends State<RecordingScreen> {
     return 'Duration ${duration}s · Interval ${interval.toStringAsFixed(interval == interval.roundToDouble() ? 0 : 1)}s · Audio $audio';
   }
 
+  IconData _selectedModeIcon() {
+    switch (_mode) {
+      case 'region':
+        return Icons.crop_free;
+      case 'window':
+        return Icons.web_asset;
+      default:
+        return Icons.desktop_windows_outlined;
+    }
+  }
+
+  String _captureFlowLabel() {
+    switch (_mode) {
+      case 'region':
+        return 'Pick the region from the floating ball overlay';
+      case 'window':
+        return 'Pick the window from the floating ball overlay';
+      default:
+        return 'Ready to start directly from this page';
+    }
+  }
+
+  Widget _summaryChip({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '$label: $value',
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCaptureControlCard(AppState appState) {
     final isRecording = _status?.isRecording ?? false;
     final targetLabel = _recordingTargetLabel();
+    final primaryActionLabel = switch (_mode) {
+      'region' => 'Pick region in overlay',
+      'window' => 'Pick window in overlay',
+      _ => 'Start recording here',
+    };
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -656,12 +715,34 @@ class _RecordingScreenState extends State<RecordingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Current target: ${_selectedModeLabel()} · $targetLabel',
+                  'Ready to record',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                       ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _summaryChip(
+                      icon: _selectedModeIcon(),
+                      label: 'Mode',
+                      value: _selectedModeLabel(),
+                    ),
+                    _summaryChip(
+                      icon: Icons.filter_center_focus_outlined,
+                      label: 'Target',
+                      value: targetLabel,
+                    ),
+                    _summaryChip(
+                      icon: Icons.route_outlined,
+                      label: 'Flow',
+                      value: _captureFlowLabel(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
                 Text(
                   _recordingSetupSummary(appState),
                   style: Theme.of(context).textTheme.bodySmall,
@@ -683,7 +764,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
             FilledButton.icon(
               onPressed: _start,
               icon: const Icon(Icons.fiber_manual_record),
-              label: const Text('Start full screen recording'),
+              label: Text(primaryActionLabel),
             )
           else
             FilledButton.tonalIcon(
@@ -691,11 +772,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
                   ? _selectRegionWithFloatingBall
                   : _selectWindowWithFloatingBall,
               icon: const Icon(Icons.open_in_new),
-              label: Text(
-                _mode == 'region'
-                    ? 'Continue with floating ball'
-                    : 'Select window from floating ball',
-              ),
+              label: Text(primaryActionLabel),
             ),
         ],
       ),
