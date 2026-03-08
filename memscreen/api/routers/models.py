@@ -104,20 +104,54 @@ async def models_catalog():
                 return installed_name, meta
         return None, {}
 
-    models = []
-    for name, purpose, required in deduped_specs:
-        matched_name, meta = _find_installed_model(name)
-        models.append(
-            {
-                "name": name,
-                "purpose": purpose,
-                "required": required,
-                "installed": matched_name is not None,
-                "installed_name": matched_name,
-                "size_bytes": meta.get("size_bytes"),
-                "modified_at": meta.get("modified_at"),
-            }
+
+    def _classify_model(name: str):
+        normalized = str(name or '').strip().lower()
+        family = 'other'
+        if normalized.startswith('qwen3.5'):
+            family = 'qwen3.5'
+        elif normalized.startswith('qwen3-vl'):
+            family = 'qwen3-vl'
+        elif normalized.startswith('qwen3'):
+            family = 'qwen3'
+        elif normalized.startswith('qwen2.5vl'):
+            family = 'qwen2.5vl'
+        elif 'embed' in normalized:
+            family = 'embedding'
+
+        size_label = None
+        _, tag = _split_model_ref(normalized)
+        if tag and tag.endswith('b'):
+            size_label = tag
+
+        supports_chat = family != 'embedding'
+        supports_vision = (
+            family in {'qwen3.5', 'qwen3-vl', 'qwen2.5vl'}
+            or 'vision' in normalized
+            or 'vl' in normalized
         )
+
+        recommended_use = 'general'
+        if normalized.startswith('qwen3.5:0.8b') or normalized.startswith('qwen3:0.6b'):
+            recommended_use = 'ultra_light'
+        elif normalized.startswith('qwen3.5:2b') or normalized.startswith('qwen3:1.7b'):
+            recommended_use = 'fast'
+        elif normalized.startswith('qwen3.5:4b') or normalized.startswith('qwen3:4b'):
+            recommended_use = 'balanced'
+        elif normalized.startswith('qwen3.5:9b'):
+            recommended_use = 'advanced'
+        elif family in {'qwen3-vl', 'qwen2.5vl'}:
+            recommended_use = 'vision_fallback'
+        elif family == 'embedding':
+            recommended_use = 'embedding'
+
+        return {
+            'family': family,
+            'size_label': size_label,
+            'supports_chat': supports_chat,
+            'supports_vision': supports_vision,
+            'recommended_use': recommended_use,
+        }
 
     current_chat_model = None
     available_chat_models = []
@@ -131,6 +165,36 @@ async def models_catalog():
     except Exception:
         current_chat_model = None
         available_chat_models = []
+
+    available_chat_model_set = {str(model).strip().lower() for model in available_chat_models}
+
+    models = []
+    for name, purpose, required in deduped_specs:
+        matched_name, meta = _find_installed_model(name)
+        capabilities = _classify_model(matched_name or name)
+        installed_name_normalized = str(matched_name or '').strip().lower()
+        requested_name_normalized = str(name).strip().lower()
+        chat_selectable = (
+            requested_name_normalized in available_chat_model_set
+            or installed_name_normalized in available_chat_model_set
+        )
+        models.append(
+            {
+                "name": name,
+                "purpose": purpose,
+                "required": required,
+                "installed": matched_name is not None,
+                "installed_name": matched_name,
+                "size_bytes": meta.get("size_bytes"),
+                "modified_at": meta.get("modified_at"),
+                "family": capabilities["family"],
+                "size_label": capabilities["size_label"],
+                "supports_chat": capabilities["supports_chat"],
+                "supports_vision": capabilities["supports_vision"],
+                "recommended_use": capabilities["recommended_use"],
+                "chat_selectable": chat_selectable,
+            }
+        )
 
     models_dir = resolve_ollama_models_dir()
     return {

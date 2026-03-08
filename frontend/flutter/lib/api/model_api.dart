@@ -18,6 +18,12 @@ class ModelApi {
             required: item['required'] as bool? ?? false,
             installed: item['installed'] as bool? ?? false,
             installedName: item['installed_name'] as String?,
+            family: item['family'] as String? ?? 'other',
+            sizeLabel: item['size_label'] as String?,
+            supportsChat: item['supports_chat'] as bool? ?? false,
+            supportsVision: item['supports_vision'] as bool? ?? false,
+            recommendedUse: item['recommended_use'] as String? ?? 'general',
+            chatSelectable: item['chat_selectable'] as bool? ?? false,
           ),
         );
       }
@@ -84,6 +90,12 @@ class LocalModelEntry {
     required this.purpose,
     required this.required,
     required this.installed,
+    required this.family,
+    required this.sizeLabel,
+    required this.supportsChat,
+    required this.supportsVision,
+    required this.recommendedUse,
+    required this.chatSelectable,
     this.installedName,
   });
 
@@ -92,4 +104,10 @@ class LocalModelEntry {
   final bool required;
   final bool installed;
   final String? installedName;
+  final String family;
+  final String? sizeLabel;
+  final bool supportsChat;
+  final bool supportsVision;
+  final String recommendedUse;
+  final bool chatSelectable;
 }

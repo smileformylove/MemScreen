@@ -247,6 +247,10 @@ class ApiRouterSmokeTest(unittest.TestCase):
     self.assertIn('qwen3.5:2b', names)
     self.assertIn('qwen3.5:4b', names)
     self.assertIn('qwen3.5:9b', names)
+    model_map = {item['name']: item for item in payload['models']}
+    self.assertTrue(model_map['qwen3.5:4b']['supports_chat'])
+    self.assertTrue(model_map['qwen3.5:4b']['supports_vision'])
+    self.assertEqual(model_map['qwen3.5:4b']['recommended_use'], 'balanced')
 
   def test_chat_video_and_system_routes(self):
     self.assertEqual(self.client.get('/chat/models').json()['models'], ['m1', 'm2'])

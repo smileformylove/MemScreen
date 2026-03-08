@@ -178,22 +178,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  bool _isChatCapableModel(String modelName) {
-    final normalized = modelName.toLowerCase();
-    return !normalized.contains('embed') &&
-        !normalized.contains('embedding') &&
-        !normalized.contains('nomic-embed') &&
-        !normalized.contains('mxbai-embed');
+  String _recommendedUseLabel(LocalModelEntry entry) {
+    switch (entry.recommendedUse) {
+      case 'ultra_light':
+        return 'Ultra-light';
+      case 'fast':
+        return 'Fast';
+      case 'balanced':
+        return 'Balanced';
+      case 'advanced':
+        return 'Advanced';
+      case 'vision_fallback':
+        return 'Vision';
+      case 'embedding':
+        return 'Embedding';
+      default:
+        return 'General';
+    }
   }
 
   bool _canUseModelForChat(LocalModelCatalog? catalog, LocalModelEntry entry) {
     final available = catalog?.availableChatModels ?? const <String>[];
     if (available.isNotEmpty) {
-      return available.contains(entry.name) ||
+      return entry.chatSelectable ||
+          available.contains(entry.name) ||
           ((entry.installedName ?? '').isNotEmpty &&
               available.contains(entry.installedName));
     }
-    return entry.installed && _isChatCapableModel(entry.name);
+    return entry.installed && entry.supportsChat;
   }
 
   bool _isCurrentChatModel(LocalModelCatalog? catalog, LocalModelEntry entry) {
@@ -241,7 +253,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         messenger.showSnackBar(
           SnackBar(
             content: Text('Downloaded ${entry.name}'),
-            action: _isChatCapableModel(entry.name)
+            action: entry.supportsChat
                 ? SnackBarAction(
                     label: 'Use for Chat',
                     onPressed: () => _setChatModel(entry),
@@ -747,6 +759,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _modelTag(ThemeData theme, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: theme.colorScheme.onSurfaceVariant,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
   Widget _modelRow(
     LocalModelEntry entry, {
     required LocalModelCatalog? catalog,
@@ -823,6 +853,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: theme.colorScheme.onSurfaceVariant,
                   fontSize: 11,
                 ),
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  if ((entry.sizeLabel ?? '').isNotEmpty)
+                    _modelTag(theme, entry.sizeLabel!),
+                  _modelTag(theme, _recommendedUseLabel(entry)),
+                  if (entry.supportsVision) _modelTag(theme, 'Vision'),
+                  if (entry.required) _modelTag(theme, 'Required'),
+                ],
               ),
             ],
           ),
