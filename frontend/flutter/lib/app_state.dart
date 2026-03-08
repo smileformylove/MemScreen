@@ -210,6 +210,9 @@ class AppState extends ChangeNotifier {
   bool get useNativeMacOSRuntime =>
       Platform.isMacOS && _nativeRuntimeService != null;
 
+  @visibleForTesting
+  bool get enforcesScreenRecordingPermissionFlow => Platform.isMacOS;
+
   bool get supportsLocalFirstCoreFeatures =>
       useNativeMacOSRecording && useNativeMacOSTracking;
 
@@ -776,7 +779,8 @@ class AppState extends ChangeNotifier {
       return _lastRecordingSmokeCheckSummary ??
           'Running 2-second smoke check...';
     }
-    if (Platform.isMacOS && !hasScreenRecordingPermission) {
+    if (enforcesScreenRecordingPermissionFlow &&
+        !hasScreenRecordingPermission) {
       await promptScreenRecordingPermissionFlow();
       const summary =
           'Permission: Screen Recording is still not active, so the smoke check cannot start.';
