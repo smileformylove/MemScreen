@@ -315,7 +315,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     children: [
                       if ((_modelUiState.currentModel ?? '').isNotEmpty)
                         Text(
-                          'Current: $_modelUiState.currentModel',
+                          'Current: ${_modelUiState.currentModel}',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -325,7 +325,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         if ((_modelUiState.currentModel ?? '').isNotEmpty)
                           const SizedBox(height: 6),
                         Text(
-                          'Recommended: $_modelUiState.recommendedModel',
+                          'Recommended: ${_modelUiState.recommendedModel}',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
