@@ -7,6 +7,7 @@ import '../api/api_client.dart';
 import '../api/model_api.dart';
 import '../connection/connection_state.dart';
 import '../services/model_catalog_groups.dart';
+import '../widgets/backend_required_panel.dart';
 
 class _SettingsModelUiState {
   const _SettingsModelUiState({
@@ -617,62 +618,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!appState.isBackendConnected) {
       final isStarting =
           appState.connectionState.status == ConnectionStatus.connecting;
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Local models'),
-            const SizedBox(height: 8),
-            Text(
-              'Model catalog requires the local backend. Core local features continue to work without it.',
-              style: TextStyle(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontSize: 12,
-              ),
-            ),
-            if (appState.connectionState.status == ConnectionStatus.error &&
-                (appState.connectionState.message?.isNotEmpty ?? false)) ...[
-              const SizedBox(height: 8),
-              Text(
-                appState.connectionState.message!,
-                style: TextStyle(
-                  color: theme.colorScheme.error,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: isStarting
-                  ? null
-                  : () async {
-                      await appState.ensureBackendConnection(force: true);
-                      if (appState.isBackendConnected) {
-                        await _loadModelCatalog(
-                            showError: true, forceRefresh: true);
-                      }
-                    },
-              icon: isStarting
-                  ? SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: theme.colorScheme.onPrimary,
-                      ),
-                    )
-                  : const Icon(Icons.play_arrow),
-              label: Text(isStarting ? 'Starting Backend...' : 'Start Backend'),
-            ),
-          ],
-        ),
+      return BackendRequiredPanel(
+        title: 'Local models',
+        description:
+            'Model catalog requires the local backend. Core local features continue to work without it.',
+        isStarting: isStarting,
+        onStart: () async {
+          await appState.ensureBackendConnection(force: true);
+          if (appState.isBackendConnected) {
+            await _loadModelCatalog(showError: true, forceRefresh: true);
+          }
+        },
+        message: appState.connectionState.status == ConnectionStatus.error
+            ? appState.connectionState.message
+            : null,
+        icon: Icons.smart_toy_outlined,
       );
     }
+
     final runtimeReady = catalog?.runtimeReady ?? false;
     final runtimeText = runtimeReady ? 'Runtime ready' : 'Runtime unavailable';
     final statusColor = runtimeReady ? Colors.green : theme.colorScheme.error;
