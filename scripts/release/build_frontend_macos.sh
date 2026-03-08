@@ -338,12 +338,6 @@ if [[ -x "$BACKEND_BOOTSTRAP" ]]; then
   mkdir -p "$LOG_DIR"
   touch "$WRAPPER_LOG"
   nohup "$BACKEND_BOOTSTRAP" >>"$WRAPPER_LOG" 2>&1 &
-  for _ in {1..5}; do
-    if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
-      break
-    fi
-    sleep 1
-  done
 fi
 
 exec "${APP_BIN_DIR}/memscreen_flutter_real" "$@"

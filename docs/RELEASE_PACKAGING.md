@@ -33,10 +33,11 @@ On app launch:
 1. app wrapper checks `http://127.0.0.1:8765/health`
 2. if backend is unavailable, it starts embedded backend bootstrap in background
 3. bootstrap creates `~/.memscreen/runtime/.venv` and installs lite runtime dependencies
-4. backend API starts locally, Flutter can reconnect immediately from the UI
+4. Flutter UI launches immediately while backend bootstrap continues in background
+5. backend API starts locally and the app reconnects automatically from the UI
 5. backend startup always prioritizes bundled backend source (`MemScreen.app/Contents/Resources/backend/src`)
 
-First launch can take longer because local backend runtime is prepared.
+First launch can take longer because local backend runtime is prepared, but the UI no longer blocks on backend readiness.
 
 Logs:
 - `~/.memscreen/logs/backend_bootstrap.log`
