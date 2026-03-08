@@ -15,6 +15,7 @@ import 'connection/connection_state.dart';
 import 'connection/connection_service.dart';
 import 'services/floating_ball_commands.dart';
 import 'services/floating_ball_service.dart';
+import 'services/local_video_catalog_store.dart';
 import 'services/native_input_tracking_service.dart';
 import 'services/native_permission_service.dart';
 import 'services/native_recording_import_queue.dart';
@@ -62,6 +63,7 @@ class AppState extends ChangeNotifier {
       _nativeInputTrackingService = NativeInputTrackingService();
       _nativePermissionService = NativePermissionService();
       _nativeTrackingSessionQueue = NativeTrackingSessionQueue();
+      _localVideoCatalogStore = LocalVideoCatalogStore();
     }
     _recordingTrackingCoordinator = RecordingTrackingCoordinator(
       processApi: _processApi,
@@ -140,6 +142,7 @@ class AppState extends ChangeNotifier {
   NativeInputTrackingService? _nativeInputTrackingService;
   NativePermissionService? _nativePermissionService;
   NativeTrackingSessionQueue? _nativeTrackingSessionQueue;
+  LocalVideoCatalogStore? _localVideoCatalogStore;
   Map<String, dynamic>? _permissionStatus;
   Map<String, dynamic>? get permissionStatus => _permissionStatus;
 
@@ -669,6 +672,18 @@ class AppState extends ChangeNotifier {
       }
       final filename = result.filename;
       if (result.ok && filename != null && filename.isNotEmpty) {
+        final file = File(filename);
+        final fileSize = await file.exists() ? await file.length() : 0;
+        await _localVideoCatalogStore?.upsert({
+          'filename': filename,
+          'timestamp': DateTime.now().toIso8601String(),
+          'duration': result.durationSec,
+          'file_size': fileSize,
+          'recording_mode': result.mode,
+          'audio_source': result.audioSourceUsed,
+          'content_summary': 'Native macOS recording',
+          'analysis_status': 'pending-sync',
+        });
         final payload = {
           'filename': filename,
           'duration_sec': result.durationSec,
