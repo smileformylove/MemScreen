@@ -104,17 +104,18 @@ class NativeRecordingService {
     final map = (raw is Map
         ? Map<String, dynamic>.from(raw)
         : const <String, dynamic>{});
-    if (map['consumed'] != true || map['ok'] != true) {
+    if (map['consumed'] != true) {
       return null;
     }
     return NativeRecordingStopResult(
-      ok: true,
+      ok: map['ok'] as bool? ?? false,
       filename: map['filename'] as String?,
       durationSec: (map['durationSec'] as num?)?.toDouble(),
       mode: map['mode'] as String?,
       audioSourceUsed: map['audioSourceUsed'] as String?,
       notice: map['notice'] as String?,
       error: map['error'] as String?,
+      consumedByCallback: map['consumedByCallback'] as bool? ?? false,
     );
   }
 

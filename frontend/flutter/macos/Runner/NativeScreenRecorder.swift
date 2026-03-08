@@ -13,6 +13,8 @@ final class NativeScreenRecorder {
     private var notice: String?
     private var requestedDuration: Int = 9999
     private var requestedInterval: Double = 2.0
+    private var stderrPipe: Pipe?
+    private var stdoutPipe: Pipe?
     var onRecordingFinished: (([String: Any]) -> Void)?
 
     func start(arguments: [String: Any]) -> [String: Any] {
@@ -70,6 +72,14 @@ final class NativeScreenRecorder {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         process.arguments = args
+
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+        self.stdoutPipe = stdoutPipe
+        self.stderrPipe = stderrPipe
+
         process.terminationHandler = { [weak self, weak process] _ in
             guard let self, let process, self.process === process else { return }
             let result = self.finishRecording(consumedByCallback: true)
@@ -97,6 +107,8 @@ final class NativeScreenRecorder {
             self.process = nil
             self.outputURL = nil
             self.startedAt = nil
+            self.stdoutPipe = nil
+            self.stderrPipe = nil
             return ["ok": false, "error": "Failed to start native recording: \(error.localizedDescription)"]
         }
     }
@@ -130,17 +142,58 @@ final class NativeScreenRecorder {
     private func finishRecording(consumedByCallback: Bool) -> [String: Any] {
         let duration = startedAt.map { Date().timeIntervalSince($0) } ?? 0
         let filename = outputURL?.path
+        let process = self.process
+        let stderrText = Self.readPipeText(stderrPipe)
+        let stdoutText = Self.readPipeText(stdoutPipe)
+        let terminationStatus = process?.terminationStatus ?? 0
+        let fileExists = filename.map { FileManager.default.fileExists(atPath: $0) } ?? false
+        let fileSize: Int64
+        if let filename, fileExists,
+           let attrs = try? FileManager.default.attributesOfItem(atPath: filename),
+           let size = attrs[.size] as? NSNumber {
+            fileSize = size.int64Value
+        } else {
+            fileSize = 0
+        }
+
         self.process = nil
         self.outputURL = nil
         self.startedAt = nil
+        self.stdoutPipe = nil
+        self.stderrPipe = nil
+
+        var mergedNotice = notice
+        if (mergedNotice ?? "").isEmpty,
+           fileExists, fileSize > 0,
+           !stderrText.isEmpty,
+           stderrText.lowercased().contains("system audio") {
+            mergedNotice = stderrText
+        }
+
+        let ok = fileExists && fileSize > 0
+        var errorText: String? = nil
+        if !ok {
+            errorText = Self.inferRecordingFailure(
+                terminationStatus: terminationStatus,
+                stderrText: stderrText,
+                stdoutText: stdoutText,
+                filename: filename
+            )
+        }
 
         return [
-            "ok": true,
+            "ok": ok,
             "filename": filename as Any,
             "durationSec": duration,
             "mode": mode,
             "audioSourceUsed": audioSourceUsed,
-            "notice": notice as Any,
+            "notice": mergedNotice as Any,
+            "error": errorText as Any,
+            "terminationStatus": terminationStatus,
+            "stderr": stderrText,
+            "stdout": stdoutText,
+            "fileExists": fileExists,
+            "fileSize": fileSize,
             "consumedByCallback": consumedByCallback,
         ]
     }
@@ -177,6 +230,47 @@ final class NativeScreenRecorder {
                 "display_id": displayID as Any,
             ]
         }
+    }
+
+    private static func readPipeText(_ pipe: Pipe?) -> String {
+        guard let pipe else { return "" }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard !data.isEmpty else { return "" }
+        return String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private static func inferRecordingFailure(
+        terminationStatus: Int32,
+        stderrText: String,
+        stdoutText: String,
+        filename: String?
+    ) -> String {
+        let combined = [stderrText, stdoutText]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = combined.lowercased()
+
+        if lower.contains("permission") || lower.contains("not permitted") {
+            return "Screen Recording permission is required. Reopen MemScreen after granting access in System Settings."
+        }
+        if lower.contains("cancel") {
+            return "Recording was cancelled before a video file was written."
+        }
+        if lower.contains("failed") || lower.contains("error") {
+            return combined
+        }
+        if let filename {
+            return "Recording ended without producing a video file: \(filename)"
+        }
+        if !combined.isEmpty {
+            return combined
+        }
+        if terminationStatus != 0 {
+            return "Native recording exited early (status \(terminationStatus)) before a video file was written."
+        }
+        return "Native recording finished without creating a playable video file."
     }
 
     private static func outputDirectory() -> URL {

@@ -892,6 +892,10 @@ class AppState extends ChangeNotifier {
     if ((result.notice ?? '').isNotEmpty) {
       _recordingTrackingState.pendingRecordingNotice = result.notice;
     }
+    if (!result.ok && (result.error ?? '').isNotEmpty) {
+      _recordingTrackingState.pendingRecordingNotice = result.error;
+      return;
+    }
     final filename = result.filename;
     if (result.ok && filename != null && filename.isNotEmpty) {
       final file = File(filename);
