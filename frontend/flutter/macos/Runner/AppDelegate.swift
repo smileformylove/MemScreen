@@ -11,6 +11,7 @@ class AppDelegate: FlutterAppDelegate {
     private var nativeRecordingChannel: FlutterMethodChannel?
     private var nativeTrackingChannel: FlutterMethodChannel?
     private var nativePermissionChannel: FlutterMethodChannel?
+    private var nativeRuntimeChannel: FlutterMethodChannel?
     private var creationTimer: Timer?
     private var creationAttempts = 0
     private var shouldForceQuit = false
@@ -104,7 +105,6 @@ class AppDelegate: FlutterAppDelegate {
     override func applicationDidFinishLaunching(_ notification: Notification) {
         super.applicationDidFinishLaunching(notification)
         os_log("App did finish launching", log: logger, type: .info)
-        launchEmbeddedBackendBootstrapIfNeeded()
         // Build the floating ball after Flutter window/controller is ready.
         // We keep the main window visible to avoid blank-screen startup edge cases.
         DispatchQueue.main.async { [weak self] in
@@ -379,6 +379,14 @@ class AppDelegate: FlutterAppDelegate {
             nativePermissionChannel?.setMethodCallHandler { [weak self] (call, result) in
                 self?.handleNativePermissionCall(call, result: result)
             }
+
+            nativeRuntimeChannel = FlutterMethodChannel(
+                name: "com.memscreen/native_runtime",
+                binaryMessenger: channelController.engine.binaryMessenger
+            )
+            nativeRuntimeChannel?.setMethodCallHandler { [weak self] (call, result) in
+                self?.handleNativeRuntimeCall(call, result: result)
+            }
         }
     }
 
@@ -449,6 +457,16 @@ class AppDelegate: FlutterAppDelegate {
         guard let window = findFlutterWindow() else { return }
         if !window.isMiniaturized {
             window.miniaturize(nil)
+        }
+    }
+
+    private func handleNativeRuntimeCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        switch call.method {
+        case "ensureBackendBootstrap":
+            launchEmbeddedBackendBootstrapIfNeeded()
+            result(["ok": true])
+        default:
+            result(FlutterMethodNotImplemented)
         }
     }
 
