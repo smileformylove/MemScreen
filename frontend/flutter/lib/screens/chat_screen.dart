@@ -8,6 +8,13 @@ import '../api/chat_api.dart';
 import '../app_state.dart';
 import '../connection/connection_state.dart';
 
+class _ChatModelGroup {
+  const _ChatModelGroup(this.label, this.models);
+
+  final String label;
+  final List<String> models;
+}
+
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
 
@@ -190,6 +197,176 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() => _loadingModels = false);
       }
     }
+  }
+
+  double _modelSizeScore(String modelName) {
+    final match =
+        RegExp(r'(\d+(?:\.\d+)?)b', caseSensitive: false).firstMatch(modelName);
+    return double.tryParse(match?.group(1) ?? '') ?? 0.0;
+  }
+
+  bool _isVisionCapableModel(String modelName) {
+    final normalized = modelName.toLowerCase();
+    return normalized.startsWith('qwen3.5') ||
+        normalized.contains('vl') ||
+        normalized.contains('vision');
+  }
+
+  bool _isFastModel(String modelName) {
+    final normalized = modelName.toLowerCase();
+    final size = _modelSizeScore(normalized);
+    return normalized.contains('0.8b') ||
+        normalized.contains('1.7b') ||
+        normalized.contains(':2b') ||
+        (size > 0 && size <= 2.1);
+  }
+
+  int _chatModelPreferenceScore(String modelName) {
+    final normalized = modelName.toLowerCase();
+    final size = (_modelSizeScore(normalized) * 10).round();
+    if (normalized.startsWith('qwen3.5:9b')) return 500 + size;
+    if (normalized.startsWith('qwen3.5:4b')) return 450 + size;
+    if (normalized.startsWith('qwen3.5:2b')) return 420 + size;
+    if (normalized.startsWith('qwen3.5:0.8b')) return 390 + size;
+    if (normalized.startsWith('qwen3-vl')) return 320 + size;
+    if (normalized.startsWith('qwen3:')) return 280 + size;
+    if (normalized.startsWith('qwen2.5vl')) return 240 + size;
+    return size;
+  }
+
+  List<String> _sortedChatModels() {
+    final models = List<String>.from(_availableModels);
+    models.sort((a, b) {
+      final scoreDiff =
+          _chatModelPreferenceScore(b) - _chatModelPreferenceScore(a);
+      if (scoreDiff != 0) {
+        return scoreDiff;
+      }
+      return a.compareTo(b);
+    });
+    return models;
+  }
+
+  List<_ChatModelGroup> _buildChatModelGroups() {
+    final sorted = _sortedChatModels();
+    final recommended = <String>[];
+    final fast = <String>[];
+    final vision = <String>[];
+    final others = <String>[];
+
+    for (final model in sorted) {
+      final normalized = model.toLowerCase();
+      if (normalized.startsWith('qwen3.5:4b') ||
+          normalized.startsWith('qwen3.5:9b')) {
+        recommended.add(model);
+      } else if (_isFastModel(model)) {
+        fast.add(model);
+      } else if (_isVisionCapableModel(model)) {
+        vision.add(model);
+      } else {
+        others.add(model);
+      }
+    }
+
+    if (recommended.isEmpty && sorted.isNotEmpty) {
+      recommended.add(sorted.first);
+      fast.remove(sorted.first);
+      vision.remove(sorted.first);
+      others.remove(sorted.first);
+    }
+
+    final groups = <_ChatModelGroup>[];
+    if (recommended.isNotEmpty)
+      groups.add(_ChatModelGroup('Recommended', recommended));
+    if (fast.isNotEmpty) groups.add(_ChatModelGroup('Fast / Light', fast));
+    if (vision.isNotEmpty)
+      groups.add(_ChatModelGroup('Vision / Multimodal', vision));
+    if (others.isNotEmpty) groups.add(_ChatModelGroup('Other', others));
+    return groups;
+  }
+
+  Future<void> _openModelSheet() async {
+    if (_loadingModels) {
+      return;
+    }
+    if (_availableModels.isEmpty) {
+      await _loadModelSelector(showError: true);
+      if (!mounted || _availableModels.isEmpty) {
+        return;
+      }
+    }
+
+    final groups = _buildChatModelGroups();
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        return SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: [
+              Row(
+                children: [
+                  const Expanded(child: Text('Chat models')),
+                  TextButton.icon(
+                    onPressed: _loadingModels
+                        ? null
+                        : () async {
+                            Navigator.of(sheetContext).pop();
+                            await _loadModelSelector(showError: true);
+                          },
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Refresh'),
+                  ),
+                ],
+              ),
+              if ((_currentModel ?? '').isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'Current: $_currentModel',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              for (final group in groups) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, bottom: 6),
+                  child: Text(
+                    group.label,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                for (final model in group.models)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: model == _currentModel
+                        ? const Icon(Icons.check_circle, color: Colors.green)
+                        : const Icon(Icons.smart_toy_outlined),
+                    title: Text(model),
+                    subtitle: Text(
+                      _isVisionCapableModel(model)
+                          ? 'Supports multimodal prompts'
+                          : (_isFastModel(model)
+                              ? 'Lower latency option'
+                              : 'General chat model'),
+                    ),
+                    onTap: () async {
+                      Navigator.of(sheetContext).pop();
+                      await _setChatModel(model);
+                    },
+                  ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _loadThreads({bool refreshHistory = true}) async {
@@ -579,11 +756,11 @@ class _ChatScreenState extends State<ChatScreen> {
               tooltip: 'Threads',
               onPressed: _loading ? null : _openThreadSheet,
             ),
-            PopupMenuButton<String>(
+            IconButton(
               tooltip: _currentModel == null
                   ? 'Chat model'
                   : 'Chat model: $_currentModel',
-              enabled: _availableModels.isNotEmpty && !_loadingModels,
+              onPressed: _loadingModels ? null : _openModelSheet,
               icon: _loadingModels
                   ? const SizedBox(
                       width: 18,
@@ -591,28 +768,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.tune),
-              onSelected: _setChatModel,
-              itemBuilder: (context) => _availableModels
-                  .map(
-                    (model) => PopupMenuItem<String>(
-                      value: model,
-                      child: Row(
-                        children: [
-                          if (model == _currentModel) ...[
-                            const Icon(Icons.check, size: 16),
-                            const SizedBox(width: 8),
-                          ],
-                          Flexible(
-                            child: Text(
-                              model,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                  .toList(),
             ),
             // Context selector
             if (_selectedContext == null)
