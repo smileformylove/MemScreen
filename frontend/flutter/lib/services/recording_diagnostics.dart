@@ -52,6 +52,72 @@ String? recordingInstallAdvice() {
       : null;
 }
 
+String _formatByteCount(int bytes) {
+  const units = <String>['B', 'KB', 'MB', 'GB'];
+  var value = bytes.toDouble();
+  var unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  final decimals = unitIndex == 0 || value >= 10 ? 0 : 1;
+  return '${value.toStringAsFixed(decimals)} ${units[unitIndex]}';
+}
+
+String? recordingLastOutputStatus({
+  String? lastOutputPath,
+  int? lastOutputFileSize,
+  String? lastFailureKind,
+}) {
+  final hasOutputPath = (lastOutputPath ?? '').trim().isNotEmpty;
+  if (lastOutputFileSize != null && lastOutputFileSize > 0) {
+    return 'Saved · ${_formatByteCount(lastOutputFileSize)}';
+  }
+  if (hasOutputPath && lastOutputFileSize != null && lastOutputFileSize <= 0) {
+    return 'Zero-byte file';
+  }
+  switch ((lastFailureKind ?? '').trim()) {
+    case 'no_output':
+      return hasOutputPath ? 'Not playable yet' : 'No file created';
+    case 'empty_output':
+      return hasOutputPath ? 'Empty file written' : 'Empty output';
+    case 'cancelled':
+      return 'Cancelled before save';
+    case 'permission_denied':
+      return 'Blocked before save';
+    default:
+      if (hasOutputPath) {
+        return 'Path recorded';
+      }
+      return null;
+  }
+}
+
+RecordingDiagnosticsNoticeLevel recordingLastOutputStatusLevel({
+  String? lastOutputPath,
+  int? lastOutputFileSize,
+  String? lastFailureKind,
+}) {
+  final hasOutputPath = (lastOutputPath ?? '').trim().isNotEmpty;
+  if (lastOutputFileSize != null && lastOutputFileSize > 0) {
+    return RecordingDiagnosticsNoticeLevel.info;
+  }
+  if (hasOutputPath && lastOutputFileSize != null && lastOutputFileSize <= 0) {
+    return RecordingDiagnosticsNoticeLevel.warning;
+  }
+  switch ((lastFailureKind ?? '').trim()) {
+    case 'cancelled':
+      return RecordingDiagnosticsNoticeLevel.warning;
+    case 'permission_denied':
+    case 'no_output':
+    case 'empty_output':
+    case 'recorder_error':
+      return RecordingDiagnosticsNoticeLevel.error;
+    default:
+      return RecordingDiagnosticsNoticeLevel.info;
+  }
+}
+
 String? recordingDiagnosticsAdvice({
   required bool screenRecordingGranted,
   String? statusNotice,
@@ -226,6 +292,16 @@ RecordingDiagnosticsData buildRecordingDiagnosticsData({
     lastExitStatus: lastExitStatus,
     lastOutputPath: lastOutputPath,
     lastOutputFileSize: lastOutputFileSize,
+    lastOutputStatus: recordingLastOutputStatus(
+      lastOutputPath: lastOutputPath,
+      lastOutputFileSize: lastOutputFileSize,
+      lastFailureKind: lastFailureKind,
+    ),
+    lastOutputStatusLevel: recordingLastOutputStatusLevel(
+      lastOutputPath: lastOutputPath,
+      lastOutputFileSize: lastOutputFileSize,
+      lastFailureKind: lastFailureKind,
+    ),
     smokeCheckAt: smokeCheckAt,
     smokeCheckSummary: smokeCheckSummary,
     advice: recordingDiagnosticsAdvice(

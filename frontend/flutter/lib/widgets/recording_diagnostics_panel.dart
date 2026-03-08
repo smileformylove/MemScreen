@@ -22,6 +22,8 @@ class RecordingDiagnosticsData {
     this.lastExitStatus,
     this.lastOutputPath,
     this.lastOutputFileSize,
+    this.lastOutputStatus,
+    this.lastOutputStatusLevel = RecordingDiagnosticsNoticeLevel.info,
     this.smokeCheckAt,
     this.smokeCheckSummary,
     this.advice,
@@ -43,6 +45,8 @@ class RecordingDiagnosticsData {
   final int? lastExitStatus;
   final String? lastOutputPath;
   final int? lastOutputFileSize;
+  final String? lastOutputStatus;
+  final RecordingDiagnosticsNoticeLevel lastOutputStatusLevel;
   final String? smokeCheckAt;
   final String? smokeCheckSummary;
   final String? advice;
@@ -107,6 +111,9 @@ String buildRecordingDiagnosticsReport(RecordingDiagnosticsData data) {
   }
   if (data.lastOutputFileSize != null) {
     lines.add('last_output_file_size: ${data.lastOutputFileSize}');
+  }
+  if ((data.lastOutputStatus ?? '').isNotEmpty) {
+    lines.add('last_output_status: ${data.lastOutputStatus!}');
   }
   if ((data.lastResult ?? '').isNotEmpty) {
     lines.add('last_notice: ${data.lastResult!}');
@@ -269,6 +276,20 @@ class RecordingDiagnosticsPanel extends StatelessWidget {
               icon: Icons.terminal,
               label: 'Exit status',
               value: data.lastExitStatus.toString(),
+            ),
+          if ((data.lastOutputStatus ?? '').isNotEmpty)
+            _noticeBanner(
+              context,
+              icon: data.lastOutputStatusLevel ==
+                      RecordingDiagnosticsNoticeLevel.info
+                  ? Icons.check_circle_outline
+                  : data.lastOutputStatusLevel ==
+                          RecordingDiagnosticsNoticeLevel.warning
+                      ? Icons.warning_amber_outlined
+                      : Icons.error_outline,
+              label: 'Output file',
+              value: data.lastOutputStatus!,
+              level: data.lastOutputStatusLevel,
             ),
           if ((data.lastOutputPath ?? '').isNotEmpty)
             _diagnosticRow(

@@ -111,6 +111,37 @@ void main() {
 
     expect(data.advice, contains('last output path'));
   });
+
+  test('recording last output status shows saved size when bytes are present',
+      () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+      lastOutputFileSize: 1536,
+    );
+
+    expect(data.lastOutputStatus, 'Saved · 1.5 KB');
+    expect(data.lastOutputStatusLevel, RecordingDiagnosticsNoticeLevel.info);
+  });
+
+  test('recording last output status highlights zero-byte files', () {
+    final data = buildRecordingDiagnosticsData(
+      screenRecordingGranted: true,
+      outputDir: '/Users/test/.memscreen/videos',
+      isRecording: false,
+      lastFailureKind: 'empty_output',
+      lastOutputPath: '/Users/test/.memscreen/videos/native_test.mov',
+      lastOutputFileSize: 0,
+    );
+
+    expect(data.lastOutputStatus, 'Zero-byte file');
+    expect(data.lastOutputStatusLevel, RecordingDiagnosticsNoticeLevel.warning);
+
+    final report = buildRecordingDiagnosticsReport(data);
+    expect(report, contains('last_output_status: Zero-byte file'));
+  });
   test('recording diagnostics summary falls back to native failure mapping',
       () {
     final summary = recordingDiagnosticsSummary(
