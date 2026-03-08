@@ -48,6 +48,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
   String? _screenshotPath;
   bool _capturing = false;
   bool _wasRecording = false;
+  String? _recordingNotice;
   AppState? _appState;
   int _lastRecordingStatusVersion = -1;
   int _lastCurrentTabIndex = -1;
@@ -111,6 +112,33 @@ class _RecordingScreenState extends State<RecordingScreen> {
     });
   }
 
+  void _showRecordingNotice(String notice, {bool showSnackBar = true}) {
+    final trimmed = notice.trim();
+    if (trimmed.isEmpty || !mounted) {
+      return;
+    }
+    setState(() => _recordingNotice = trimmed);
+    if (showSnackBar) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(trimmed)),
+      );
+    }
+  }
+
+  void _clearRecordingNotice() {
+    if (!mounted) {
+      return;
+    }
+    setState(() => _recordingNotice = null);
+  }
+
+  void _consumePendingRecordingNotice({bool showSnackBar = true}) {
+    final notice = context.read<AppState>().consumePendingRecordingNotice();
+    if (notice != null && notice.isNotEmpty) {
+      _showRecordingNotice(notice, showSnackBar: showSnackBar);
+    }
+  }
+
   Future<void> _load() async {
     try {
       final appState = context.read<AppState>();
@@ -151,6 +179,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
       } else {
         _stopPolling();
       }
+      _consumePendingRecordingNotice(showSnackBar: true);
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -349,18 +378,14 @@ class _RecordingScreenState extends State<RecordingScreen> {
         screenIndex: screenIndex,
         screenDisplayId: screenDisplayId,
       );
-      final notice = appState.consumePendingRecordingNotice();
-      if (notice != null && notice.isNotEmpty && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(notice)),
-        );
-      }
+      _consumePendingRecordingNotice(showSnackBar: true);
       _wasRecording = true;
       _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_friendlyRecordingStartError(e))),
+        _showRecordingNotice(
+          _friendlyRecordingStartError(e),
+          showSnackBar: true,
         );
       }
     }
@@ -444,9 +469,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
       _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to stop recording: $e')),
-        );
+        _showRecordingNotice('Failed to stop recording: $e',
+            showSnackBar: true);
       }
     }
   }
@@ -666,6 +690,43 @@ class _RecordingScreenState extends State<RecordingScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if ((_recordingNotice ?? '').isNotEmpty) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color:
+                              Theme.of(context).colorScheme.onTertiaryContainer,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _recordingNotice!,
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onTertiaryContainer,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          onPressed: _clearRecordingNotice,
+                          icon: const Icon(Icons.close),
+                          tooltip: 'Dismiss',
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 ..._buildModeSelection(),
                 ..._buildActionBar(),
               ],
