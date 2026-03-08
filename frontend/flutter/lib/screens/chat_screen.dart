@@ -5,6 +5,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 
 import '../api/chat_api.dart';
+import '../api/model_api.dart';
 import '../app_state.dart';
 import '../connection/connection_state.dart';
 
@@ -34,6 +35,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _requestedInitialHydration = false;
   bool _requestedModelHydration = false;
   List<String> _availableModels = [];
+  Map<String, LocalModelEntry> _availableModelDetails =
+      <String, LocalModelEntry>{};
   String? _currentModel;
   int _lastChatModelRefreshVersion = -1;
   StreamSubscription? _streamSub;
@@ -149,13 +152,31 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     setState(() => _loadingModels = true);
     try {
-      final models = await appState.loadChatModelsForUi();
-      final current = await appState.loadCurrentChatModelForUi();
+      final catalog = await appState.loadLocalModelCatalogForUi();
+      var models = catalog.availableChatModels;
+      var current = catalog.currentChatModel;
+      if (models.isEmpty) {
+        models = await appState.loadChatModelsForUi();
+      }
+      current ??= await appState.loadCurrentChatModelForUi();
+
+      final details = <String, LocalModelEntry>{};
+      for (final entry in catalog.models) {
+        if (models.contains(entry.name)) {
+          details[entry.name] = entry;
+        }
+        if ((entry.installedName ?? '').isNotEmpty &&
+            models.contains(entry.installedName)) {
+          details[entry.installedName!] = entry;
+        }
+      }
+
       if (!mounted) {
         return;
       }
       setState(() {
         _availableModels = models;
+        _availableModelDetails = details;
         _currentModel = current;
       });
     } catch (e) {
@@ -199,6 +220,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  LocalModelEntry? _modelDetailsFor(String modelName) {
+    return _availableModelDetails[modelName];
+  }
+
   double _modelSizeScore(String modelName) {
     final match =
         RegExp(r'(\d+(?:\.\d+)?)b', caseSensitive: false).firstMatch(modelName);
@@ -206,6 +231,10 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   bool _isVisionCapableModel(String modelName) {
+    final details = _modelDetailsFor(modelName);
+    if (details != null) {
+      return details.supportsVision;
+    }
     final normalized = modelName.toLowerCase();
     return normalized.startsWith('qwen3.5') ||
         normalized.contains('vl') ||
@@ -213,6 +242,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   bool _isFastModel(String modelName) {
+    final details = _modelDetailsFor(modelName);
+    if (details != null) {
+      return details.recommendedUse == 'ultra_light' ||
+          details.recommendedUse == 'fast';
+    }
     final normalized = modelName.toLowerCase();
     final size = _modelSizeScore(normalized);
     return normalized.contains('0.8b') ||
@@ -222,8 +256,25 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   int _chatModelPreferenceScore(String modelName) {
+    final details = _modelDetailsFor(modelName);
     final normalized = modelName.toLowerCase();
     final size = (_modelSizeScore(normalized) * 10).round();
+    if (details != null) {
+      switch (details.recommendedUse) {
+        case 'advanced':
+          return 500 + size;
+        case 'balanced':
+          return 450 + size;
+        case 'fast':
+          return 420 + size;
+        case 'ultra_light':
+          return 390 + size;
+        case 'vision_fallback':
+          return 320 + size;
+        default:
+          break;
+      }
+    }
     if (normalized.startsWith('qwen3.5:9b')) return 500 + size;
     if (normalized.startsWith('qwen3.5:4b')) return 450 + size;
     if (normalized.startsWith('qwen3.5:2b')) return 420 + size;
@@ -255,9 +306,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final others = <String>[];
 
     for (final model in sorted) {
-      final normalized = model.toLowerCase();
-      if (normalized.startsWith('qwen3.5:4b') ||
-          normalized.startsWith('qwen3.5:9b')) {
+      final details = _modelDetailsFor(model);
+      final recommendedUse = details?.recommendedUse ?? 'general';
+      if (recommendedUse == 'balanced' || recommendedUse == 'advanced') {
         recommended.add(model);
       } else if (_isFastModel(model)) {
         fast.add(model);
@@ -350,11 +401,23 @@ class _ChatScreenState extends State<ChatScreen> {
                         : const Icon(Icons.smart_toy_outlined),
                     title: Text(model),
                     subtitle: Text(
-                      _isVisionCapableModel(model)
-                          ? 'Supports multimodal prompts'
-                          : (_isFastModel(model)
-                              ? 'Lower latency option'
-                              : 'General chat model'),
+                      (() {
+                        final details = _modelDetailsFor(model);
+                        if (details != null) {
+                          final tags = <String>[
+                            if ((details.sizeLabel ?? '').isNotEmpty)
+                              details.sizeLabel!,
+                            if (details.supportsVision) 'Vision',
+                            details.recommendedUse.replaceAll('_', ' '),
+                          ];
+                          return tags.join(' · ');
+                        }
+                        return _isVisionCapableModel(model)
+                            ? 'Supports multimodal prompts'
+                            : (_isFastModel(model)
+                                ? 'Lower latency option'
+                                : 'General chat model');
+                      })(),
                     ),
                     onTap: () async {
                       Navigator.of(sheetContext).pop();
