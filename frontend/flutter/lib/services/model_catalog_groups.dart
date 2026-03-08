@@ -364,3 +364,48 @@ LocalModelCatalog markDownloadedModel(
     models: finalModels,
   );
 }
+
+class ChatModelSelection {
+  const ChatModelSelection({
+    this.availableModels = const <String>[],
+    this.detailsByModel = const <String, LocalModelEntry>{},
+    this.currentModel,
+    this.recommendedModel,
+  });
+
+  final List<String> availableModels;
+  final Map<String, LocalModelEntry> detailsByModel;
+  final String? currentModel;
+  final String? recommendedModel;
+}
+
+Map<String, LocalModelEntry> buildChatModelDetailsMap(
+  LocalModelCatalog catalog,
+  List<String> availableModels,
+) {
+  final details = <String, LocalModelEntry>{};
+  for (final entry in catalog.models) {
+    if (availableModels.contains(entry.name)) {
+      details[entry.name] = entry;
+    }
+    if ((entry.installedName ?? '').isNotEmpty &&
+        availableModels.contains(entry.installedName)) {
+      details[entry.installedName!] = entry;
+    }
+  }
+  return details;
+}
+
+ChatModelSelection buildChatModelSelection(
+  LocalModelCatalog catalog, {
+  List<String>? availableModels,
+  String? currentModel,
+}) {
+  final resolvedAvailable = availableModels ?? catalog.availableChatModels;
+  return ChatModelSelection(
+    availableModels: resolvedAvailable,
+    detailsByModel: buildChatModelDetailsMap(catalog, resolvedAvailable),
+    currentModel: currentModel ?? catalog.currentChatModel,
+    recommendedModel: catalog.recommendedChatModel,
+  );
+}

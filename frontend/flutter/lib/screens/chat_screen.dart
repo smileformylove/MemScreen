@@ -175,35 +175,19 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     setState(() => _modelUiState = _modelUiState.copyWith(loading: true));
     try {
-      final catalog =
-          await appState.loadLocalModelCatalogForUi(forceRefresh: forceRefresh);
-      var models = catalog.availableChatModels;
-      var current = catalog.currentChatModel;
-      if (models.isEmpty) {
-        models = await appState.loadChatModelsForUi();
-      }
-      current ??= await appState.loadCurrentChatModelForUi();
-
-      final details = <String, LocalModelEntry>{};
-      for (final entry in catalog.models) {
-        if (models.contains(entry.name)) {
-          details[entry.name] = entry;
-        }
-        if ((entry.installedName ?? '').isNotEmpty &&
-            models.contains(entry.installedName)) {
-          details[entry.installedName!] = entry;
-        }
-      }
+      final selection = await appState.loadChatModelSelectionForUi(
+        forceRefresh: forceRefresh,
+      );
 
       if (!mounted) {
         return;
       }
       setState(() {
         _modelUiState = _modelUiState.copyWith(
-          availableModels: models,
-          detailsByModel: details,
-          currentModel: current,
-          recommendedModel: catalog.recommendedChatModel,
+          availableModels: selection.availableModels,
+          detailsByModel: selection.detailsByModel,
+          currentModel: selection.currentModel,
+          recommendedModel: selection.recommendedModel,
         );
       });
     } catch (e) {
@@ -231,22 +215,19 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) {
         return;
       }
-      final details = <String, LocalModelEntry>{};
-      for (final entry in updatedCatalog.models) {
-        if (updatedCatalog.availableChatModels.contains(entry.name)) {
-          details[entry.name] = entry;
-        }
-        if ((entry.installedName ?? '').isNotEmpty &&
-            updatedCatalog.availableChatModels.contains(entry.installedName)) {
-          details[entry.installedName!] = entry;
-        }
-      }
+      final selection = buildChatModelSelection(
+        updatedCatalog,
+        availableModels: updatedCatalog.availableChatModels.isNotEmpty
+            ? updatedCatalog.availableChatModels
+            : _modelUiState.availableModels,
+        currentModel: updatedCatalog.currentChatModel ?? modelName,
+      );
       setState(() {
         _modelUiState = _modelUiState.copyWith(
-          currentModel: updatedCatalog.currentChatModel ?? modelName,
-          recommendedModel: updatedCatalog.recommendedChatModel,
-          availableModels: updatedCatalog.availableChatModels,
-          detailsByModel: details,
+          currentModel: selection.currentModel,
+          recommendedModel: selection.recommendedModel,
+          availableModels: selection.availableModels,
+          detailsByModel: selection.detailsByModel,
         );
       });
       ScaffoldMessenger.of(context).showSnackBar(
