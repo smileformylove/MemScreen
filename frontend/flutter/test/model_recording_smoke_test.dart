@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:memscreen_flutter/api/recording_api.dart';
+import 'package:memscreen_flutter/build_info.dart';
 import 'package:memscreen_flutter/app_state.dart';
 import 'package:memscreen_flutter/connection/connection_state.dart';
 import 'package:memscreen_flutter/screens/recording_screen.dart';
@@ -80,6 +81,8 @@ void main() {
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
     });
+    BuildInfo.debugBundlePathOverride = '/Users/test/Downloads/MemScreen.app';
+    addTearDown(() => BuildInfo.debugBundlePathOverride = null);
     final appState = FakeRecordingAppState();
     await tester.pumpWidget(
       ChangeNotifierProvider<AppState>.value(
@@ -97,5 +100,6 @@ void main() {
     expect(find.byIcon(Icons.insert_drive_file_outlined), findsWidgets);
     expect(find.text('Run smoke check'), findsOneWidget);
     expect(find.text('Copy'), findsOneWidget);
+    expect(find.byIcon(Icons.install_desktop_outlined), findsWidgets);
   });
 }

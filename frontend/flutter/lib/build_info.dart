@@ -1,6 +1,8 @@
 import 'dart:io';
 
 class BuildInfo {
+  static String? debugBundlePathOverride;
+
   static const String commit = String.fromEnvironment(
     'MEMSCREEN_BUILD_COMMIT',
     defaultValue: 'dev',
@@ -17,6 +19,9 @@ class BuildInfo {
   );
 
   static String? detectAppBundlePath() {
+    if ((debugBundlePathOverride ?? "").isNotEmpty) {
+      return debugBundlePathOverride;
+    }
     try {
       var dir = File(Platform.resolvedExecutable).parent;
       while (dir.path != dir.parent.path) {

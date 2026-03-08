@@ -693,6 +693,22 @@ class _RecordingScreenState extends State<RecordingScreen> {
     return 'Backend recorder';
   }
 
+  bool _isInstalledInApplications() {
+    final appPath = BuildInfo.detectAppBundlePath() ?? '';
+    return appPath.startsWith('/Applications/');
+  }
+
+  String _installStatusLabel() {
+    final appPath = BuildInfo.detectAppBundlePath() ?? '';
+    if (appPath.isEmpty) {
+      return 'Unknown';
+    }
+    if (_isInstalledInApplications()) {
+      return 'Applications';
+    }
+    return 'Nonstandard path';
+  }
+
   String _recordingTargetLabel() {
     if (_mode == 'region') {
       return 'Region selection';
@@ -718,6 +734,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
       'built_at_utc: ${BuildInfo.builtAtUtc}',
       'channel: ${BuildInfo.buildChannel}',
       'app_path: ${BuildInfo.detectAppBundlePath() ?? 'unknown'}',
+      'install_status: ${_installStatusLabel()}',
       'engine: ${_recordingEngineLabel(appState)}',
       'screen_recording_permission: ${appState.hasScreenRecordingPermission ? 'granted' : 'missing'}',
       'target: ${_recordingTargetLabel()}',
@@ -846,6 +863,25 @@ class _RecordingScreenState extends State<RecordingScreen> {
               icon: Icons.apps_outlined,
               label: 'App Path',
               value: BuildInfo.detectAppBundlePath()!,
+            ),
+          _buildDiagnosticRow(
+            context,
+            icon: Icons.install_desktop_outlined,
+            label: 'Install',
+            value: _installStatusLabel(),
+            valueColor: _isInstalledInApplications()
+                ? Colors.green
+                : theme.colorScheme.error,
+          ),
+          if ((BuildInfo.detectAppBundlePath() ?? '').isNotEmpty &&
+              !_isInstalledInApplications())
+            _buildDiagnosticRow(
+              context,
+              icon: Icons.warning_amber_outlined,
+              label: 'Advice',
+              value:
+                  'Install the latest MemScreen.app into /Applications before testing recording.',
+              valueColor: theme.colorScheme.error,
             ),
           _buildDiagnosticRow(
             context,
