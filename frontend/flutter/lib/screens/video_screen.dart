@@ -64,11 +64,16 @@ class _VideoScreenState extends State<VideoScreen> {
   void _startAutoRefresh() {
     _autoRefreshTimer?.cancel();
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (!mounted || _loading || _appState.currentTabIndex != 1) {
+      if (!mounted || _loading) {
         return;
       }
       _load(showLoading: false, autoScrollIfNew: true);
     });
+  }
+
+  void _stopAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = null;
   }
 
   void _onAppStateChange() {
@@ -77,7 +82,10 @@ class _VideoScreenState extends State<VideoScreen> {
     if (_appState.currentTabIndex != _lastCurrentTabIndex) {
       _lastCurrentTabIndex = _appState.currentTabIndex;
       if (_lastCurrentTabIndex == 1) {
+        _startAutoRefresh();
         _load(showLoading: false, autoScrollIfNew: false);
+      } else {
+        _stopAutoRefresh();
       }
     }
 
