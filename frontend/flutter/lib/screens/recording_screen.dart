@@ -50,6 +50,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
   String? _screenshotPath;
   bool _capturing = false;
   bool _wasRecording = false;
+  bool _runningSmokeCheck = false;
   String? _recordingNotice;
   _RecordingNoticeLevel _recordingNoticeLevel = _RecordingNoticeLevel.info;
   AppState? _appState;
@@ -336,6 +337,53 @@ class _RecordingScreenState extends State<RecordingScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _runSmokeCheck() async {
+    if (_runningSmokeCheck || (_status?.isRecording ?? false)) {
+      return;
+    }
+    final appState = context.read<AppState>();
+    _clearRecordingNotice();
+    setState(() => _runningSmokeCheck = true);
+    try {
+      if (Theme.of(context).platform == TargetPlatform.macOS &&
+          !appState.hasScreenRecordingPermission) {
+        await appState.promptScreenRecordingPermissionFlow();
+        _showRecordingNotice(
+          'Permission: Screen Recording is still not active, so the smoke check cannot start.',
+          showSnackBar: true,
+        );
+        return;
+      }
+
+      final smokeMode =
+          _screenIndex == null ? 'fullscreen' : 'fullscreen-single';
+      await appState.startRecording(
+        duration: 2,
+        interval: appState.recordingIntervalSec,
+        mode: smokeMode,
+        screenIndex: _screenIndex,
+        screenDisplayId: _screenDisplayId,
+      );
+      _showRecordingNotice(
+        'Smoke check: A 2-second recording test has started. Wait for it to finish and review Last result below.',
+        showSnackBar: true,
+      );
+      _wasRecording = true;
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        _showRecordingNotice(
+          'Smoke check failed to start: ${_friendlyRecordingStartError(e)}',
+          showSnackBar: true,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _runningSmokeCheck = false);
+      }
+    }
   }
 
   Future<void> _start() async {
@@ -724,10 +772,12 @@ class _RecordingScreenState extends State<RecordingScreen> {
             children: [
               const Expanded(child: Text('Recording diagnostics')),
               TextButton(
-                onPressed: () async {
-                  await appState.refreshPermissionStatus();
-                  await _load();
-                },
+                onPressed: _runningSmokeCheck
+                    ? null
+                    : () async {
+                        await appState.refreshPermissionStatus();
+                        await _load();
+                      },
                 child: const Text('Check again'),
               ),
             ],
@@ -792,6 +842,36 @@ class _RecordingScreenState extends State<RecordingScreen> {
               label: 'Last output',
               value: _status!.lastOutputPath!,
             ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _runningSmokeCheck || (_status?.isRecording ?? false)
+                    ? null
+                    : _runSmokeCheck,
+                icon: _runningSmokeCheck
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.science_outlined),
+                label: Text(
+                  _runningSmokeCheck ? 'Running check...' : 'Run smoke check',
+                ),
+              ),
+              if (Theme.of(context).platform == TargetPlatform.macOS &&
+                  !hasPermission)
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      appState.openPermissionSettings('screen_recording'),
+                  icon: const Icon(Icons.open_in_new),
+                  label: const Text('Open Screen Recording'),
+                ),
+            ],
+          ),
           if (Theme.of(context).platform == TargetPlatform.macOS &&
               !hasPermission) ...[
             const SizedBox(height: 12),
