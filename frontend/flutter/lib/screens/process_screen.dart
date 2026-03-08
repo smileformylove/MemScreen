@@ -670,6 +670,26 @@ class ProcessAnalysisScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if ((analysis.patterns['source'] ?? '') == 'local-native')
+              Card(
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                child: const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.offline_bolt),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Showing local summary because backend analysis is unavailable.',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            if ((analysis.patterns['source'] ?? '') == 'local-native')
+              const SizedBox(height: 16),
             //
             Card(
               child: Padding(
