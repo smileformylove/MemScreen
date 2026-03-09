@@ -83,8 +83,7 @@ class FakeRecordingAppState extends AppState {
 }
 
 void main() {
-  testWidgets('Recording screen shows diagnostics summary controls',
-      (tester) async {
+  testWidgets('Recording screen keeps primary flow minimal', (tester) async {
     tester.view.physicalSize = const Size(1600, 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() {
@@ -102,30 +101,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Recording diagnostics'), findsOneWidget);
-    expect(find.text('Capture target'), findsOneWidget);
-    expect(find.text('Start recording here'), findsOneWidget);
-    expect(find.text('Ready here'), findsOneWidget);
-    expect(find.text('Pick region'), findsOneWidget);
-    expect(find.text('Pick window'), findsOneWidget);
-    expect(find.text('Ready to record'), findsOneWidget);
-    expect(find.text('Starts immediately from this page.'), findsOneWidget);
-    expect(find.textContaining('Mode:'), findsWidgets);
-    expect(find.textContaining('Flow:'), findsWidgets);
-    expect(find.textContaining('Target:'), findsWidgets);
-    expect(find.byIcon(Icons.commit), findsWidgets);
-    expect(find.byIcon(Icons.videocam_outlined), findsWidgets);
-    expect(find.byIcon(Icons.bug_report_outlined), findsWidgets);
-    expect(find.byIcon(Icons.terminal), findsWidgets);
-    expect(find.byIcon(Icons.insert_drive_file_outlined), findsWidgets);
-    expect(find.text('Run smoke check'), findsOneWidget);
-    expect(find.text('Open output'), findsOneWidget);
-    expect(find.text('Open logs'), findsOneWidget);
-    expect(find.text('Open last output'), findsOneWidget);
-    expect(find.text('Reveal in Finder'), findsOneWidget);
-    expect(find.text('Copy brief'), findsOneWidget);
-    expect(find.text('Copy full'), findsOneWidget);
-    expect(find.text('Refresh'), findsOneWidget);
-    expect(find.byIcon(Icons.install_desktop_outlined), findsWidgets);
+    expect(find.text('Screen Recording'), findsOneWidget);
+    expect(find.text('Start Recording'), findsOneWidget);
+    expect(find.text('Display target'), findsOneWidget);
+    expect(find.text('Run 2-second smoke check'), findsOneWidget);
+    expect(find.text('Troubleshooting (Advanced)'), findsOneWidget);
+    expect(find.byIcon(Icons.fiber_manual_record), findsOneWidget);
   });
 }
