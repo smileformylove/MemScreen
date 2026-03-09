@@ -49,14 +49,7 @@ class AppState extends ChangeNotifier {
   static const Duration _modelCatalogCacheTtl = Duration(seconds: 10);
 
   AppState() {
-    _connection = ConnectionService(config: _config);
-    _client = ApiClient(config: _config);
-    _chatApi = ChatApi(_client);
-    _processApi = ProcessApi(_client);
-    _recordingApi = RecordingApi(_client);
-    _videoApi = VideoApi(_client);
-    _configApi = ConfigApi(_client);
-    _modelApi = ModelApi(_client);
+    _rebindApiServices(_config);
 
     // Setup method channel handler for floating ball
     if (Platform.isMacOS || Platform.isWindows) {
@@ -242,6 +235,18 @@ class AppState extends ChangeNotifier {
         health: _connectionState.health,
         config: _connectionState.config ?? _config,
       );
+
+  void _rebindApiServices(ApiConfig config) {
+    _config = config;
+    _connection = ConnectionService(config: _config);
+    _client = ApiClient(config: _config);
+    _chatApi = ChatApi(_client);
+    _processApi = ProcessApi(_client);
+    _recordingApi = RecordingApi(_client);
+    _videoApi = VideoApi(_client);
+    _configApi = ConfigApi(_client);
+    _modelApi = ModelApi(_client);
+  }
 
   Future<void> _handleConnectedState(ApiConnectionState state) async {
     _connectionState = state;
@@ -629,15 +634,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     final state = await _connection.reconnectWithBaseUrl(baseUrl);
     if (state.config != null) {
-      _config = state.config!;
-      _client = ApiClient(config: _config);
-      _connection = ConnectionService(config: _config);
-      _chatApi = ChatApi(_client);
-      _processApi = ProcessApi(_client);
-      _recordingApi = RecordingApi(_client);
-      _videoApi = VideoApi(_client);
-      _configApi = ConfigApi(_client);
-      _modelApi = ModelApi(_client);
+      _rebindApiServices(state.config!);
+      _invalidateModelCatalogCache();
+      requestChatModelRefresh(notify: false, invalidateCache: false);
     }
     if (state.status == ConnectionStatus.connected) {
       await _handleConnectedState(state);
