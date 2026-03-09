@@ -11,7 +11,6 @@ This module captures user interactions (keyboard presses, mouse movements, click
 to enable process mining and workflow analysis.
 """
 
-import sqlite3
 import threading
 import time
 import datetime
@@ -26,6 +25,7 @@ from memscreen.macos_permissions import (
     check_accessibility_permission,
     check_input_monitoring_permission,
 )
+from memscreen.storage import InputEventRepository
 
 
 class InputTracker:
@@ -58,48 +58,19 @@ class InputTracker:
         self.track_mouse_scroll = os.getenv(
             "MEMSCREEN_TRACK_MOUSE_SCROLL", ""
         ).strip().lower() in {"1", "true", "yes", "on"}
+        self.event_repo = InputEventRepository(self.db_path)
 
         # Initialize database
         self._init_database()
 
     def _init_database(self):
         """Create database tables if they don't exist"""
-        # Ensure database directory exists
-        import os
         db_dir = os.path.dirname(self.db_path)
         if db_dir and not os.path.exists(db_dir):
             os.makedirs(db_dir, exist_ok=True)
             print(f"[InputTracker] Created database directory: {db_dir}")
 
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # Create keyboard_mouse_logs table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS keyboard_mouse_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                operate_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                operate_type TEXT NOT NULL,
-                action TEXT NOT NULL,
-                content TEXT,
-                details TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-        # Create index for faster queries
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_operate_time
-            ON keyboard_mouse_logs(operate_time)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_operate_type
-            ON keyboard_mouse_logs(operate_type)
-        """)
-
-        conn.commit()
-        conn.close()
+        self.event_repo.ensure_schema()
 
     def _log_event(self, event_type: str, action: str, content: str = "", details: str = ""):
         """
@@ -112,18 +83,14 @@ class InputTracker:
             details: Additional details (position, modifiers, etc.)
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            # Use local wall-clock time explicitly to avoid SQLite CURRENT_TIMESTAMP (UTC) offset surprises.
             local_time = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
-
-            cursor.execute("""
-                INSERT INTO keyboard_mouse_logs (operate_time, operate_type, action, content, details)
-                VALUES (?, ?, ?, ?, ?)
-            """, (local_time, event_type, action, content, details))
-
-            conn.commit()
-            conn.close()
+            self.event_repo.insert_event(
+                event_type=event_type,
+                action=action,
+                content=content,
+                details=details,
+                operate_time=local_time,
+            )
             print(f"[DEBUG] Event logged: {event_type} - {action}")  # Debug log
         except Exception as e:
             print(f"[ERROR] Failed to log event: {e}")
@@ -346,12 +313,7 @@ class InputTracker:
     def get_latest_event_id(self) -> int:
         """Return current max event id in storage."""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT COALESCE(MAX(id), 0) FROM keyboard_mouse_logs")
-            row = cursor.fetchone()
-            conn.close()
-            return int(row[0] or 0)
+            return self.event_repo.get_latest_event_id()
         except Exception as e:
             print(f"[ERROR] Failed to get latest event id: {e}")
             return 0
@@ -367,41 +329,7 @@ class InputTracker:
             List of event dictionaries
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-
-            if since_id is not None and since_id >= 0:
-                cursor.execute("""
-                    SELECT id, operate_time, operate_type, action, content, details
-                    FROM keyboard_mouse_logs
-                    WHERE id > ?
-                    ORDER BY id DESC
-                    LIMIT ?
-                """, (since_id, limit))
-            else:
-                cursor.execute("""
-                    SELECT id, operate_time, operate_type, action, content, details
-                    FROM keyboard_mouse_logs
-                    ORDER BY id DESC
-                    LIMIT ?
-                """, (limit,))
-
-            rows = cursor.fetchall()
-            conn.close()
-
-            events = []
-            for row in rows:
-                event_id, operate_time, operate_type, action, content, details = row
-                events.append({
-                    "id": event_id,
-                    "timestamp": operate_time,
-                    "operate_type": operate_type,
-                    "action": action,
-                    "content": content,
-                    "details": details
-                })
-
-            return events
+            return self.event_repo.list_recent_events(limit=limit, since_id=since_id)
         except Exception as e:
             print(f"[ERROR] Failed to get recent events: {e}")
             return []

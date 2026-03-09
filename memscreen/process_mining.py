@@ -4,11 +4,12 @@
 ### time: 2026-02-01             ###
 ### license: MIT                 ###
 
-import sqlite3
 import datetime
 from collections import defaultdict, Counter
 from typing import List, Dict, Tuple, Optional
 import json
+
+from memscreen.storage import InputEventRepository
 
 
 class ProcessMiningAnalyzer:
@@ -22,6 +23,7 @@ class ProcessMiningAnalyzer:
             db_path: Path to the SQLite database
         """
         self.db_path = db_path
+        self.events_repo = InputEventRepository(db_path)
     
     def load_event_logs(self, 
                        start_time: Optional[datetime.datetime] = None,
@@ -38,33 +40,20 @@ class ProcessMiningAnalyzer:
         Returns:
             List of event dictionaries with keys: id, timestamp, activity, resource, case_id
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        query = "SELECT id, operate_time, operate_type, action, content, details FROM keyboard_mouse_logs WHERE 1=1"
-        params = []
-        
-        if start_time:
-            query += " AND operate_time >= ?"
-            params.append(start_time.isoformat())
-        
-        if end_time:
-            query += " AND operate_time <= ?"
-            params.append(end_time.isoformat())
-        
-        if operate_type:
-            query += " AND operate_type = ?"
-            params.append(operate_type)
-        
-        query += " ORDER BY operate_time ASC"
-        
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
-        
+        rows = self.events_repo.list_events(
+            start_time=start_time.isoformat() if start_time else None,
+            end_time=end_time.isoformat() if end_time else None,
+            operate_type=operate_type,
+        )
+
         events = []
         for row in rows:
-            event_id, operate_time, operate_type, action, content, details = row
+            event_id = int(row.get("id") or 0)
+            operate_time = row.get("timestamp")
+            operate_type = str(row.get("operate_type") or "")
+            action = str(row.get("action") or "")
+            content = row.get("content")
+            details = row.get("details")
             # Parse timestamp - handle multiple formats
             if isinstance(operate_time, str):
                 try:
