@@ -149,6 +149,12 @@ pip install -e .
 ./scripts/launch.sh
 ```
 
+Optional audio dependency (if you need PyAudio-based device capture):
+
+```bash
+pip install -e ".[audio]"
+```
+
 This script:
 
 - Bootstraps Python dependencies
@@ -163,6 +169,9 @@ This script:
 
 # Flutter mode
 ./scripts/launch.sh --mode flutter
+
+# Start and detach (keep API/app running in background)
+./scripts/launch.sh --mode flutter --detach
 ```
 
 ### Docker (backend stack / isolated runtime)

@@ -24,6 +24,7 @@ API_URL="http://${API_HOST}:${API_PORT}"
 USER_PYTHON=""
 USER_FLUTTER=""
 SKIP_PUB_GET="0"
+DETACH="0"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -39,9 +40,13 @@ while [[ $# -gt 0 ]]; do
       SKIP_PUB_GET="1"
       shift
       ;;
+    --detach)
+      DETACH="1"
+      shift
+      ;;
     *)
       echo "Unknown argument: $1"
-      echo "Usage: $0 [--python /path/to/python] [--flutter /path/to/flutter] [--skip-pub-get]"
+      echo "Usage: $0 [--python /path/to/python] [--flutter /path/to/flutter] [--skip-pub-get] [--detach]"
       exit 1
       ;;
   esac
@@ -182,7 +187,14 @@ cd "$PROJECT_ROOT"
 if curl -s "$API_URL/health" >/dev/null 2>&1; then
   print_info "API already running" "Reusing $API_URL"
 else
-  "$PYTHON_CMD" setup/start_api_only.py &
+  # Ensure local checkout source is importable even when package is not installed.
+  if [[ "$DETACH" == "1" ]]; then
+    mkdir -p "$HOME/.memscreen/logs"
+    nohup env PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" \
+      "$PYTHON_CMD" setup/start_api_only.py >> "$HOME/.memscreen/logs/api_detach.log" 2>&1 &
+  else
+    PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" "$PYTHON_CMD" setup/start_api_only.py &
+  fi
   API_PID=$!
   API_STARTED_BY_SCRIPT=1
   print_info "API PID" "$API_PID"
@@ -214,11 +226,23 @@ if [[ ! -x "$APP_BIN" ]]; then
   exit 1
 fi
 
-"$APP_BIN" &
+if [[ "$DETACH" == "1" ]]; then
+  mkdir -p "$HOME/.memscreen/logs"
+  nohup "$APP_BIN" >> "$HOME/.memscreen/logs/flutter_detach.log" 2>&1 &
+else
+  "$APP_BIN" &
+fi
 APP_PID=$!
 
 print_info "App PID" "$APP_PID"
 echo -e "${GRAY}Logs:${NC}     ~/.memscreen/logs/"
+
+if [[ "$DETACH" == "1" ]]; then
+  print_info "Detach mode enabled" "Launcher will exit and keep API/app running"
+  trap - EXIT INT TERM
+  exit 0
+fi
+
 echo -e "${BLUE}Press Ctrl+C in this terminal to stop${NC}"
 
 while kill -0 "$APP_PID" >/dev/null 2>&1; do

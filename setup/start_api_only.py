@@ -6,7 +6,6 @@ For Flutter frontend - use this instead of start_api.py
 
 import os
 from pathlib import Path
-import uvicorn
 import sys
 from typing import Optional
 
@@ -18,12 +17,15 @@ def _inject_embedded_source_path() -> Optional[Path]:
     Priority:
     1) MEMSCREEN_BACKEND_SRC (explicit path from bootstrap)
     2) <this_script_dir>/src (embedded source in app bundle)
+    3) <this_script_dir>/.. (project source tree in development checkout)
     """
+    script_dir = Path(__file__).resolve().parent
     candidates = []
     env_src = os.getenv("MEMSCREEN_BACKEND_SRC", "").strip()
     if env_src:
         candidates.append(Path(env_src))
-    candidates.append(Path(__file__).resolve().parent / "src")
+    candidates.append(script_dir / "src")
+    candidates.append(script_dir.parent)
 
     for candidate in candidates:
         pkg_init = candidate / "memscreen" / "__init__.py"
@@ -61,6 +63,7 @@ if __name__ == "__main__":
 
     # Import after injecting embedded source path so packaged app always
     # resolves to bundled backend modules.
+    import uvicorn
     from memscreen.config import get_config
     from memscreen.api.app import app as fastapi_app
 

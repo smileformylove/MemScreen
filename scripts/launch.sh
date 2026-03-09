@@ -17,6 +17,7 @@ NC='\033[0m'
 MODE="auto"            # auto | flutter | api
 BOOTSTRAP="1"          # 1 | 0
 SKIP_PUB_GET="0"       # forwarded to start_flutter.sh
+DETACH="0"             # 1 -> detach after launch
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -32,6 +33,10 @@ while [[ $# -gt 0 ]]; do
       SKIP_PUB_GET="1"
       shift
       ;;
+    --detach)
+      DETACH="1"
+      shift
+      ;;
     -h|--help)
       cat <<USAGE
 Usage: ./scripts/launch.sh [options]
@@ -40,6 +45,7 @@ Options:
   --mode <auto|flutter|api>  Launch mode (default: auto)
   --no-bootstrap             Skip venv/dependency bootstrap
   --skip-pub-get             Skip 'flutter pub get' before launch
+  --detach                   Start services/app then exit launcher
   -h, --help                 Show this help
 USAGE
       exit 0
@@ -205,6 +211,9 @@ if [[ -n "$FLUTTER_BIN" ]]; then
 fi
 if [[ "$SKIP_PUB_GET" == "1" ]]; then
   ARGS+=("--skip-pub-get")
+fi
+if [[ "$DETACH" == "1" ]]; then
+  ARGS+=("--detach")
 fi
 
 exec "$SCRIPT_DIR/start_flutter.sh" "${ARGS[@]}"

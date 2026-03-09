@@ -13,6 +13,12 @@ pip install -e .
 ./scripts/launch.sh
 ```
 
+Optional audio dependency (if you need PyAudio-based device capture):
+
+```bash
+pip install -e ".[audio]"
+```
+
 What it does:
 - prepares Python runtime
 - starts backend API (`http://127.0.0.1:8765`)
@@ -28,6 +34,12 @@ What it does:
 
 ```bash
 ./scripts/launch.sh --mode flutter
+```
+
+## Flutter detached mode
+
+```bash
+./scripts/launch.sh --mode flutter --detach
 ```
 
 ## Optional model setup
