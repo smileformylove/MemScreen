@@ -10,7 +10,8 @@ Storage module for MemScreen.
 This module provides database management classes for storing memory history.
 """
 
+from .process_sessions import ProcessSessionRepository
 from .recordings import RecordingMetadataRepository
 from .sqlite import SQLiteManager
 
-__all__ = ["SQLiteManager", "RecordingMetadataRepository"]
+__all__ = ["SQLiteManager", "RecordingMetadataRepository", "ProcessSessionRepository"]

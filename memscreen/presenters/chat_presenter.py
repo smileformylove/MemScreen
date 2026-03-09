@@ -10,7 +10,6 @@ import json
 import os
 import queue
 import re
-import sqlite3
 import hashlib
 import threading
 import uuid
@@ -22,6 +21,7 @@ from .base_presenter import BasePresenter
 from .agent_executor import AgentExecutor
 from memscreen.cv2_loader import get_cv2
 from memscreen.services.chat_model_capability import ChatModelCapabilityService
+from memscreen.storage import ProcessSessionRepository, RecordingMetadataRepository
 
 # Import Agent system (kept for compatibility)
 try:
@@ -1319,58 +1319,25 @@ class ChatPresenter(BasePresenter):
         try:
             from memscreen.config import get_config
 
-            db_path = str(get_config().db_path)
-            if not os.path.exists(db_path):
-                return []
-
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            try:
-                cursor.execute(
-                    """
-                    SELECT filename, timestamp, duration, frame_count,
-                           recording_mode, window_title, content_tags,
-                           content_summary, content_keywords
-                    FROM recordings
-                    ORDER BY rowid DESC
-                    LIMIT ?
-                    """,
-                    (limit,),
-                )
-            except sqlite3.OperationalError:
-                cursor.execute(
-                    """
-                    SELECT filename, timestamp, duration, frame_count
-                    FROM recordings
-                    ORDER BY rowid DESC
-                    LIMIT ?
-                    """,
-                    (limit,),
-                )
-            rows = cursor.fetchall()
-            conn.close()
-
-            results: List[Dict[str, Any]] = []
-            for row in rows:
-                filename = row[0] or ""
-                timestamp = row[1] or ""
-                duration = row[2] or 0
-                frame_count = row[3] or 0
-                results.append(
-                    {
-                        "filename": filename,
-                        "basename": os.path.basename(filename) if filename else "",
-                        "timestamp": str(timestamp),
-                        "duration": float(duration) if duration is not None else 0.0,
-                        "frame_count": int(frame_count) if frame_count is not None else 0,
-                        "recording_mode": row[4] if len(row) > 4 else "fullscreen",
-                        "window_title": str(row[5] or "") if len(row) > 5 else "",
-                        "content_tags": row[6] if len(row) > 6 else "",
-                        "content_summary": str(row[7] or "") if len(row) > 7 else "",
-                        "content_keywords": row[8] if len(row) > 8 else "",
-                    }
-                )
-            return results
+            rows = RecordingMetadataRepository(str(get_config().db_path)).list_recordings(
+                limit=limit,
+                order="rowid_desc",
+            )
+            return [
+                {
+                    "filename": str(row.get("filename") or ""),
+                    "basename": os.path.basename(str(row.get("filename") or "")),
+                    "timestamp": str(row.get("timestamp") or ""),
+                    "duration": float(row.get("duration") or 0.0),
+                    "frame_count": int(row.get("frame_count") or 0),
+                    "recording_mode": str(row.get("recording_mode") or "fullscreen"),
+                    "window_title": str(row.get("window_title") or ""),
+                    "content_tags": row.get("content_tags"),
+                    "content_summary": str(row.get("content_summary") or ""),
+                    "content_keywords": row.get("content_keywords"),
+                }
+                for row in rows
+            ]
         except Exception as db_err:
             print(f"[Chat] Recording DB fallback load failed: {db_err}")
             return []
@@ -1394,41 +1361,10 @@ class ChatPresenter(BasePresenter):
         if not os.path.exists(db_path):
             return []
         try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            columns = "id, start_time, end_time, event_count, keystrokes, clicks"
-            if include_events:
-                columns += ", events_json"
-            cursor.execute(
-                f"""
-                SELECT {columns}
-                FROM sessions
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                (limit,),
+            return ProcessSessionRepository(db_path).list_sessions(
+                limit=limit,
+                include_events=include_events,
             )
-            rows = cursor.fetchall()
-            conn.close()
-            out: List[Dict[str, Any]] = []
-            for row in rows:
-                out.append(
-                    {
-                        "session_id": int(row[0]),
-                        "start_time": str(row[1] or ""),
-                        "end_time": str(row[2] or ""),
-                        "event_count": int(row[3] or 0),
-                        "keystrokes": int(row[4] or 0),
-                        "clicks": int(row[5] or 0),
-                    }
-                )
-                if include_events:
-                    events_raw = row[6] if len(row) > 6 else "[]"
-                    try:
-                        out[-1]["events"] = json.loads(str(events_raw or "[]"))
-                    except Exception:
-                        out[-1]["events"] = []
-            return out
         except Exception as e:
             print(f"[Chat] Process DB fallback load failed: {e}")
             return []

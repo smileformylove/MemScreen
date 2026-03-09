@@ -4,20 +4,14 @@ Moved from UI: same logic, same DB schema (process_mining.db, sessions table).
 """
 
 import json
-import os
-import sqlite3
 import datetime
 from collections import Counter
 from typing import List, Dict, Any, Optional, Tuple
 
+from memscreen.storage import ProcessSessionRepository
+
 
 DEFAULT_DB_PATH = "./db/process_mining.db"
-
-
-def _ensure_db_dir(db_path: str) -> None:
-    d = os.path.dirname(db_path)
-    if d:
-        os.makedirs(d, exist_ok=True)
 
 
 def _parse_datetime_value(
@@ -395,31 +389,8 @@ def save_session(
     db_path: str = DEFAULT_DB_PATH,
 ) -> int:
     """Save session to DB (same schema as former UI). Creates table if not exists."""
-    _ensure_db_dir(db_path)
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            start_time TEXT,
-            end_time TEXT,
-            event_count INTEGER,
-            keystrokes INTEGER,
-            clicks INTEGER,
-            events_json TEXT
-        )
-    ''')
-    keystrokes = sum(1 for e in events if e.get("type") == "keypress")
-    clicks = sum(1 for e in events if e.get("type") == "click")
-    events_json = json.dumps(events)
-    cursor.execute('''
-        INSERT INTO sessions (start_time, end_time, event_count, keystrokes, clicks, events_json)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (start_time, end_time, len(events), keystrokes, clicks, events_json))
-    session_id = int(cursor.lastrowid or 0)
-    conn.commit()
-    conn.close()
-    return session_id
+    repo = ProcessSessionRepository(db_path)
+    return repo.insert_session(events=events, start_time=start_time, end_time=end_time)
 
 
 def load_sessions(
@@ -427,29 +398,18 @@ def load_sessions(
     db_path: str = DEFAULT_DB_PATH,
 ) -> List[Tuple[int, str, str, int, int, int]]:
     """Load session list: (id, start_time, end_time, event_count, keystrokes, clicks)."""
-    _ensure_db_dir(db_path)
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            start_time TEXT,
-            end_time TEXT,
-            event_count INTEGER,
-            keystrokes INTEGER,
-            clicks INTEGER,
-            events_json TEXT
+    rows = ProcessSessionRepository(db_path).list_sessions(limit=limit)
+    return [
+        (
+            int(row.get("session_id", 0) or 0),
+            str(row.get("start_time", "") or ""),
+            str(row.get("end_time", "") or ""),
+            int(row.get("event_count", 0) or 0),
+            int(row.get("keystrokes", 0) or 0),
+            int(row.get("clicks", 0) or 0),
         )
-    ''')
-    cursor.execute('''
-        SELECT id, start_time, end_time, event_count, keystrokes, clicks
-        FROM sessions
-        ORDER BY id DESC
-        LIMIT ?
-    ''', (limit,))
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+        for row in rows
+    ]
 
 
 def get_session_summary(
@@ -457,20 +417,17 @@ def get_session_summary(
     db_path: str = DEFAULT_DB_PATH,
 ) -> Optional[Tuple[int, str, str, int, int, int]]:
     """Load one session summary row."""
-    _ensure_db_dir(db_path)
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        '''
-        SELECT id, start_time, end_time, event_count, keystrokes, clicks
-        FROM sessions
-        WHERE id=?
-        ''',
-        (session_id,),
+    row = ProcessSessionRepository(db_path).get_session(session_id)
+    if not row:
+        return None
+    return (
+        int(row.get("session_id", 0) or 0),
+        str(row.get("start_time", "") or ""),
+        str(row.get("end_time", "") or ""),
+        int(row.get("event_count", 0) or 0),
+        int(row.get("keystrokes", 0) or 0),
+        int(row.get("clicks", 0) or 0),
     )
-    row = cursor.fetchone()
-    conn.close()
-    return row
 
 
 def get_session_events(
@@ -478,14 +435,10 @@ def get_session_events(
     db_path: str = DEFAULT_DB_PATH,
 ) -> Optional[List[Dict]]:
     """Load events JSON for a session. Returns None if not found."""
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute('SELECT events_json FROM sessions WHERE id=?', (session_id,))
-    row = cursor.fetchone()
-    conn.close()
+    row = ProcessSessionRepository(db_path).get_session(session_id, include_events=True)
     if not row:
         return None
-    return json.loads(row[0])
+    return row.get("events", [])
 
 
 def get_session_analysis(
@@ -519,22 +472,9 @@ def get_session_analysis(
 
 def delete_session(session_id: int, db_path: str = DEFAULT_DB_PATH) -> int:
     """Delete one session. Returns number of rows deleted."""
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM sessions WHERE id=?', (session_id,))
-    n = cursor.rowcount
-    conn.commit()
-    conn.close()
-    return n
+    return ProcessSessionRepository(db_path).delete_session(session_id)
 
 
 def delete_all_sessions(db_path: str = DEFAULT_DB_PATH) -> int:
     """Delete all sessions. Returns number of rows deleted."""
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute('SELECT COUNT(*) FROM sessions')
-    count = cursor.fetchone()[0]
-    cursor.execute('DELETE FROM sessions')
-    conn.commit()
-    conn.close()
-    return count
+    return ProcessSessionRepository(db_path).delete_all_sessions()

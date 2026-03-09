@@ -58,11 +58,10 @@ async def health(include_db: bool = Query(False), include_ollama: bool = Query(F
     if include_db:
         try:
             from memscreen.config import get_config
-            import sqlite3
+            from memscreen.storage import RecordingMetadataRepository
 
             config = get_config()
-            conn = sqlite3.connect(str(config.db_path))
-            conn.close()
+            RecordingMetadataRepository(str(config.db_path)).list_recordings(limit=1)
             out["db"] = "ok"
         except Exception as e:
             out["db"] = f"error: {str(e)}"
