@@ -224,11 +224,11 @@ class _RecordingScreenState extends State<RecordingScreen> {
         await appState.promptScreenRecordingPermissionFlow();
         if (mounted) {
           _showRecordingNotice(
-            'Screen Recording permission is required. System Settings has been opened.',
+            'Screen Recording permission is missing. '
+            'Trying backend recorder fallback after opening Settings.',
             showSnackBar: true,
           );
         }
-        return;
       }
 
       final mode = _screenIndex == null ? 'fullscreen' : 'fullscreen-single';
@@ -303,6 +303,9 @@ class _RecordingScreenState extends State<RecordingScreen> {
   String _recordingEngineLabel(AppState appState) {
     if (Theme.of(context).platform == TargetPlatform.macOS &&
         appState.useNativeMacOSRecording) {
+      if (appState.usingBackendRecordingFallback) {
+        return 'Backend recorder (fallback)';
+      }
       return 'Native macOS recorder';
     }
     return 'Backend recorder';

@@ -186,8 +186,10 @@ class AppState extends ChangeNotifier {
   DateTime? _lastBackendCheckAt;
   bool _nativeRuntimeBootstrapRequested = false;
   bool _backendActivationRequestedByUser = false;
+  bool _nativeRecordingFallbackToBackend = false;
   Map<String, dynamic>? get permissionStatus => _permissionStatus;
   bool get hasRequestedBackendActivation => _backendActivationRequestedByUser;
+  bool get usingBackendRecordingFallback => _nativeRecordingFallbackToBackend;
 
   late ChatApi _chatApi;
   late ProcessApi _processApi;
@@ -273,7 +275,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<RecordingStatus> loadRecordingStatusForUi() async {
-    if (useNativeMacOSRecording) {
+    if (useNativeMacOSRecording && !_nativeRecordingFallbackToBackend) {
       final status = await _nativeRecordingService!.getStatus();
       if (!status.isRecording) {
         final finished =
@@ -284,14 +286,28 @@ class AppState extends ChangeNotifier {
       }
       return _nativeRecordingService!.getStatus();
     }
-    return _recordingApi.getStatus();
+    try {
+      return await _recordingApi.getStatus();
+    } catch (_) {
+      if (useNativeMacOSRecording) {
+        return _nativeRecordingService!.getStatus();
+      }
+      rethrow;
+    }
   }
 
   Future<List<RecordingScreenInfo>> loadAvailableScreensForUi() async {
-    if (useNativeMacOSRecording) {
+    if (useNativeMacOSRecording && !_nativeRecordingFallbackToBackend) {
       return _nativeRecordingService!.getScreens();
     }
-    return _recordingApi.getScreens();
+    try {
+      return await _recordingApi.getScreens();
+    } catch (_) {
+      if (useNativeMacOSRecording) {
+        return _nativeRecordingService!.getScreens();
+      }
+      rethrow;
+    }
   }
 
   Future<void> deleteVideoForUi(String filename) async {
@@ -832,6 +848,11 @@ class AppState extends ChangeNotifier {
           '/permissions/status?prompt=${promptSystem ? 'true' : 'false'}',
         );
       }
+      if (_nativeRecordingFallbackToBackend &&
+          hasScreenRecordingPermission &&
+          !_recordingLifecycleState.expectedActive) {
+        _nativeRecordingFallbackToBackend = false;
+      }
       notifyListeners();
     } catch (e) {
       debugPrint('[AppState] Failed to refresh permission status: $e');
@@ -1184,7 +1205,7 @@ class AppState extends ChangeNotifier {
     int? screenDisplayId,
     String? windowTitle,
   }) async {
-    if (useNativeMacOSRecording) {
+    if (useNativeMacOSRecording && !_nativeRecordingFallbackToBackend) {
       final result = await _nativeRecordingService!.start(
         duration: duration,
         interval: interval,
@@ -1196,7 +1217,26 @@ class AppState extends ChangeNotifier {
         audioSource: recordingAudioSource,
       );
       if (!result.ok) {
-        throw Exception(result.error ?? 'Failed to start native recording');
+        final errorText = result.error ?? 'Failed to start native recording';
+        if (_shouldFallbackToBackendRecorder(errorText) && isBackendConnected) {
+          _nativeRecordingFallbackToBackend = true;
+          _recordingTrackingState.pendingRecordingNotice =
+              'Native recorder is blocked by permission. '
+              'Switched to backend recorder fallback.';
+          await _recordingLifecycleCoordinator.start(
+            lifecycleState: _recordingLifecycleState,
+            trackingState: _recordingTrackingState,
+            duration: duration,
+            interval: interval,
+            mode: mode,
+            region: region,
+            screenIndex: screenIndex,
+            screenDisplayId: screenDisplayId,
+            windowTitle: windowTitle,
+          );
+          return;
+        }
+        throw Exception(errorText);
       }
       if ((result.notice ?? '').isNotEmpty) {
         _recordingTrackingState.pendingRecordingNotice = result.notice;
@@ -1220,7 +1260,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> stopRecording() async {
-    if (useNativeMacOSRecording) {
+    if (useNativeMacOSRecording && !_nativeRecordingFallbackToBackend) {
       final result = await _nativeRecordingService!.stop();
       await _handleFinishedNativeRecording(result);
       return;
@@ -1230,10 +1270,13 @@ class AppState extends ChangeNotifier {
       lifecycleState: _recordingLifecycleState,
       trackingState: _recordingTrackingState,
     );
+    if (hasScreenRecordingPermission) {
+      _nativeRecordingFallbackToBackend = false;
+    }
   }
 
   Future<void> syncRecordingStateFromBackend(bool isRecording) async {
-    if (useNativeMacOSRecording) {
+    if (useNativeMacOSRecording && !_nativeRecordingFallbackToBackend) {
       return;
     }
     await _recordingLifecycleCoordinator.syncFromBackend(
@@ -1241,6 +1284,16 @@ class AppState extends ChangeNotifier {
       lifecycleState: _recordingLifecycleState,
       trackingState: _recordingTrackingState,
     );
+    if (!isRecording && hasScreenRecordingPermission) {
+      _nativeRecordingFallbackToBackend = false;
+    }
+  }
+
+  bool _shouldFallbackToBackendRecorder(String errorText) {
+    final lower = errorText.toLowerCase();
+    return lower.contains('permission') ||
+        lower.contains('not permitted') ||
+        lower.contains('screen recording');
   }
 
   /// Handle method calls from native floating ball
@@ -1254,13 +1307,10 @@ class AppState extends ChangeNotifier {
           );
 
           if (Platform.isMacOS && !hasScreenRecordingPermission) {
-            setDesiredTabIndex(4);
             await promptScreenRecordingPermissionFlow();
-            return <String, dynamic>{
-              'ok': false,
-              'error':
-                  'Screen Recording permission is required. Opened Settings for authorization.',
-            };
+            _recordingTrackingState.pendingRecordingNotice =
+                'Screen Recording permission is missing. '
+                'Trying backend recorder fallback.';
           }
 
           await startRecording(
