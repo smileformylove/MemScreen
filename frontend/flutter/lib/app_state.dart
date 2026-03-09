@@ -16,6 +16,7 @@ import 'connection/connection_service.dart';
 import 'services/floating_ball_commands.dart';
 import 'services/floating_ball_service.dart';
 import 'services/local_process_session_store.dart';
+import 'services/local_backend_connector.dart';
 import 'services/local_video_catalog.dart';
 import 'services/local_video_catalog_store.dart';
 import 'services/model_catalog_cache.dart';
@@ -45,8 +46,6 @@ class AppState extends ChangeNotifier {
     'mp3',
     'aac',
   ];
-  static const Duration _backendStartupPollInterval = Duration(seconds: 1);
-  static const int _backendStartupPollAttempts = 8;
   static const Duration _modelCatalogCacheTtl = Duration(seconds: 10);
 
   AppState() {
@@ -67,6 +66,18 @@ class AppState extends ChangeNotifier {
 
     _recordingSettingsStore = RecordingSettingsStore();
     _modelCatalogCache = ModelCatalogCache(ttl: _modelCatalogCacheTtl);
+    _localBackendConnector = LocalBackendConnector(
+      checkConnection: () => _connection.check(),
+      onConnected: (state) => _handleConnectedState(state),
+      onStateChanged: (state) {
+        _connectionState = state;
+        notifyListeners();
+      },
+      ensureNativeBackendBootstrap: () => _ensureNativeBackendBootstrap(),
+      buildConnectingState: ({String? message}) =>
+          _connectingState(message: message),
+      currentConfig: () => _config,
+    );
     if (Platform.isMacOS) {
       _nativeRecordingService = NativeRecordingService();
       _nativeRecordingImportQueue = NativeRecordingImportQueue();
@@ -133,6 +144,7 @@ class AppState extends ChangeNotifier {
   bool _recordingSmokeCheckInProgress = false;
   bool get recordingSmokeCheckInProgress => _recordingSmokeCheckInProgress;
   late final ModelCatalogCache _modelCatalogCache;
+  late final LocalBackendConnector _localBackendConnector;
   int _recordingDurationSec = 9999;
   int get recordingDurationSec => _recordingDurationSec;
   double _recordingIntervalSec = 2.0;
@@ -663,7 +675,7 @@ class AppState extends ChangeNotifier {
     _lastBackendCheckAt = now;
     try {
       if (force && _usesLocalEmbeddedBackend && useNativeMacOSRuntime) {
-        await _connectOrBootstrapLocalBackend();
+        await _localBackendConnector.connectOrBootstrap();
       } else {
         await checkConnection();
       }
@@ -837,52 +849,6 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('[AppState] Failed to open permission settings: $e');
     }
-  }
-
-  Future<void> _connectOrBootstrapLocalBackend() async {
-    final initialState = await _connection.check();
-    if (initialState.status == ConnectionStatus.connected) {
-      await _handleConnectedState(initialState);
-      return;
-    }
-
-    _connectionState = _connectingState(message: 'Starting local backend...');
-    notifyListeners();
-    final bootstrapResult = await _ensureNativeBackendBootstrap();
-    if (bootstrapResult != null && !bootstrapResult.shouldWaitForBackend) {
-      _connectionState = ApiConnectionState(
-        status: ConnectionStatus.error,
-        message: bootstrapResult.message ??
-            'Unable to start the local backend from this app session.',
-        config: _config,
-      );
-      notifyListeners();
-      return;
-    }
-
-    for (var attempt = 0; attempt < _backendStartupPollAttempts; attempt += 1) {
-      if (attempt > 0) {
-        await Future<void>.delayed(_backendStartupPollInterval);
-      }
-      final polledState = await _connection.check();
-      if (polledState.status == ConnectionStatus.connected) {
-        await _handleConnectedState(polledState);
-        return;
-      }
-      if (attempt < _backendStartupPollAttempts - 1) {
-        _connectionState = _connectingState(
-          message: 'Starting local backend...',
-        );
-        notifyListeners();
-      }
-    }
-
-    _connectionState = ApiConnectionState(
-      status: ConnectionStatus.error,
-      message: 'Local backend is still starting. Retry in a few seconds.',
-      config: _config,
-    );
-    notifyListeners();
   }
 
   Future<NativeRuntimeBootstrapResult?> _ensureNativeBackendBootstrap() async {

@@ -197,11 +197,12 @@ else
     mkdir -p "$HOME/.memscreen/logs"
     nohup env PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" \
       "$PYTHON_CMD" setup/start_api_only.py >> "$HOME/.memscreen/logs/api_detach.log" 2>&1 &
+    API_STARTED_BY_SCRIPT=0
   else
     PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" "$PYTHON_CMD" setup/start_api_only.py &
+    API_STARTED_BY_SCRIPT=1
   fi
   API_PID=$!
-  API_STARTED_BY_SCRIPT=1
   print_info "API PID" "$API_PID"
 
   max_retries=20
@@ -257,6 +258,9 @@ echo -e "${GRAY}Logs:${NC}     ~/.memscreen/logs/"
 
 if [[ "$DETACH" == "1" ]]; then
   print_info "Detach mode enabled" "Launcher will exit and keep API/app running"
+  API_STARTED_BY_SCRIPT=0
+  API_PID=""
+  APP_PID=""
   trap - EXIT INT TERM
   exit 0
 fi
