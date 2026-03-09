@@ -11,8 +11,9 @@ This module provides database management classes for storing memory history.
 """
 
 from .input_events import InputEventRepository
+from .memory_versions import MemoryVersionRepository
 from .process_sessions import ProcessSessionRepository
 from .recordings import RecordingMetadataRepository
 from .sqlite import SQLiteManager
 
-__all__ = ["SQLiteManager", "RecordingMetadataRepository", "ProcessSessionRepository", "InputEventRepository"]
+__all__ = ["SQLiteManager", "RecordingMetadataRepository", "ProcessSessionRepository", "InputEventRepository", "MemoryVersionRepository"]
