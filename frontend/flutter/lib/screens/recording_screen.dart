@@ -506,6 +506,15 @@ class _RecordingScreenState extends State<RecordingScreen> {
     }
 
     final colorScheme = Theme.of(context).colorScheme;
+    final permissionStatus = appState.permissionStatus;
+    final runtimePath =
+        (permissionStatus?['runtime_executable'] as String?)?.trim() ?? '';
+    final appBundleHint =
+        (permissionStatus?['app_bundle_hint'] as String?)?.trim() ?? '';
+    final effectiveRuntimePath = runtimePath.isNotEmpty
+        ? runtimePath
+        : '${Platform.environment['HOME'] ?? ''}/.memscreen/runtime/.venv/bin/python';
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -522,16 +531,53 @@ class _RecordingScreenState extends State<RecordingScreen> {
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
-            'Click the button below, allow permission in System Settings, then try Start again.',
+            'Allow these entries in macOS System Settings > Privacy & Security > Screen Recording:',
             style: TextStyle(color: colorScheme.onErrorContainer),
           ),
+          const SizedBox(height: 6),
+          Text(
+            '1. $effectiveRuntimePath',
+            style: TextStyle(
+              color: colorScheme.onErrorContainer,
+              fontFamily: 'Menlo',
+              fontSize: 12,
+            ),
+          ),
+          if (appBundleHint.isNotEmpty && appBundleHint != effectiveRuntimePath)
+            Text(
+              '2. $appBundleHint',
+              style: TextStyle(
+                color: colorScheme.onErrorContainer,
+                fontFamily: 'Menlo',
+                fontSize: 12,
+              ),
+            ),
+          const SizedBox(height: 6),
+          Text(
+            'After granting access, completely quit and reopen MemScreen.',
+            style: TextStyle(
+              color: colorScheme.onErrorContainer,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 10),
-          FilledButton.tonalIcon(
-            onPressed: appState.promptScreenRecordingPermissionFlow,
-            icon: const Icon(Icons.security_outlined),
-            label: const Text('Open Permission Flow'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: appState.promptScreenRecordingPermissionFlow,
+                icon: const Icon(Icons.security_outlined),
+                label: const Text('Open Permission Flow'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: _load,
+                icon: const Icon(Icons.refresh),
+                label: const Text('I Granted, Recheck'),
+              ),
+            ],
           ),
         ],
       ),
@@ -626,15 +672,6 @@ class _RecordingScreenState extends State<RecordingScreen> {
               icon: const Icon(Icons.fiber_manual_record),
               label: const Text('Start Recording'),
             ),
-          const SizedBox(height: 8),
-          TextButton.icon(
-            onPressed: (_status?.isRecording ?? false) ||
-                    appState.recordingSmokeCheckInProgress
-                ? null
-                : _runSmokeCheck,
-            icon: const Icon(Icons.science_outlined),
-            label: const Text('Run 2-second smoke check'),
-          ),
         ],
       ),
     );

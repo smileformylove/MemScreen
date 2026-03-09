@@ -82,6 +82,19 @@ class FakeRecordingAppState extends AppState {
   }
 }
 
+class FakePermissionBlockedAppState extends FakeRecordingAppState {
+  @override
+  bool get hasScreenRecordingPermission => false;
+
+  @override
+  Map<String, dynamic>? get permissionStatus => {
+        'runtime_executable':
+            '/Users/test/Library/Application Support/MemScreen/runtime/bin/python',
+        'app_bundle_hint': '/Users/test/Applications/MemScreen.app',
+        'screen_recording': {'granted': false},
+      };
+}
+
 void main() {
   testWidgets('Recording screen keeps primary flow minimal', (tester) async {
     tester.view.physicalSize = const Size(1600, 1200);
@@ -96,7 +109,10 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider<AppState>.value(
         value: appState,
-        child: const MaterialApp(home: RecordingScreen()),
+        child: MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.macOS),
+          home: const RecordingScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -104,8 +120,29 @@ void main() {
     expect(find.text('Screen Recording'), findsOneWidget);
     expect(find.text('Start Recording'), findsOneWidget);
     expect(find.text('Display target'), findsOneWidget);
-    expect(find.text('Run 2-second smoke check'), findsOneWidget);
     expect(find.text('Troubleshooting (Advanced)'), findsOneWidget);
     expect(find.byIcon(Icons.fiber_manual_record), findsOneWidget);
+  });
+
+  testWidgets('Recording screen shows explicit permission paths when blocked',
+      (tester) async {
+    final appState = FakePermissionBlockedAppState();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppState>.value(
+        value: appState,
+        child: MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.macOS),
+          home: const RecordingScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+        find.text('Screen Recording permission is required.'), findsOneWidget);
+    expect(find.textContaining('/Users/test/Library/Application Support'),
+        findsOneWidget);
+    expect(find.text('Open Permission Flow'), findsOneWidget);
+    expect(find.text('I Granted, Recheck'), findsOneWidget);
   });
 }
