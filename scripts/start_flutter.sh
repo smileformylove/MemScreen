@@ -25,6 +25,7 @@ USER_PYTHON=""
 USER_FLUTTER=""
 SKIP_PUB_GET="0"
 DETACH="0"
+SKIP_BUILD="0"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -40,13 +41,17 @@ while [[ $# -gt 0 ]]; do
       SKIP_PUB_GET="1"
       shift
       ;;
+    --skip-build)
+      SKIP_BUILD="1"
+      shift
+      ;;
     --detach)
       DETACH="1"
       shift
       ;;
     *)
       echo "Unknown argument: $1"
-      echo "Usage: $0 [--python /path/to/python] [--flutter /path/to/flutter] [--skip-pub-get] [--detach]"
+      echo "Usage: $0 [--python /path/to/python] [--flutter /path/to/flutter] [--skip-pub-get] [--skip-build] [--detach]"
       exit 1
       ;;
   esac
@@ -217,17 +222,23 @@ if [[ "$SKIP_PUB_GET" != "1" ]]; then
   (cd "$PROJECT_ROOT/frontend/flutter" && "$FLUTTER_BIN" pub get >/dev/null)
 fi
 
-print_info "Building Flutter macOS app" "flutter build macos --release"
-(cd "$PROJECT_ROOT/frontend/flutter" && "$FLUTTER_BIN" build macos --release >/dev/null)
-
 APP_BIN="$PROJECT_ROOT/frontend/flutter/build/macos/Build/Products/Release/memscreen_flutter.app/Contents/MacOS/memscreen_flutter"
 APP_BUNDLE="$PROJECT_ROOT/frontend/flutter/build/macos/Build/Products/Release/memscreen_flutter.app"
-if [[ ! -x "$APP_BIN" ]]; then
-  print_error "Built app not found or not executable" "$APP_BIN"
-  exit 1
+
+if [[ "$SKIP_BUILD" == "1" ]]; then
+  if [[ -x "$APP_BIN" && -d "$APP_BUNDLE" ]]; then
+    print_info "Reusing existing Flutter build" "$APP_BUNDLE"
+  else
+    print_info "skip-build requested but app not found" "Running flutter build once"
+    (cd "$PROJECT_ROOT/frontend/flutter" && "$FLUTTER_BIN" build macos --release >/dev/null)
+  fi
+else
+  print_info "Building Flutter macOS app" "flutter build macos --release"
+  (cd "$PROJECT_ROOT/frontend/flutter" && "$FLUTTER_BIN" build macos --release >/dev/null)
 fi
-if [[ ! -d "$APP_BUNDLE" ]]; then
-  print_error "Built app bundle not found" "$APP_BUNDLE"
+
+if [[ ! -x "$APP_BIN" || ! -d "$APP_BUNDLE" ]]; then
+  print_error "Built app not found or not executable" "$APP_BIN"
   exit 1
 fi
 

@@ -18,6 +18,7 @@ MODE="auto"            # auto | flutter | api
 BOOTSTRAP="1"          # 1 | 0
 SKIP_PUB_GET="0"       # forwarded to start_flutter.sh
 DETACH="0"             # 1 -> detach after launch
+SKIP_BUILD="0"         # forwarded to start_flutter.sh
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,6 +34,10 @@ while [[ $# -gt 0 ]]; do
       SKIP_PUB_GET="1"
       shift
       ;;
+    --skip-build)
+      SKIP_BUILD="1"
+      shift
+      ;;
     --detach)
       DETACH="1"
       shift
@@ -45,6 +50,7 @@ Options:
   --mode <auto|flutter|api>  Launch mode (default: auto)
   --no-bootstrap             Skip venv/dependency bootstrap
   --skip-pub-get             Skip 'flutter pub get' before launch
+  --skip-build               Skip 'flutter build macos --release' when app exists
   --detach                   Start services/app then exit launcher
   -h, --help                 Show this help
 USAGE
@@ -211,6 +217,9 @@ if [[ -n "$FLUTTER_BIN" ]]; then
 fi
 if [[ "$SKIP_PUB_GET" == "1" ]]; then
   ARGS+=("--skip-pub-get")
+fi
+if [[ "$SKIP_BUILD" == "1" ]]; then
+  ARGS+=("--skip-build")
 fi
 if [[ "$DETACH" == "1" ]]; then
   ARGS+=("--detach")

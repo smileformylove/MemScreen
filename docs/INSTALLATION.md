@@ -42,6 +42,12 @@ What it does:
 ./scripts/launch.sh --mode flutter --detach
 ```
 
+## Faster local relaunch
+
+```bash
+./scripts/launch.sh --mode flutter --skip-pub-get --skip-build
+```
+
 ## Optional model setup
 
 Model capability is optional and not bundled in release runtime packages.

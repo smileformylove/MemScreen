@@ -170,6 +170,9 @@ This script:
 # Flutter mode
 ./scripts/launch.sh --mode flutter
 
+# Fast local relaunch (reuse existing build)
+./scripts/launch.sh --mode flutter --skip-pub-get --skip-build
+
 # Start and detach (keep API/app running in background)
 ./scripts/launch.sh --mode flutter --detach
 ```
