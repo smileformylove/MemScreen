@@ -18,6 +18,7 @@ import 'services/floating_ball_service.dart';
 import 'services/local_process_session_store.dart';
 import 'services/local_video_catalog.dart';
 import 'services/local_video_catalog_store.dart';
+import 'services/model_catalog_cache.dart';
 import 'services/model_catalog_groups.dart';
 import 'services/native_input_tracking_service.dart';
 import 'services/native_permission_service.dart';
@@ -65,6 +66,7 @@ class AppState extends ChangeNotifier {
     }
 
     _recordingSettingsStore = RecordingSettingsStore();
+    _modelCatalogCache = ModelCatalogCache(ttl: _modelCatalogCacheTtl);
     if (Platform.isMacOS) {
       _nativeRecordingService = NativeRecordingService();
       _nativeRecordingImportQueue = NativeRecordingImportQueue();
@@ -130,8 +132,7 @@ class AppState extends ChangeNotifier {
   String? get lastRecordingSmokeCheckSummary => _lastRecordingSmokeCheckSummary;
   bool _recordingSmokeCheckInProgress = false;
   bool get recordingSmokeCheckInProgress => _recordingSmokeCheckInProgress;
-  LocalModelCatalog? _cachedLocalModelCatalog;
-  DateTime? _cachedLocalModelCatalogAt;
+  late final ModelCatalogCache _modelCatalogCache;
   int _recordingDurationSec = 9999;
   int get recordingDurationSec => _recordingDurationSec;
   double _recordingIntervalSec = 2.0;
@@ -318,39 +319,21 @@ class AppState extends ChangeNotifier {
   }
 
   void _invalidateModelCatalogCache() {
-    _cachedLocalModelCatalog = null;
-    _cachedLocalModelCatalogAt = null;
+    _modelCatalogCache.invalidate();
   }
 
   void _cacheCurrentChatModel(String modelName) {
-    final catalog = _cachedLocalModelCatalog;
-    if (catalog == null) {
-      return;
-    }
-    final effectiveModel = modelName.trim();
-    if (effectiveModel.isEmpty) {
-      return;
-    }
-    _cachedLocalModelCatalog = markCurrentChatModel(catalog, effectiveModel);
-    _cachedLocalModelCatalogAt = DateTime.now();
+    _modelCatalogCache.markCurrentChatModel(modelName);
   }
 
   void _cacheDownloadedModel(String modelName) {
-    final catalog = _cachedLocalModelCatalog;
-    if (catalog == null) {
-      return;
-    }
-    final effectiveModel = modelName.trim();
-    if (effectiveModel.isEmpty) {
-      return;
-    }
-    _cachedLocalModelCatalog = markDownloadedModel(catalog, effectiveModel);
-    _cachedLocalModelCatalogAt = DateTime.now();
+    _modelCatalogCache.markDownloadedModel(modelName);
   }
 
   Future<LocalModelCatalog> _ensureModelCatalogSnapshotAfterMutation() async {
-    if (_cachedLocalModelCatalog != null) {
-      return _cachedLocalModelCatalog!;
+    final snapshot = _modelCatalogCache.snapshot;
+    if (snapshot != null) {
+      return snapshot;
     }
     return loadLocalModelCatalogForUi(forceRefresh: true);
   }
@@ -366,16 +349,14 @@ class AppState extends ChangeNotifier {
   Future<LocalModelCatalog> loadLocalModelCatalogForUi({
     bool forceRefresh = false,
   }) async {
-    final now = DateTime.now();
-    if (!forceRefresh &&
-        _cachedLocalModelCatalog != null &&
-        _cachedLocalModelCatalogAt != null &&
-        now.difference(_cachedLocalModelCatalogAt!) <= _modelCatalogCacheTtl) {
-      return _cachedLocalModelCatalog!;
+    if (!forceRefresh) {
+      final cached = _modelCatalogCache.readFresh(DateTime.now());
+      if (cached != null) {
+        return cached;
+      }
     }
     final catalog = await _modelApi.getCatalog();
-    _cachedLocalModelCatalog = catalog;
-    _cachedLocalModelCatalogAt = now;
+    _modelCatalogCache.store(catalog);
     return catalog;
   }
 

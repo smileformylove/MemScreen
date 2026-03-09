@@ -221,14 +221,21 @@ print_info "Building Flutter macOS app" "flutter build macos --release"
 (cd "$PROJECT_ROOT/frontend/flutter" && "$FLUTTER_BIN" build macos --release >/dev/null)
 
 APP_BIN="$PROJECT_ROOT/frontend/flutter/build/macos/Build/Products/Release/memscreen_flutter.app/Contents/MacOS/memscreen_flutter"
+APP_BUNDLE="$PROJECT_ROOT/frontend/flutter/build/macos/Build/Products/Release/memscreen_flutter.app"
 if [[ ! -x "$APP_BIN" ]]; then
   print_error "Built app not found or not executable" "$APP_BIN"
+  exit 1
+fi
+if [[ ! -d "$APP_BUNDLE" ]]; then
+  print_error "Built app bundle not found" "$APP_BUNDLE"
   exit 1
 fi
 
 if [[ "$DETACH" == "1" ]]; then
   mkdir -p "$HOME/.memscreen/logs"
-  nohup "$APP_BIN" >> "$HOME/.memscreen/logs/flutter_detach.log" 2>&1 &
+  # Use LaunchServices in detach mode so app lifecycle is independent
+  # from this shell session.
+  nohup open "$APP_BUNDLE" >> "$HOME/.memscreen/logs/flutter_detach.log" 2>&1 &
 else
   "$APP_BIN" &
 fi
