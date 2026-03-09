@@ -218,10 +218,12 @@ class _RecordingScreenState extends State<RecordingScreen> {
   Future<void> _start() async {
     final appState = context.read<AppState>();
 
+    var preferBackend = false;
     try {
       if (Theme.of(context).platform == TargetPlatform.macOS &&
           !appState.hasScreenRecordingPermission) {
         await appState.promptScreenRecordingPermissionFlow();
+        preferBackend = true;
         if (mounted) {
           _showRecordingNotice(
             'Screen Recording permission is missing. '
@@ -238,6 +240,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
         mode: mode,
         screenIndex: _screenIndex,
         screenDisplayId: _screenDisplayId,
+        preferBackend: preferBackend,
       );
 
       _consumePendingRecordingNotice(showSnackBar: true);

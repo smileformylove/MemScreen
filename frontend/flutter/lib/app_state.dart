@@ -1204,7 +1204,24 @@ class AppState extends ChangeNotifier {
     int? screenIndex,
     int? screenDisplayId,
     String? windowTitle,
+    bool preferBackend = false,
   }) async {
+    if (preferBackend && useNativeMacOSRecording) {
+      _nativeRecordingFallbackToBackend = true;
+      await _recordingLifecycleCoordinator.start(
+        lifecycleState: _recordingLifecycleState,
+        trackingState: _recordingTrackingState,
+        duration: duration,
+        interval: interval,
+        mode: mode,
+        region: region,
+        screenIndex: screenIndex,
+        screenDisplayId: screenDisplayId,
+        windowTitle: windowTitle,
+      );
+      return;
+    }
+
     if (useNativeMacOSRecording && !_nativeRecordingFallbackToBackend) {
       final result = await _nativeRecordingService!.start(
         duration: duration,

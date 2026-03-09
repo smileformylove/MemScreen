@@ -33,6 +33,7 @@ class FakeSmokeCheckAppState extends AppState {
     int? screenIndex,
     int? screenDisplayId,
     String? windowTitle,
+    bool preferBackend = false,
   }) async {
     startCalls += 1;
     lastScreenIndex = screenIndex;
