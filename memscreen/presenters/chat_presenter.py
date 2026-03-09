@@ -20,8 +20,8 @@ import asyncio
 from .base_presenter import BasePresenter
 from .agent_executor import AgentExecutor
 from memscreen.cv2_loader import get_cv2
+from memscreen.services.chat_fallback_loader import ChatFallbackDataService
 from memscreen.services.chat_model_capability import ChatModelCapabilityService
-from memscreen.storage import ProcessSessionRepository, RecordingMetadataRepository
 
 # Import Agent system (kept for compatibility)
 try:
@@ -90,6 +90,7 @@ class ChatPresenter(BasePresenter):
         super().__init__(view, memory_system)
         self.memory_system = memory_system  # Store memory_system reference
         self.model_capability = model_capability or ChatModelCapabilityService(ollama_base_url)
+        self.fallback_data_service = ChatFallbackDataService()
         # Keep legacy field for compatibility with existing call sites/serializations.
         self.ollama_base_url = self.model_capability.ollama_base_url
 
@@ -1316,40 +1317,14 @@ class ChatPresenter(BasePresenter):
 
     def _load_recent_recordings_from_db(self, limit: int = 5) -> List[Dict[str, Any]]:
         """Fallback source for recording timeline when vector memory is not ready yet."""
-        try:
-            from memscreen.config import get_config
-
-            rows = RecordingMetadataRepository(str(get_config().db_path)).list_recordings(
-                limit=limit,
-                order="rowid_desc",
-            )
-            return [
-                {
-                    "filename": str(row.get("filename") or ""),
-                    "basename": os.path.basename(str(row.get("filename") or "")),
-                    "timestamp": str(row.get("timestamp") or ""),
-                    "duration": float(row.get("duration") or 0.0),
-                    "frame_count": int(row.get("frame_count") or 0),
-                    "recording_mode": str(row.get("recording_mode") or "fullscreen"),
-                    "window_title": str(row.get("window_title") or ""),
-                    "content_tags": row.get("content_tags"),
-                    "content_summary": str(row.get("content_summary") or ""),
-                    "content_keywords": row.get("content_keywords"),
-                }
-                for row in rows
-            ]
-        except Exception as db_err:
-            print(f"[Chat] Recording DB fallback load failed: {db_err}")
-            return []
+        rows = self.fallback_data_service.load_recent_recordings(limit=limit)
+        if rows:
+            return rows
+        return []
 
     def _get_process_db_path(self) -> str:
         """Resolve process-mining DB path from app config."""
-        try:
-            from memscreen.config import get_config
-
-            return str(get_config().db_dir / "process_mining.db")
-        except Exception:
-            return "./db/process_mining.db"
+        return self.fallback_data_service.get_process_db_path()
 
     def _load_recent_process_sessions_from_db(
         self,
@@ -1357,17 +1332,10 @@ class ChatPresenter(BasePresenter):
         include_events: bool = False,
     ) -> List[Dict[str, Any]]:
         """Load recent process sessions from the process-mining DB."""
-        db_path = self._get_process_db_path()
-        if not os.path.exists(db_path):
-            return []
-        try:
-            return ProcessSessionRepository(db_path).list_sessions(
-                limit=limit,
-                include_events=include_events,
-            )
-        except Exception as e:
-            print(f"[Chat] Process DB fallback load failed: {e}")
-            return []
+        return self.fallback_data_service.load_recent_process_sessions(
+            limit=limit,
+            include_events=include_events,
+        )
 
     def _find_process_summaries_for_recording(
         self,
