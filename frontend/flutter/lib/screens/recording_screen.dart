@@ -6,8 +6,6 @@ import 'package:provider/provider.dart';
 
 import '../api/recording_api.dart';
 import '../app_state.dart';
-import '../services/recording_diagnostics.dart';
-import '../widgets/recording_diagnostics_panel.dart';
 
 class RecordingScreen extends StatefulWidget {
   const RecordingScreen({super.key});
@@ -26,7 +24,6 @@ class _RecordingScreenState extends State<RecordingScreen> {
   int? _screenIndex;
   int? _screenDisplayId;
 
-  bool _wasRecording = false;
   String? _recordingNotice;
   _RecordingNoticeLevel _recordingNoticeLevel = _RecordingNoticeLevel.info;
 
@@ -96,7 +93,6 @@ class _RecordingScreenState extends State<RecordingScreen> {
         _screenDisplayId = selected?.displayId;
       });
 
-      _wasRecording = status.isRecording;
       if (status.isRecording) {
         _startPolling();
       } else {
@@ -198,16 +194,6 @@ class _RecordingScreenState extends State<RecordingScreen> {
     );
   }
 
-  void _clearRecordingNotice() {
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _recordingNotice = null;
-      _recordingNoticeLevel = _RecordingNoticeLevel.info;
-    });
-  }
-
   void _consumePendingRecordingNotice({bool showSnackBar = true}) {
     final notice = context.read<AppState>().consumePendingRecordingNotice();
     if (notice != null && notice.isNotEmpty) {
@@ -218,19 +204,14 @@ class _RecordingScreenState extends State<RecordingScreen> {
   Future<void> _start() async {
     final appState = context.read<AppState>();
 
-    var preferBackend = false;
     try {
       if (Theme.of(context).platform == TargetPlatform.macOS &&
           !appState.hasScreenRecordingPermission) {
         await appState.promptScreenRecordingPermissionFlow();
-        preferBackend = true;
         if (mounted) {
-          _showRecordingNotice(
-            'Screen Recording permission is missing. '
-            'Trying backend recorder fallback after opening Settings.',
-            showSnackBar: true,
-          );
+          _showRecordingNotice(appState.screenRecordingPermissionHint());
         }
+        return;
       }
 
       final mode = _screenIndex == null ? 'fullscreen' : 'fullscreen-single';
@@ -240,11 +221,9 @@ class _RecordingScreenState extends State<RecordingScreen> {
         mode: mode,
         screenIndex: _screenIndex,
         screenDisplayId: _screenDisplayId,
-        preferBackend: preferBackend,
       );
 
       _consumePendingRecordingNotice(showSnackBar: true);
-      _wasRecording = true;
       await _load();
     } catch (e) {
       if (!mounted) return;
@@ -256,37 +235,10 @@ class _RecordingScreenState extends State<RecordingScreen> {
     try {
       await context.read<AppState>().stopRecording();
       _stopPolling();
-      _wasRecording = false;
       await _load();
     } catch (e) {
       if (!mounted) return;
       _showRecordingNotice('Failed to stop recording: $e');
-    }
-  }
-
-  Future<void> _runSmokeCheck() async {
-    final appState = context.read<AppState>();
-    if (appState.recordingSmokeCheckInProgress ||
-        (_status?.isRecording ?? false)) {
-      return;
-    }
-    _clearRecordingNotice();
-
-    try {
-      final summary = await appState.runRecordingSmokeCheck(
-        screenIndex: _screenIndex,
-        screenDisplayId: _screenDisplayId,
-      );
-      _showRecordingNotice(summary);
-      if (appState.recordingSmokeCheckInProgress) {
-        _wasRecording = true;
-        await _load();
-      }
-    } catch (e) {
-      if (!mounted) return;
-      _showRecordingNotice(
-        'Smoke check failed to start: ${appState.describeRecordingStartError(e)}',
-      );
     }
   }
 
@@ -358,150 +310,6 @@ class _RecordingScreenState extends State<RecordingScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Future<void> _openPath(
-    String path, {
-    required String label,
-    bool revealInFinder = false,
-  }) async {
-    try {
-      if (Platform.isMacOS) {
-        final args = revealInFinder ? ['-R', path] : [path];
-        final result = await Process.run('open', args);
-        if (result.exitCode != 0) {
-          throw Exception((result.stderr ?? '').toString().trim());
-        }
-      } else {
-        throw Exception('Open path is only implemented for macOS right now.');
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to open $label: $e')),
-      );
-    }
-  }
-
-  String _recordingTargetLabel() {
-    if (_screenIndex == null) {
-      return 'All screens';
-    }
-    final screen = _screens
-        .where((s) => s.index == _screenIndex)
-        .cast<RecordingScreenInfo?>()
-        .firstOrNull;
-    if (screen == null) {
-      return 'Screen ${_screenIndex! + 1}';
-    }
-    return '${screen.name} (${screen.width}x${screen.height})';
-  }
-
-  RecordingDiagnosticsData _buildDiagnosticsData(AppState appState) {
-    final status = _status;
-    return buildRecordingDiagnosticsData(
-      screenRecordingGranted: appState.hasScreenRecordingPermission,
-      engine: _recordingEngineLabel(appState),
-      target: _recordingTargetLabel(),
-      outputDir: (status?.outputDir ?? '').isNotEmpty
-          ? status!.outputDir
-          : recordingDefaultOutputDir(),
-      isRecording: status?.isRecording ?? false,
-      transientNotice: _recordingNotice,
-      transientNoticeLevel: switch (_recordingNoticeLevel) {
-        _RecordingNoticeLevel.error => RecordingDiagnosticsNoticeLevel.error,
-        _RecordingNoticeLevel.warning =>
-          RecordingDiagnosticsNoticeLevel.warning,
-        _RecordingNoticeLevel.info => RecordingDiagnosticsNoticeLevel.info,
-      },
-      statusNotice: status?.lastNotice,
-      lastFailureKind: status?.lastFailureKind,
-      lastFailureMessage: status?.lastFailureMessage,
-      lastExitStatus: status?.lastTerminationStatus,
-      lastOutputPath: status?.lastOutputPath,
-      lastOutputFileSize: status?.lastOutputFileSize,
-      smokeCheckAt: appState.lastRecordingSmokeCheckAt,
-      smokeCheckSummary: appState.lastRecordingSmokeCheckSummary,
-    );
-  }
-
-  Future<void> _copyDiagnostics(AppState appState,
-      {required bool brief}) async {
-    final diagnostics = _buildDiagnosticsData(appState);
-    final message = await copyRecordingDiagnosticsToClipboard(
-      diagnostics,
-      brief: brief,
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
-
-  Widget _buildDiagnosticsSection(AppState appState) {
-    final diagnostics = _buildDiagnosticsData(appState);
-    return ExpansionTile(
-      tilePadding: const EdgeInsets.symmetric(horizontal: 4),
-      childrenPadding: const EdgeInsets.only(bottom: 8),
-      title: const Text('Troubleshooting (Advanced)'),
-      subtitle: const Text('Smoke check, logs, and diagnostics copy tools'),
-      children: [
-        RecordingDiagnosticsPanel(
-          title: 'Recording diagnostics',
-          data: diagnostics,
-          headerActions: [
-            RecordingDiagnosticsHeaderAction(
-              label: 'Copy brief',
-              onPressed: () => _copyDiagnostics(appState, brief: true),
-            ),
-            RecordingDiagnosticsHeaderAction(
-              label: 'Copy full',
-              onPressed: () => _copyDiagnostics(appState, brief: false),
-            ),
-          ],
-          quickActions: [
-            RecordingDiagnosticsQuickAction(
-              label: appState.recordingSmokeCheckInProgress
-                  ? 'Running check...'
-                  : 'Run smoke check',
-              icon: Icons.science_outlined,
-              onPressed: appState.recordingSmokeCheckInProgress ||
-                      (_status?.isRecording ?? false)
-                  ? null
-                  : _runSmokeCheck,
-              isLoading: appState.recordingSmokeCheckInProgress,
-            ),
-            RecordingDiagnosticsQuickAction(
-              label: 'Open output',
-              icon: Icons.video_library_outlined,
-              onPressed: () => _openPath(
-                diagnostics.outputDir,
-                label: 'output folder',
-              ),
-            ),
-            RecordingDiagnosticsQuickAction(
-              label: 'Open logs',
-              icon: Icons.folder_open_outlined,
-              onPressed: () => _openPath(
-                recordingLogsDirPath(),
-                label: 'logs folder',
-              ),
-            ),
-          ],
-          showPermissionShortcut:
-              Theme.of(context).platform == TargetPlatform.macOS &&
-                  !appState.hasScreenRecordingPermission,
-          onOpenLastOutput: (diagnostics.lastOutputPath ?? '').trim().isEmpty
-              ? null
-              : () => _openPath(
-                    diagnostics.lastOutputPath!,
-                    label: 'last output file',
-                  ),
-          onOpenScreenRecording: () =>
-              appState.openPermissionSettings('screen_recording'),
-        ),
-      ],
     );
   }
 
@@ -715,21 +523,11 @@ class _RecordingScreenState extends State<RecordingScreen> {
                 _buildMainCard(appState),
                 const SizedBox(height: 10),
                 _buildNoticeCard(),
-                const SizedBox(height: 10),
-                _buildDiagnosticsSection(appState),
               ],
             ),
           ),
         ),
       ),
     );
-  }
-}
-
-extension<T> on Iterable<T> {
-  T? get firstOrNull {
-    final iterator = this.iterator;
-    if (!iterator.moveNext()) return null;
-    return iterator.current;
   }
 }

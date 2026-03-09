@@ -120,7 +120,7 @@ void main() {
     expect(find.text('Screen Recording'), findsOneWidget);
     expect(find.text('Start Recording'), findsOneWidget);
     expect(find.text('Display target'), findsOneWidget);
-    expect(find.text('Troubleshooting (Advanced)'), findsOneWidget);
+    expect(find.text('Troubleshooting (Advanced)'), findsNothing);
     expect(find.byIcon(Icons.fiber_manual_record), findsOneWidget);
   });
 

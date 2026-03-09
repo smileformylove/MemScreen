@@ -32,6 +32,13 @@ def _runtime_executable() -> str:
     return sys.executable or "python"
 
 
+def _app_bundle_hint() -> str:
+    configured = os.getenv("MEMSCREEN_APP_BUNDLE_HINT", "").strip()
+    if configured:
+        return configured
+    return "/Applications/MemScreen.app"
+
+
 def _open_privacy_settings(anchor: str) -> None:
     try:
         subprocess.Popen(
@@ -62,11 +69,12 @@ def open_privacy_settings(area: str) -> bool:
 
 def create_permission_message() -> str:
     runtime_path = _runtime_executable()
+    app_hint = _app_bundle_hint()
     return (
         "Screen recording permission is required.\n\n"
         "Open macOS System Settings > Privacy & Security > Screen Recording, then allow:\n"
         f"- {runtime_path}\n"
-        "- MemScreen.app (if installed in /Applications)\n\n"
+        f"- {app_hint}\n\n"
         "After granting access, quit and reopen MemScreen."
     )
 
@@ -146,7 +154,7 @@ def get_permission_diagnostics(prompt: bool = False) -> Dict[str, object]:
     return {
         "platform": platform.platform(),
         "runtime_executable": runtime_path,
-        "app_bundle_hint": "/Applications/MemScreen.app",
+        "app_bundle_hint": _app_bundle_hint(),
         "screen_recording": {
             "granted": screen_ok,
             "message": screen_message,

@@ -20,6 +20,9 @@ NC='\033[0m'
 API_HOST="${MEMSCREEN_API_HOST:-127.0.0.1}"
 API_PORT="${MEMSCREEN_API_PORT:-8765}"
 API_URL="http://${API_HOST}:${API_PORT}"
+APP_BUILD_DIR="$PROJECT_ROOT/frontend/flutter/build/macos/Build/Products/Release"
+APP_BUNDLE_PRIMARY="$APP_BUILD_DIR/MemScreen.app"
+APP_BUNDLE_LEGACY="$APP_BUILD_DIR/memscreen_flutter.app"
 
 USER_PYTHON=""
 USER_FLUTTER=""
@@ -165,9 +168,47 @@ echo -e "${GRAY}Python:${NC}   $($PYTHON_CMD --version 2>&1 | head -1)"
 echo -e "${GRAY}Flutter:${NC}  $FLUTTER_BIN"
 echo -e "${GRAY}API:${NC}      $API_URL"
 
+APP_BUNDLE=""
+APP_BIN=""
+APP_BUNDLE_HINT="$APP_BUNDLE_PRIMARY"
+
+resolve_app_artifacts() {
+  local candidate_bundle
+  local candidate_exec
+  local candidate_bin
+
+  for candidate_bundle in "$APP_BUNDLE_PRIMARY" "$APP_BUNDLE_LEGACY"; do
+    if [[ ! -d "$candidate_bundle" ]]; then
+      continue
+    fi
+    candidate_exec="$(basename "$candidate_bundle" .app)"
+    candidate_bin="$candidate_bundle/Contents/MacOS/$candidate_exec"
+    if [[ -x "$candidate_bin" ]]; then
+      APP_BUNDLE="$candidate_bundle"
+      APP_BIN="$candidate_bin"
+      APP_BUNDLE_HINT="$candidate_bundle"
+      return 0
+    fi
+  done
+
+  APP_BUNDLE="$APP_BUNDLE_PRIMARY"
+  APP_BIN="$APP_BUNDLE/Contents/MacOS/MemScreen"
+  APP_BUNDLE_HINT="$APP_BUNDLE_PRIMARY"
+  return 1
+}
+
+if [[ "$SKIP_BUILD" == "1" ]]; then
+  resolve_app_artifacts >/dev/null 2>&1 || true
+fi
+
 action_stop_stale() {
   local app_pids
-  app_pids="$(pgrep -f 'memscreen_flutter.app/Contents/MacOS/memscreen_flutter' || true)"
+  app_pids="$(
+    {
+      pgrep -f 'MemScreen.app/Contents/MacOS/MemScreen' || true
+      pgrep -f 'memscreen_flutter.app/Contents/MacOS/memscreen_flutter' || true
+    } | sort -u
+  )"
   if [[ -n "$app_pids" ]]; then
     print_info "Stopping existing MemScreen app instances" "$app_pids"
     kill $app_pids >/dev/null 2>&1 || true
@@ -196,10 +237,11 @@ else
   if [[ "$DETACH" == "1" ]]; then
     mkdir -p "$HOME/.memscreen/logs"
     nohup env PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" \
+      MEMSCREEN_APP_BUNDLE_HINT="$APP_BUNDLE_HINT" \
       "$PYTHON_CMD" setup/start_api_only.py >> "$HOME/.memscreen/logs/api_detach.log" 2>&1 &
     API_STARTED_BY_SCRIPT=0
   else
-    PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" "$PYTHON_CMD" setup/start_api_only.py &
+    PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" MEMSCREEN_APP_BUNDLE_HINT="$APP_BUNDLE_HINT" "$PYTHON_CMD" setup/start_api_only.py &
     API_STARTED_BY_SCRIPT=1
   fi
   API_PID=$!
@@ -223,11 +265,8 @@ if [[ "$SKIP_PUB_GET" != "1" ]]; then
   (cd "$PROJECT_ROOT/frontend/flutter" && "$FLUTTER_BIN" pub get >/dev/null)
 fi
 
-APP_BIN="$PROJECT_ROOT/frontend/flutter/build/macos/Build/Products/Release/memscreen_flutter.app/Contents/MacOS/memscreen_flutter"
-APP_BUNDLE="$PROJECT_ROOT/frontend/flutter/build/macos/Build/Products/Release/memscreen_flutter.app"
-
 if [[ "$SKIP_BUILD" == "1" ]]; then
-  if [[ -x "$APP_BIN" && -d "$APP_BUNDLE" ]]; then
+  if resolve_app_artifacts; then
     print_info "Reusing existing Flutter build" "$APP_BUNDLE"
   else
     print_info "skip-build requested but app not found" "Running flutter build once"
@@ -237,6 +276,8 @@ else
   print_info "Building Flutter macOS app" "flutter build macos --release"
   (cd "$PROJECT_ROOT/frontend/flutter" && "$FLUTTER_BIN" build macos --release >/dev/null)
 fi
+
+resolve_app_artifacts >/dev/null 2>&1 || true
 
 if [[ ! -x "$APP_BIN" || ! -d "$APP_BUNDLE" ]]; then
   print_error "Built app not found or not executable" "$APP_BIN"

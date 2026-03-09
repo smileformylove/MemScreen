@@ -142,7 +142,9 @@ if [[ -z "$VERSION" ]]; then
   exit 1
 fi
 
-APP_SRC="$FRONTEND_DIR/build/macos/Build/Products/Release/memscreen_flutter.app"
+APP_SRC_PRIMARY="$FRONTEND_DIR/build/macos/Build/Products/Release/MemScreen.app"
+APP_SRC_LEGACY="$FRONTEND_DIR/build/macos/Build/Products/Release/memscreen_flutter.app"
+APP_SRC="$APP_SRC_PRIMARY"
 APP_NAME="MemScreen.app"
 APP_STAGE_PATH="$STAGE_DIR/$APP_NAME"
 APP_MACOS_DIR="$APP_STAGE_PATH/Contents/MacOS"
@@ -324,8 +326,12 @@ echo "[frontend-package] flutter build macos --release"
 (cd "$FRONTEND_DIR" && "$FLUTTER_CMD" build macos --release --dart-define=MEMSCREEN_BUILD_COMMIT="$BUILD_COMMIT" --dart-define=MEMSCREEN_BUILD_TIME="$BUILD_TIME_UTC" --dart-define=MEMSCREEN_BUILD_CHANNEL="$BUILD_CHANNEL")
 
 if [[ ! -d "$APP_SRC" ]]; then
-  echo "[frontend-package] Built app not found: $APP_SRC"
-  exit 1
+  if [[ -d "$APP_SRC_LEGACY" ]]; then
+    APP_SRC="$APP_SRC_LEGACY"
+  else
+    echo "[frontend-package] Built app not found: $APP_SRC_PRIMARY"
+    exit 1
+  fi
 fi
 
 cp -R "$APP_SRC" "$APP_STAGE_PATH"

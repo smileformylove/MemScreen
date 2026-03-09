@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'build_info.dart';
 import 'api/api_client.dart';
 import 'api/chat_api.dart';
 import 'api/config_api.dart';
@@ -768,11 +769,47 @@ class AppState extends ChangeNotifier {
     requestRecordingStatusRefresh();
   }
 
+  String screenRecordingPermissionHint() {
+    final runtimePath =
+        (_permissionStatus?['runtime_executable'] as String?)?.trim() ?? '';
+    final appHintFromStatus =
+        (_permissionStatus?['app_bundle_hint'] as String?)?.trim() ?? '';
+    final detectedBundle = BuildInfo.detectAppBundlePath()?.trim() ?? '';
+
+    final targets = <String>[];
+    if (runtimePath.isNotEmpty) {
+      targets.add(runtimePath);
+    }
+    if (appHintFromStatus.isNotEmpty &&
+        !targets.any((entry) => entry == appHintFromStatus)) {
+      targets.add(appHintFromStatus);
+    }
+    if (detectedBundle.isNotEmpty &&
+        !targets.any((entry) => entry == detectedBundle)) {
+      targets.add(detectedBundle);
+    }
+    final homePath = (Platform.environment['HOME'] ?? '').trim();
+    if (homePath.isNotEmpty) {
+      final backendRuntimePath =
+          '$homePath/.memscreen/runtime/.venv/bin/python';
+      if (!targets.any((entry) => entry == backendRuntimePath)) {
+        targets.add(backendRuntimePath);
+      }
+    }
+    if (targets.isEmpty) {
+      targets.add('/Applications/MemScreen.app');
+    }
+
+    return 'Screen Recording permission is missing. '
+        'In macOS System Settings > Privacy & Security > Screen Recording, '
+        'allow: ${targets.join(' and ')}, then quit and reopen MemScreen.';
+  }
+
   String describeRecordingStartError(Object error) {
     final raw = error is ApiException ? error.message : error.toString();
     final lower = raw.toLowerCase();
     if (lower.contains('screen recording permission')) {
-      return 'Screen Recording permission is missing. In macOS System Settings, allow both MemScreen.app and ~/.memscreen/runtime/.venv/bin/python under Screen Recording, then restart the app.';
+      return screenRecordingPermissionHint();
     }
     if (lower.contains('accessibility') || lower.contains('input monitoring')) {
       return 'Keyboard/Mouse permission is missing. Allow ~/.memscreen/runtime/.venv/bin/python in Accessibility and Input Monitoring, then restart the app.';
@@ -1326,8 +1363,12 @@ class AppState extends ChangeNotifier {
           if (Platform.isMacOS && !hasScreenRecordingPermission) {
             await promptScreenRecordingPermissionFlow();
             _recordingTrackingState.pendingRecordingNotice =
-                'Screen Recording permission is missing. '
-                'Trying backend recorder fallback.';
+                screenRecordingPermissionHint();
+            requestRecordingStatusRefresh();
+            return <String, dynamic>{
+              'ok': false,
+              'error': 'Screen Recording permission is missing.',
+            };
           }
 
           await startRecording(
