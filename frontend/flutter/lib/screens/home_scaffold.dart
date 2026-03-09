@@ -22,13 +22,18 @@ class HomeScaffoldState extends State<HomeScaffold> {
   final Map<int, Widget> _loadedTabs = <int, Widget>{
     0: const RecordingScreen(),
   };
+  AppState? _appState;
 
   @override
   void initState() {
     super.initState();
     // Listen for tab changes from AppState (triggered by floating ball)
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
       final appState = context.read<AppState>();
+      _appState = appState;
       appState.setCurrentTabIndex(_index);
       appState.addListener(_onAppStateChange);
     });
@@ -36,12 +41,15 @@ class HomeScaffoldState extends State<HomeScaffold> {
 
   @override
   void dispose() {
-    context.read<AppState>().removeListener(_onAppStateChange);
+    _appState?.removeListener(_onAppStateChange);
     super.dispose();
   }
 
   void _onAppStateChange() {
-    final appState = context.read<AppState>();
+    final appState = _appState;
+    if (!mounted || appState == null) {
+      return;
+    }
     if (appState.desiredTabIndex != null) {
       setState(() {
         _ensureTabLoaded(appState.desiredTabIndex!);

@@ -23,6 +23,10 @@ API_URL="http://${API_HOST}:${API_PORT}"
 APP_BUILD_DIR="$PROJECT_ROOT/frontend/flutter/build/macos/Build/Products/Release"
 APP_BUNDLE_PRIMARY="$APP_BUILD_DIR/MemScreen.app"
 APP_BUNDLE_LEGACY="$APP_BUILD_DIR/memscreen_flutter.app"
+LOG_DIR="$HOME/.memscreen/logs"
+RUNTIME_DIR="$HOME/.memscreen/runtime"
+API_LOG_FILE="$LOG_DIR/api_detach.log"
+API_PID_FILE="$RUNTIME_DIR/dev_api.pid"
 
 USER_PYTHON=""
 USER_FLUTTER=""
@@ -141,6 +145,7 @@ cleanup() {
   echo -e "${YELLOW}🛑 Cleaning up...${NC}"
   if [[ "$API_STARTED_BY_SCRIPT" == "1" && -n "$API_PID" ]]; then
     kill "$API_PID" >/dev/null 2>&1 || true
+    clear_api_pid
   fi
   if [[ -n "$APP_PID" ]]; then
     kill "$APP_PID" >/dev/null 2>&1 || true
@@ -201,6 +206,42 @@ if [[ "$SKIP_BUILD" == "1" ]]; then
   resolve_app_artifacts >/dev/null 2>&1 || true
 fi
 
+record_api_pid() {
+  mkdir -p "$RUNTIME_DIR"
+  printf '%s\n' "$1" > "$API_PID_FILE"
+}
+
+clear_api_pid() {
+  rm -f "$API_PID_FILE"
+}
+
+show_recent_api_log() {
+  if [[ -f "$API_LOG_FILE" ]]; then
+    print_info "Recent API log tail" "$API_LOG_FILE"
+    tail -n 20 "$API_LOG_FILE" || true
+  fi
+}
+
+wait_for_api_health() {
+  local max_retries="$1"
+  local retries=0
+  until curl -fsS "$API_URL/health" >/dev/null 2>&1; do
+    retries=$((retries + 1))
+    if [[ -n "$API_PID" ]] && ! kill -0 "$API_PID" >/dev/null 2>&1; then
+      clear_api_pid
+      print_error "API process exited before becoming healthy" "PID $API_PID"
+      show_recent_api_log
+      exit 1
+    fi
+    if [[ $retries -ge $max_retries ]]; then
+      print_error "API failed to start" "Checked $API_URL/health for ${max_retries}s"
+      show_recent_api_log
+      exit 1
+    fi
+    sleep 1
+  done
+}
+
 action_stop_stale() {
   local app_pids
   app_pids="$(
@@ -232,31 +273,24 @@ print_step "2/3" "Starting API backend"
 cd "$PROJECT_ROOT"
 if curl -s "$API_URL/health" >/dev/null 2>&1; then
   print_info "API already running" "Reusing $API_URL"
+  clear_api_pid
 else
   # Ensure local checkout source is importable even when package is not installed.
+  mkdir -p "$LOG_DIR" "$RUNTIME_DIR"
   if [[ "$DETACH" == "1" ]]; then
-    mkdir -p "$HOME/.memscreen/logs"
     nohup env PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" \
       MEMSCREEN_APP_BUNDLE_HINT="$APP_BUNDLE_HINT" \
-      "$PYTHON_CMD" setup/start_api_only.py >> "$HOME/.memscreen/logs/api_detach.log" 2>&1 &
+      "$PYTHON_CMD" setup/start_api_only.py >> "$API_LOG_FILE" 2>&1 < /dev/null &
     API_STARTED_BY_SCRIPT=0
   else
     PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" MEMSCREEN_APP_BUNDLE_HINT="$APP_BUNDLE_HINT" "$PYTHON_CMD" setup/start_api_only.py &
     API_STARTED_BY_SCRIPT=1
   fi
   API_PID=$!
+  record_api_pid "$API_PID"
   print_info "API PID" "$API_PID"
 
-  max_retries=20
-  retries=0
-  until curl -s "$API_URL/health" >/dev/null 2>&1; do
-    retries=$((retries + 1))
-    if [[ $retries -ge $max_retries ]]; then
-      print_error "API failed to start" "Checked $API_URL/health for ${max_retries}s"
-      exit 1
-    fi
-    sleep 1
-  done
+  wait_for_api_health 20
 fi
 
 print_step "3/3" "Launching Flutter app"
@@ -285,10 +319,10 @@ if [[ ! -x "$APP_BIN" || ! -d "$APP_BUNDLE" ]]; then
 fi
 
 if [[ "$DETACH" == "1" ]]; then
-  mkdir -p "$HOME/.memscreen/logs"
+  mkdir -p "$LOG_DIR"
   # Use LaunchServices in detach mode so app lifecycle is independent
   # from this shell session.
-  nohup open "$APP_BUNDLE" >> "$HOME/.memscreen/logs/flutter_detach.log" 2>&1 &
+  nohup open "$APP_BUNDLE" >> "$LOG_DIR/flutter_detach.log" 2>&1 < /dev/null &
 else
   "$APP_BIN" &
 fi
@@ -298,6 +332,10 @@ print_info "App PID" "$APP_PID"
 echo -e "${GRAY}Logs:${NC}     ~/.memscreen/logs/"
 
 if [[ "$DETACH" == "1" ]]; then
+  if [[ -n "$API_PID" ]]; then
+    wait_for_api_health 5
+    print_info "API pid file" "$API_PID_FILE"
+  fi
   print_info "Detach mode enabled" "Launcher will exit and keep API/app running"
   API_STARTED_BY_SCRIPT=0
   API_PID=""
@@ -316,4 +354,5 @@ echo ""
 echo -e "${YELLOW}🛑 App exited${NC}"
 if [[ "$API_STARTED_BY_SCRIPT" == "1" && -n "$API_PID" ]]; then
   kill "$API_PID" >/dev/null 2>&1 || true
+  clear_api_pid
 fi
