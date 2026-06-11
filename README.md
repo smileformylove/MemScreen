@@ -8,7 +8,7 @@
 
 **100% Local • 100% Private • AI-Powered Visual Memory System**
 
-<img src="assets/demo.gif" alt="MemScreen Demo" width="480"/>
+<img src="assets/demo-en.gif" alt="MemScreen Demo" width="480"/>
 
 [![Product Hunt](https://img.shields.io/badge/Product%20Hunt-Featured-orange?style=for-the-badge&logo=producthunt&logoColor=white)](https://www.producthunt.com/products/memscreen)
 [![ShipIt](https://img.shields.io/badge/ShipIt-Published-purple?style=for-the-badge)](https://www.shipit.buzz/products/memscreen)
