@@ -8,8 +8,6 @@
 
 **100% Local • 100% Private • AI-Powered Visual Memory System**
 
-https://github.com/user-attachments/assets/memscreen-demo-hyperframes.mp4
-
 > 🎬 **[Watch the Demo Video](assets/memscreen-demo-hyperframes.mp4)**
 
 [![Product Hunt](https://img.shields.io/badge/Product%20Hunt-Featured-orange?style=for-the-badge&logo=producthunt&logoColor=white)](https://www.producthunt.com/products/memscreen)
