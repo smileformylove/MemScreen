@@ -8,8 +8,6 @@
 
 **100% Local • 100% Private • AI-Powered Visual Memory System**
 
-[![MemScreen Demo](assets/demo-video-cover.png)](assets/memscreen-demo-hyperframes.mp4)
-
 [![Product Hunt](https://img.shields.io/badge/Product%20Hunt-Featured-orange?style=for-the-badge&logo=producthunt&logoColor=white)](https://www.producthunt.com/products/memscreen)
 [![ShipIt](https://img.shields.io/badge/ShipIt-Published-purple?style=for-the-badge)](https://www.shipit.buzz/products/memscreen)
 [![NXGenTools](https://img.shields.io/badge/NXGenTools-Published-blue?style=for-the-badge)](https://www.nxgntools.com/tools/memscreen)
